@@ -1,6 +1,9 @@
 import { Habit, HabitCheckin } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
 
+export const STREAK_MILESTONES = [7, 30, 100] as const;
+export type StreakMilestone = (typeof STREAK_MILESTONES)[number];
+
 export interface StreakMetrics {
   currentStreak: number;
   longestStreak: number;
@@ -9,7 +12,65 @@ export interface StreakMetrics {
   completedScheduledDays: number;
 }
 
+export interface WeeklyHabitProgress {
+  weekStart: number;
+  weekEnd: number;
+  completedDays: number;
+  scheduledDays: number;
+  isComplete: boolean;
+}
+
 export class StreakCalculator {
+  public static getMilestone(streak: number): StreakMilestone | null {
+    if (streak >= 100) return 100;
+    if (streak >= 30) return 30;
+    if (streak >= 7) return 7;
+    return null;
+  }
+
+  public static isExactMilestone(streak: number): streak is StreakMilestone {
+    return streak === 7 || streak === 30 || streak === 100;
+  }
+
+  public static calculateWeeklyProgress(
+    habit: Habit,
+    checkins: HabitCheckin[],
+    todayDay: number
+  ): WeeklyHabitProgress {
+    const weekStart = CivilCalendar.startOfWeek(todayDay);
+    const weekEnd = weekStart + 6;
+    const effectiveStart = Math.max(weekStart, habit.startDay);
+
+    const doneSet = new Set<number>();
+    for (const entry of checkins) {
+      if (entry.habitId === habit.id && entry.done) {
+        doneSet.add(entry.dayIndex);
+      }
+    }
+
+    let scheduledDays = 0;
+    let completedDays = 0;
+    if (weekEnd >= effectiveStart) {
+      for (let d = effectiveStart; d <= weekEnd; d++) {
+        if (!CivilCalendar.isScheduled(habit.weekdays, d)) {
+          continue;
+        }
+        scheduledDays += 1;
+        if (d <= todayDay && doneSet.has(d)) {
+          completedDays += 1;
+        }
+      }
+    }
+
+    return {
+      weekStart,
+      weekEnd,
+      completedDays,
+      scheduledDays,
+      isComplete: scheduledDays > 0 && completedDays >= scheduledDays,
+    };
+  }
+
   public static calculate(
     habit: Habit,
     checkins: HabitCheckin[],

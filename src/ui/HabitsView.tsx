@@ -114,9 +114,32 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                     true
                   )
                 );
+                const weekly = createMemo(() =>
+                  StreakCalculator.calculateWeeklyProgress(
+                    habit,
+                    props.snapshot.checkins,
+                    props.todayDay
+                  )
+                );
+                const milestone = () =>
+                  StreakCalculator.getMilestone(metrics().currentStreak);
+                const exactMilestone = () =>
+                  StreakCalculator.isExactMilestone(metrics().currentStreak);
+
+                const streakToneClass = () => {
+                  const m = milestone();
+                  if (m === 100) return 'text-[#FBBF24]';
+                  if (m === 30) return 'text-[#4ADE80]';
+                  if (m === 7) return 'text-[#60A5FA]';
+                  return '';
+                };
 
                 return (
-                  <li class="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors">
+                  <li
+                    class={`px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors ${
+                      exactMilestone() ? 'bg-white/[0.015]' : ''
+                    }`}
+                  >
                     <div class="space-y-2 min-w-0">
                       <div class="flex items-center gap-3">
                         <span
@@ -129,16 +152,38 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         </h2>
                       </div>
 
-                      <div class="flex flex-wrap items-center gap-3 text-xs text-[#8E95A5]">
+                      <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[#8E95A5]">
                         <span>Started {CivilCalendar.formatShortDate(habit.startDay)}</span>
                         <span aria-hidden="true">·</span>
-                        <span class="font-mono tabular-nums">
+                        <span
+                          class={`font-mono tabular-nums ${streakToneClass()}`}
+                          title={
+                            milestone()
+                              ? `${milestone()}-day streak milestone`
+                              : undefined
+                          }
+                        >
                           {metrics().currentStreak}d current
+                          <Show when={exactMilestone()}>
+                            <span> · {metrics().currentStreak}d milestone</span>
+                          </Show>
                         </span>
                         <span aria-hidden="true">·</span>
                         <span class="font-mono tabular-nums">
                           {metrics().longestStreak}d best
                         </span>
+                        <Show when={habit.archivedAt === null && weekly().scheduledDays > 0}>
+                          <span aria-hidden="true">·</span>
+                          <span
+                            class={`font-mono tabular-nums ${
+                              weekly().isComplete ? 'text-[#4ADE80]' : ''
+                            }`}
+                          >
+                            {weekly().isComplete
+                              ? `Week complete (${weekly().completedDays}/${weekly().scheduledDays})`
+                              : `${weekly().completedDays}/${weekly().scheduledDays} this week`}
+                          </span>
+                        </Show>
                         <span aria-hidden="true">·</span>
                         <span class="font-mono tabular-nums">
                           {Math.round(metrics().completionRate * 100)}% (30d)

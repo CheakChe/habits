@@ -143,6 +143,82 @@ test('StreakCalculator ignores off-schedule check-ins in scheduled metrics', () 
   assert.equal(metrics.completionRate, 1);
 });
 
+test('StreakCalculator.calculateWeeklyProgress respects habit weekdays and startDay', () => {
+  const mon = CivilCalendar.fromLocalDate(2026, 11, 16); // Monday
+  const wed = mon + 2;
+  const fri = mon + 4;
+  const mwfMask = 0b0010101; // Mon, Wed, Fri (3 days/week)
+
+  const mwfHabit: Habit = {
+    id: 1,
+    name: 'Strength',
+    color: '#3B82F6',
+    weekdays: mwfMask,
+    startDay: mon - 14,
+    archivedAt: null,
+    createdAt: 1000,
+    updatedAt: 1000,
+  };
+
+  // On Wednesday with Mon & Wed done, Fri upcoming -> 2/3 this week, not complete
+  const checkinsPartial: HabitCheckin[] = [
+    { habitId: 1, dayIndex: mon, done: true, updatedAt: 1 },
+    { habitId: 1, dayIndex: mon + 1, done: true, updatedAt: 1 }, // Tue off-schedule ignored
+    { habitId: 1, dayIndex: wed, done: true, updatedAt: 1 },
+  ];
+  const midWeek = StreakCalculator.calculateWeeklyProgress(mwfHabit, checkinsPartial, wed);
+  assert.equal(midWeek.weekStart, mon);
+  assert.equal(midWeek.weekEnd, mon + 6);
+  assert.equal(midWeek.completedDays, 2);
+  assert.equal(midWeek.scheduledDays, 3);
+  assert.equal(midWeek.isComplete, false);
+
+  // On Friday with Mon, Wed, Fri done -> 3/3 Week complete
+  const checkinsDone: HabitCheckin[] = [
+    ...checkinsPartial,
+    { habitId: 1, dayIndex: fri, done: true, updatedAt: 2 },
+  ];
+  const fullWeek = StreakCalculator.calculateWeeklyProgress(mwfHabit, checkinsDone, fri);
+  assert.equal(fullWeek.completedDays, 3);
+  assert.equal(fullWeek.scheduledDays, 3);
+  assert.equal(fullWeek.isComplete, true);
+
+  // Habit started on Wednesday (only Wed & Fri scheduled this week -> 2 scheduled)
+  const midWeekStartHabit: Habit = { ...mwfHabit, id: 2, startDay: wed };
+  const startedWed = StreakCalculator.calculateWeeklyProgress(
+    midWeekStartHabit,
+    [{ habitId: 2, dayIndex: wed, done: true, updatedAt: 1 }],
+    wed
+  );
+  assert.equal(startedWed.completedDays, 1);
+  assert.equal(startedWed.scheduledDays, 2);
+  assert.equal(startedWed.isComplete, false);
+
+  // Habit scheduled to start next week -> 0/0, not complete
+  const futureHabit: Habit = { ...mwfHabit, id: 3, startDay: mon + 7 };
+  const futureWeek = StreakCalculator.calculateWeeklyProgress(futureHabit, [], wed);
+  assert.equal(futureWeek.completedDays, 0);
+  assert.equal(futureWeek.scheduledDays, 0);
+  assert.equal(futureWeek.isComplete, false);
+});
+
+test('StreakCalculator milestone helpers classify 7, 30, and 100 day streaks cleanly', () => {
+  assert.equal(StreakCalculator.getMilestone(0), null);
+  assert.equal(StreakCalculator.getMilestone(6), null);
+  assert.equal(StreakCalculator.getMilestone(7), 7);
+  assert.equal(StreakCalculator.getMilestone(29), 7);
+  assert.equal(StreakCalculator.getMilestone(30), 30);
+  assert.equal(StreakCalculator.getMilestone(99), 30);
+  assert.equal(StreakCalculator.getMilestone(100), 100);
+  assert.equal(StreakCalculator.getMilestone(145), 100);
+
+  assert.equal(StreakCalculator.isExactMilestone(6), false);
+  assert.equal(StreakCalculator.isExactMilestone(7), true);
+  assert.equal(StreakCalculator.isExactMilestone(8), false);
+  assert.equal(StreakCalculator.isExactMilestone(30), true);
+  assert.equal(StreakCalculator.isExactMilestone(100), true);
+});
+
 test('TaskAnalytics aggregates weekly completed tasks accurately and handles empty/out-of-range inputs', () => {
   const today = CivilCalendar.fromLocalDate(2026, 11, 20); // Friday
   assert.deepEqual(TaskAnalytics.weeklyCompletedCounts([], today, 0), []);
