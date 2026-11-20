@@ -3,6 +3,7 @@ import solid from 'vite-plugin-solid';
 import fs from 'fs';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
+import {VitePWA} from 'vite-plugin-pwa';
 
 function loadFirebaseConfig(env: Record<string, string>): Record<string, string> | null {
   const localConfigPath = path.resolve(__dirname, 'firebase-applet-config.json');
@@ -48,6 +49,85 @@ export default defineConfig(({mode}) => {
     plugins: [
       solid(),
       tailwindcss(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: [
+          'favicon.svg',
+          'apple-touch-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png',
+        ],
+        manifest: {
+          id: './',
+          name: 'Habits — Habit & Task Tracker',
+          short_name: 'Habits',
+          description:
+            'Offline-first habit and task tracker with local IndexedDB persistence and optional Google Drive snapshot sync.',
+          theme_color: '#0A0B0E',
+          background_color: '#0A0B0E',
+          display: 'standalone',
+          start_url: './',
+          scope: './',
+          icons: [
+            {
+              src: './pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: './pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              src: './pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+          ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'gstatic-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+          ],
+        },
+        devOptions: {
+          enabled: true,
+          type: 'module',
+        },
+      }),
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.

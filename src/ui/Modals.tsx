@@ -1,9 +1,24 @@
 import { For, JSX, Show, createEffect, createSignal } from 'solid-js';
-import { SyncPreparationResult } from '../sync/drive-sync-service';
+import {
+  DriveRevisionInspectResult,
+  DriveRevisionMeta,
+  MAX_REVISIONS_TO_KEEP,
+  SyncPreparationResult,
+} from '../sync/drive-sync-service';
 import { Habit, SessionMode, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DatePicker } from './CustomControls';
-import { CloseIcon, CloudSyncIcon, DriveIcon, SwitchAccountIcon } from './Icons';
+import {
+  CloseIcon,
+  CloudSyncIcon,
+  DownloadIcon,
+  DriveIcon,
+  HistoryClockIcon,
+  RestoreIcon,
+  SwitchAccountIcon,
+  UploadIcon,
+} from './Icons';
+import { PWAInstallButton } from './PwaControls';
 import { ALL_WEEKDAYS_MASK, DEFAULT_HABIT_COLOR, HABIT_COLORS } from './constants';
 
 interface HabitModalProps {
@@ -453,6 +468,14 @@ export function SyncConfirmModal(props: SyncConfirmModalProps): JSX.Element {
               </div>
             </div>
 
+            <Show when={(pending().duplicateFileIds?.length ?? 0) > 0}>
+              <div class="rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/25 px-3.5 py-2.5 text-xs text-[#93C5FD]">
+                Detected {pending().duplicateFileIds!.length} duplicate snapshot{' '}
+                {pending().duplicateFileIds!.length === 1 ? 'file' : 'files'} in Google Drive. All
+                records were merged and duplicates will be cleaned up after upload.
+              </div>
+            </Show>
+
             <div class="flex items-center justify-end gap-3">
               <button
                 type="button"
@@ -489,10 +512,21 @@ interface AccountModalProps {
   onClose: () => void;
   onConnectGoogle: () => Promise<void>;
   onSwitchToEntry: () => Promise<void>;
+  onExportBackup: () => Promise<{ filename: string; bytes: Uint8Array }>;
+  onImportBackup: (bytes: Uint8Array) => Promise<void>;
+  onOpenRevisions?: () => Promise<void>;
 }
 
 export function AccountModal(props: AccountModalProps): JSX.Element {
   const [busy, setBusy] = createSignal(false);
+  const [backupError, setBackupError] = createSignal<string | null>(null);
+  let fileInputRef: HTMLInputElement | undefined;
+
+  createEffect(() => {
+    if (props.open) {
+      setBackupError(null);
+    }
+  });
 
   const handleConnect = async () => {
     setBusy(true);
@@ -509,6 +543,51 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
     try {
       await props.onSwitchToEntry();
       props.onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setBusy(true);
+    setBackupError(null);
+    try {
+      const { filename, bytes } = await props.onExportBackup();
+      const copy = new Uint8Array(bytes.byteLength);
+      copy.set(bytes);
+      const blob = new Blob([copy.buffer], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      props.onClose();
+    } catch (err) {
+      setBackupError(err instanceof Error ? err.message : 'Failed to export backup.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleFileChange = async (e: Event) => {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    setBusy(true);
+    setBackupError(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      await props.onImportBackup(new Uint8Array(buffer));
+      props.onClose();
+    } catch (err) {
+      setBackupError(
+        err instanceof Error ? err.message : 'Could not read backup file.'
+      );
     } finally {
       setBusy(false);
     }
@@ -553,6 +632,51 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
             </div>
           </div>
 
+          <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-4 space-y-3">
+            <div class="space-y-0.5">
+              <p class="text-xs font-medium text-[#F5F7FA]">Local Backup (.bin)</p>
+              <p class="text-[11px] text-[#8E95A5]">
+                Export a snapshot file or safely merge an existing backup into this device.
+              </p>
+            </div>
+
+            <Show when={backupError()}>
+              {(msg) => (
+                <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3 py-2 text-xs text-[#FCA5A5]">
+                  {msg()}
+                </div>
+              )}
+            </Show>
+
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={busy()}
+                class="h-10 px-3 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              >
+                <DownloadIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
+                <span>Export .bin</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef?.click()}
+                disabled={busy()}
+                class="h-10 px-3 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              >
+                <UploadIcon class="w-3.5 h-3.5 text-[#22C55E]" />
+                <span>Import .bin</span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".bin,application/octet-stream"
+                onChange={(e) => void handleFileChange(e)}
+                class="hidden"
+              />
+            </div>
+          </div>
+
           <div class="space-y-2.5">
             <Show when={props.mode === 'google' && !props.hasGoogleToken}>
               <button
@@ -564,6 +688,18 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
                 {busy() ? 'Connecting...' : 'Reconnect Google Drive'}
               </button>
             </Show>
+            <Show when={props.mode === 'google' && props.onOpenRevisions}>
+              <button
+                type="button"
+                onClick={() => void props.onOpenRevisions?.()}
+                disabled={busy()}
+                class="w-full h-11 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <HistoryClockIcon class="w-4 h-4 text-[#60A5FA]" />
+                <span>Drive Version History</span>
+              </button>
+            </Show>
+            <PWAInstallButton variant="full" />
             <button
               type="button"
               onClick={() => void handleSwitch()}
@@ -572,6 +708,258 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
             >
               <SwitchAccountIcon class="w-4 h-4 text-[#8E95A5]" />
               <span>Switch Account or Mode</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Show>
+  );
+}
+
+interface DriveRevisionsModalProps {
+  open: boolean;
+  loading: boolean;
+  error: string | null;
+  revisions: DriveRevisionMeta[];
+  inspectingRevisionId: string | null;
+  inspectedRevision: DriveRevisionInspectResult | null;
+  restoring: boolean;
+  onClose: () => void;
+  onRefresh: () => Promise<void>;
+  onInspect: (revisionId: string) => Promise<void>;
+  onRestore: (revisionId: string) => Promise<void>;
+}
+
+function formatRevisionTime(iso?: string): string {
+  if (!iso) return 'Unknown date';
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function formatByteSize(bytes?: number): string {
+  if (bytes === undefined || !Number.isFinite(bytes)) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Element {
+  return (
+    <Show when={props.open}>
+      <div
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="revisions-modal-title"
+      >
+        <div class="w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5 max-h-[88vh] flex flex-col">
+          <div class="flex items-center justify-between gap-3 shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0">
+                <HistoryClockIcon class="w-4 h-4" />
+              </div>
+              <div>
+                <h2
+                  id="revisions-modal-title"
+                  class="font-display text-lg font-semibold text-[#F5F7FA]"
+                >
+                  Drive Version History
+                </h2>
+                <p class="text-xs text-[#8E95A5]">
+                  Up to the latest {MAX_REVISIONS_TO_KEEP} versions are kept automatically in Google Drive.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => props.onClose()}
+              disabled={props.restoring}
+              aria-label="Close modal"
+              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <CloseIcon class="w-4 h-4" />
+            </button>
+          </div>
+
+          <Show when={props.error}>
+            {(msg) => (
+              <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0">
+                {msg()}
+              </div>
+            )}
+          </Show>
+
+          <div class="overflow-y-auto space-y-3 pr-1 flex-1 min-h-0">
+            <Show
+              when={!props.loading}
+              fallback={
+                <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-8 text-center text-xs text-[#8E95A5]">
+                  Loading snapshot revisions from Google Drive...
+                </div>
+              }
+            >
+              <Show
+                when={props.revisions.length > 0}
+                fallback={
+                  <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-8 text-center space-y-2">
+                    <p class="text-sm font-medium text-[#F5F7FA]">No Drive versions yet</p>
+                    <p class="text-xs text-[#8E95A5]">
+                      Run Sync Drive at least once to create your first cloud snapshot revision.
+                    </p>
+                  </div>
+                }
+              >
+                <div class="space-y-2">
+                  <For each={props.revisions}>
+                    {(rev, index) => {
+                      const isCurrent = () => index() === 0;
+                      const isSelected = () =>
+                        props.inspectedRevision?.revisionId === rev.id;
+                      const isInspecting = () => props.inspectingRevisionId === rev.id;
+                      return (
+                        <div
+                          class={`rounded-2xl border p-3.5 transition-colors ${
+                            isSelected()
+                              ? 'bg-[#182030] border-[#3B82F6]/45'
+                              : 'bg-[#0A0B0E] border-white/[0.08]'
+                          }`}
+                        >
+                          <div class="flex items-center justify-between gap-3">
+                            <div class="min-w-0 space-y-0.5">
+                              <div class="flex items-center gap-2 flex-wrap">
+                                <span class="text-xs font-medium text-[#F5F7FA]">
+                                  {formatRevisionTime(rev.modifiedTime)}
+                                </span>
+                                <Show when={isCurrent()}>
+                                  <span class="px-1.5 py-0.5 rounded-md bg-[#22C55E]/15 text-[10px] font-medium text-[#86EFAC]">
+                                    Current
+                                  </span>
+                                </Show>
+                                <Show when={rev.keepForever}>
+                                  <span class="px-1.5 py-0.5 rounded-md bg-[#3B82F6]/15 text-[10px] font-medium text-[#93C5FD]">
+                                    Pinned
+                                  </span>
+                                </Show>
+                              </div>
+                              <p class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                                Rev #{rev.id} · {formatByteSize(rev.size)}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => void props.onInspect(rev.id)}
+                              disabled={
+                                isInspecting() ||
+                                props.restoring ||
+                                props.inspectingRevisionId !== null
+                              }
+                              class="h-8 px-3 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                            >
+                              {isInspecting()
+                                ? 'Loading...'
+                                : isSelected()
+                                  ? 'Selected'
+                                  : 'Inspect'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
+            </Show>
+          </div>
+
+          <Show when={props.inspectedRevision}>
+            {(inspected) => {
+              const isLatest = () => props.revisions[0]?.id === inspected().revisionId;
+              return (
+                <div class="rounded-2xl bg-[#0A0B0E] border border-[#3B82F6]/30 p-4 space-y-3 shrink-0">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-medium text-[#F5F7FA]">
+                      Revision #{inspected().revisionId} Contents
+                    </span>
+                    <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                      {inspected().summary.byteSize} B
+                    </span>
+                  </div>
+
+                  <div class="grid grid-cols-4 gap-2 text-xs">
+                    <div class="rounded-xl bg-[#14161B] p-2.5">
+                      <span class="text-[11px] text-[#8E95A5] block">Habits</span>
+                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                        {inspected().summary.habitsCount}
+                      </span>
+                    </div>
+                    <div class="rounded-xl bg-[#14161B] p-2.5">
+                      <span class="text-[11px] text-[#8E95A5] block">Check-ins</span>
+                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                        {inspected().summary.checkinsCount}
+                      </span>
+                    </div>
+                    <div class="rounded-xl bg-[#14161B] p-2.5">
+                      <span class="text-[11px] text-[#8E95A5] block">Notes</span>
+                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                        {inspected().summary.notesCount}
+                      </span>
+                    </div>
+                    <div class="rounded-xl bg-[#14161B] p-2.5">
+                      <span class="text-[11px] text-[#8E95A5] block">Tasks</span>
+                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                        {inspected().summary.tasksCount}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p class="text-[11px] text-[#8E95A5] leading-relaxed">
+                    {isLatest()
+                      ? 'This is the current latest version on Google Drive. Restoring it overwrites your local IndexedDB with this snapshot.'
+                      : 'Restoring replaces your local IndexedDB with this snapshot and saves it as a new latest version on Google Drive (your previous state remains in version history).'}
+                  </p>
+
+                  <div class="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void props.onRestore(inspected().revisionId)}
+                      disabled={props.restoring}
+                      class="h-9 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RestoreIcon class="w-3.5 h-3.5" />
+                      <span>
+                        {props.restoring ? 'Restoring...' : 'Restore This Version'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            }}
+          </Show>
+
+          <div class="flex items-center justify-between gap-3 pt-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => void props.onRefresh()}
+              disabled={props.loading || props.restoring}
+              class="h-9 px-3.5 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => props.onClose()}
+              disabled={props.restoring}
+              class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Close
             </button>
           </div>
         </div>

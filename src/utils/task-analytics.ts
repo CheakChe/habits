@@ -29,7 +29,7 @@ export class TaskAnalytics {
 
     for (const task of tasks) {
       if (task.deletedAt !== null || !task.done) continue;
-      const completedDay = CivilCalendar.fromTimestamp(task.updatedAt);
+      const completedDay = task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt);
       const weekStart = CivilCalendar.startOfWeek(completedDay);
       if (counts.has(weekStart)) {
         counts.set(weekStart, (counts.get(weekStart) ?? 0) + 1);

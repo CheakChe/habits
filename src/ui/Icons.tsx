@@ -393,3 +393,118 @@ export function ChevronDownIcon(props: IconProps): JSX.Element {
   );
 }
 
+export function SearchIcon(props: IconProps): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={props.class ?? 'w-4 h-4'}
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+export function DownloadIcon(props: IconProps): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={props.class ?? 'w-4 h-4'}
+      aria-hidden="true"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+export function UploadIcon(props: IconProps): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={props.class ?? 'w-4 h-4'}
+      aria-hidden="true"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+
+export function InstallAppIcon(props: IconProps): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={props.class ?? 'w-4 h-4'}
+      aria-hidden="true"
+    >
+      <rect x="5" y="2" width="14" height="20" rx="2" />
+      <path d="M12 7v6" />
+      <path d="m9.5 10.5 2.5 2.5 2.5-2.5" />
+      <line x1="12" y1="18" x2="12.01" y2="18" />
+    </svg>
+  );
+}
+
+export function WifiOffIcon(props: IconProps): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={props.class ?? 'w-4 h-4'}
+      aria-hidden="true"
+    >
+      <line x1="2" y1="2" x2="22" y2="22" />
+      <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+      <path d="M5 13a10 10 0 0 1 5.17-2.69" />
+      <path d="M19 13a10 10 0 0 0-3.17-2.06" />
+      <line x1="12" y1="20" x2="12.01" y2="20" />
+    </svg>
+  );
+}
+
+export function HistoryClockIcon(props: IconProps): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      class={props.class ?? 'w-4 h-4'}
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}

@@ -113,6 +113,7 @@ test('SnapshotCodec round-trip preserves all domain fields including tombstones 
         note: 'Include PDF receipt',
         dueDay: startDay + 10,
         done: true,
+        completedDay: startDay + 10,
         deletedAt: null,
         createdAt: 1_760_000_010_000,
         updatedAt: 1_760_000_200_000,
@@ -123,6 +124,7 @@ test('SnapshotCodec round-trip preserves all domain fields including tombstones 
         note: '',
         dueDay: null,
         done: false,
+        completedDay: null,
         deletedAt: 1_760_000_300_000,
         createdAt: 1_760_000_020_000,
         updatedAt: 1_760_000_300_000,
@@ -186,6 +188,7 @@ test('SnapshotMerger keeps newest updatedAt, propagates task tombstones, and res
         note: '',
         dueDay: null,
         done: false,
+        completedDay: null,
         deletedAt: null,
         createdAt: 10,
         updatedAt: 50,
@@ -196,6 +199,7 @@ test('SnapshotMerger keeps newest updatedAt, propagates task tombstones, and res
         note: '',
         dueDay: day1,
         done: false,
+        completedDay: null,
         deletedAt: null,
         createdAt: 2000,
         updatedAt: 2000,
@@ -239,6 +243,7 @@ test('SnapshotMerger keeps newest updatedAt, propagates task tombstones, and res
         note: 'Removed',
         dueDay: day2,
         done: false,
+        completedDay: null,
         deletedAt: 900,
         createdAt: 10,
         updatedAt: 900,
@@ -249,6 +254,7 @@ test('SnapshotMerger keeps newest updatedAt, propagates task tombstones, and res
         note: '',
         dueDay: day2,
         done: true,
+        completedDay: day2,
         deletedAt: null,
         createdAt: 1800,
         updatedAt: 1850,
@@ -295,6 +301,7 @@ test('TaskAnalytics and TodayBoard ignore deleted tombstone tasks', () => {
       note: '',
       dueDay: today,
       done: true,
+      completedDay: today,
       deletedAt: null,
       createdAt: tsToday,
       updatedAt: tsToday,
@@ -305,6 +312,7 @@ test('TaskAnalytics and TodayBoard ignore deleted tombstone tasks', () => {
       note: '',
       dueDay: today,
       done: true,
+      completedDay: today,
       deletedAt: tsToday,
       createdAt: tsToday,
       updatedAt: tsToday,
@@ -315,6 +323,7 @@ test('TaskAnalytics and TodayBoard ignore deleted tombstone tasks', () => {
       note: '',
       dueDay: today - 2,
       done: false,
+      completedDay: null,
       deletedAt: tsToday,
       createdAt: tsToday,
       updatedAt: tsToday,
@@ -326,4 +335,84 @@ test('TaskAnalytics and TodayBoard ignore deleted tombstone tasks', () => {
   const board = TodayBoard.getTodayAndOverdueTasks(tasks, today);
   assert.equal(board.overdue.length, 0);
   assert.equal(board.dueToday.length, 0);
+});
+
+test('SnapshotMerger.rebaseForRestore ensures restored historical records beat newer unwanted edits on future LWW merges', () => {
+  const day1 = 20770;
+  const oldGoodRevision: DomainSnapshot = {
+    habits: [
+      {
+        id: 1,
+        name: 'Good Name',
+        color: '#3B82F6',
+        weekdays: 127,
+        startDay: day1,
+        archivedAt: null,
+        createdAt: 100,
+        updatedAt: 500,
+      },
+    ],
+    checkins: [{ habitId: 1, dayIndex: day1, done: true, updatedAt: 500 }],
+    notes: [{ habitId: 1, dayIndex: day1, text: 'Keep me', updatedAt: 500 }],
+    tasks: [
+      {
+        id: 1,
+        title: 'Alive Task',
+        note: '',
+        dueDay: day1,
+        done: true,
+        completedDay: day1,
+        deletedAt: null,
+        createdAt: 200,
+        updatedAt: 500,
+      },
+    ],
+  };
+
+  const badNewerOtherDevice: DomainSnapshot = {
+    habits: [
+      {
+        id: 1,
+        name: 'Corrupted Name',
+        color: '#EF4444',
+        weekdays: 127,
+        startDay: day1,
+        archivedAt: 99999,
+        createdAt: 100,
+        updatedAt: 99999,
+      },
+    ],
+    checkins: [{ habitId: 1, dayIndex: day1, done: false, updatedAt: 99999 }],
+    notes: [{ habitId: 1, dayIndex: day1, text: 'Wiped', updatedAt: 99999 }],
+    tasks: [
+      {
+        id: 1,
+        title: 'Alive Task',
+        note: '',
+        dueDay: day1,
+        done: true,
+        completedDay: day1,
+        deletedAt: 99999,
+        createdAt: 200,
+        updatedAt: 99999,
+      },
+    ],
+  };
+
+  const rebased = SnapshotMerger.rebaseForRestore(
+    oldGoodRevision,
+    [badNewerOtherDevice],
+    1000
+  );
+  assert.equal(rebased.habits[0].updatedAt, 100000);
+  assert.equal(rebased.habits[0].createdAt, 100);
+  assert.equal(rebased.tasks[0].completedDay, day1);
+
+  // When another device with bad newer edits syncs later, restored revision wins!
+  const mergedLater = SnapshotMerger.merge(badNewerOtherDevice, rebased);
+  assert.equal(mergedLater.habits[0].name, 'Good Name');
+  assert.equal(mergedLater.habits[0].archivedAt, null);
+  assert.equal(mergedLater.checkins[0].done, true);
+  assert.equal(mergedLater.notes[0].text, 'Keep me');
+  assert.equal(mergedLater.tasks[0].deletedAt, null);
 });

@@ -31,6 +31,7 @@ export interface Task {
   note: string;
   dueDay: number | null;
   done: boolean;
+  completedDay: number | null;
   deletedAt: number | null;
   createdAt: number;
   updatedAt: number;

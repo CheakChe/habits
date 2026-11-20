@@ -13,12 +13,14 @@ import {
 } from './ui/Icons';
 import {
   AccountModal,
+  DriveRevisionsModal,
   HabitModal,
   SyncConfirmModal,
   TaskModal,
 } from './ui/Modals';
 import { TasksView } from './ui/TasksView';
 import { TodayView } from './ui/TodayView';
+import { OfflineBanner, PWAInstallButton } from './ui/PwaControls';
 import { TrackerStore } from './ui/tracker-store';
 
 export default function App(): JSX.Element {
@@ -108,8 +110,9 @@ export default function App(): JSX.Element {
               </button>
             </nav>
 
-            {/* Zone 3: 1 primary action */}
-            <div class="flex items-center shrink-0">
+            {/* Zone 3: Primary action (+ optional install trigger when available) */}
+            <div class="flex items-center gap-2 shrink-0">
+              <PWAInstallButton variant="compact" />
               <Show
                 when={store.mode() === 'google'}
                 fallback={
@@ -149,16 +152,27 @@ export default function App(): JSX.Element {
 
         {/* Main Viewport */}
         <main class="max-w-6xl mx-auto px-4 sm:px-6 pt-6 sm:pt-8 space-y-6">
+          <OfflineBanner />
+
           <Show when={store.mode() === 'google'}>
             <div class="flex items-center justify-between gap-4 text-xs text-[#8E95A5]">
               <span>Google Drive Sync Mode · Snapshot stored in private app folder</span>
-              <button
-                type="button"
-                onClick={() => store.setAccountModalOpen(true)}
-                class="text-[#60A5FA] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                Account &amp; Mode
-              </button>
+              <div class="flex items-center gap-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void store.openDriveRevisions()}
+                  class="text-[#8E95A5] hover:text-[#F5F7FA] whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  Version History
+                </button>
+                <button
+                  type="button"
+                  onClick={() => store.setAccountModalOpen(true)}
+                  class="text-[#60A5FA] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  Account &amp; Mode
+                </button>
+              </div>
             </div>
           </Show>
 
@@ -312,6 +326,22 @@ export default function App(): JSX.Element {
           onClose={() => store.setAccountModalOpen(false)}
           onConnectGoogle={() => store.reconnectGoogle()}
           onSwitchToEntry={() => store.switchToEntry()}
+          onExportBackup={() => store.exportBackup()}
+          onImportBackup={(bytes) => store.importBackup(bytes)}
+          onOpenRevisions={() => store.openDriveRevisions()}
+        />
+        <DriveRevisionsModal
+          open={store.revisionsModalOpen()}
+          loading={store.revisionsLoading()}
+          error={store.revisionsError()}
+          revisions={store.revisions()}
+          inspectingRevisionId={store.inspectingRevisionId()}
+          inspectedRevision={store.inspectedRevision()}
+          restoring={store.restoringRevision()}
+          onClose={() => store.closeDriveRevisions()}
+          onRefresh={() => store.openDriveRevisions()}
+          onInspect={(revId) => store.inspectDriveRevision(revId)}
+          onRestore={(revId) => store.restoreDriveRevision(revId)}
         />
       </div>
     </Show>

@@ -1,8 +1,11 @@
 import { Accessor, Setter, createSignal } from 'solid-js';
 import { SessionManager } from '../auth/session-manager';
 import { HabitDatabase } from '../db/habit-database';
+import { BackupService } from '../sync/backup-service';
 import {
   ConcurrentSyncError,
+  DriveRevisionInspectResult,
+  DriveRevisionMeta,
   DriveSyncService,
   SyncPreparationResult,
 } from '../sync/drive-sync-service';
@@ -72,6 +75,30 @@ export class TrackerStore {
   public readonly accountModalOpen: Accessor<boolean>;
   public readonly setAccountModalOpen: Setter<boolean>;
 
+  public readonly revisionsModalOpen: Accessor<boolean>;
+  private readonly setRevisionsModalOpen: Setter<boolean>;
+
+  public readonly revisionsLoading: Accessor<boolean>;
+  private readonly setRevisionsLoading: Setter<boolean>;
+
+  public readonly revisionsError: Accessor<string | null>;
+  private readonly setRevisionsError: Setter<string | null>;
+
+  public readonly revisionsFileId: Accessor<string | null>;
+  private readonly setRevisionsFileId: Setter<string | null>;
+
+  public readonly revisions: Accessor<DriveRevisionMeta[]>;
+  private readonly setRevisions: Setter<DriveRevisionMeta[]>;
+
+  public readonly inspectingRevisionId: Accessor<string | null>;
+  private readonly setInspectingRevisionId: Setter<string | null>;
+
+  public readonly inspectedRevision: Accessor<DriveRevisionInspectResult | null>;
+  private readonly setInspectedRevision: Setter<DriveRevisionInspectResult | null>;
+
+  public readonly restoringRevision: Accessor<boolean>;
+  private readonly setRestoringRevision: Setter<boolean>;
+
   public readonly todayDay: Accessor<number>;
   private readonly setTodayDay: Setter<number>;
 
@@ -103,6 +130,15 @@ export class TrackerStore {
     [this.taskModalOpen, this.setTaskModalOpen] = createSignal(false);
     [this.editingTask, this.setEditingTask] = createSignal<Task | null>(null);
     [this.accountModalOpen, this.setAccountModalOpen] = createSignal(false);
+    [this.revisionsModalOpen, this.setRevisionsModalOpen] = createSignal(false);
+    [this.revisionsLoading, this.setRevisionsLoading] = createSignal(false);
+    [this.revisionsError, this.setRevisionsError] = createSignal<string | null>(null);
+    [this.revisionsFileId, this.setRevisionsFileId] = createSignal<string | null>(null);
+    [this.revisions, this.setRevisions] = createSignal<DriveRevisionMeta[]>([]);
+    [this.inspectingRevisionId, this.setInspectingRevisionId] = createSignal<string | null>(null);
+    [this.inspectedRevision, this.setInspectedRevision] =
+      createSignal<DriveRevisionInspectResult | null>(null);
+    [this.restoringRevision, this.setRestoringRevision] = createSignal(false);
     [this.todayDay, this.setTodayDay] = createSignal(CivilCalendar.todayDayIndex());
   }
 
@@ -283,6 +319,33 @@ export class TrackerStore {
     await this.reloadFromDb();
   }
 
+  public async exportBackup(): Promise<{ filename: string; bytes: Uint8Array }> {
+    const currentSnapshot = await this.db.getAllSnapshot();
+    const bytes = BackupService.exportBytes(currentSnapshot);
+    const filename = BackupService.buildFilename(this.todayDay());
+    this.setSyncBanner({
+      kind: 'success',
+      text: `Backup exported (${bytes.byteLength} bytes).`,
+    });
+    return { filename, bytes };
+  }
+
+  public async importBackup(fileBytes: Uint8Array): Promise<void> {
+    const currentSnapshot = await this.db.getAllSnapshot();
+    const { mergedSnapshot, importedCounts } = BackupService.importBytes(
+      currentSnapshot,
+      fileBytes
+    );
+    await this.db.replaceSnapshot(mergedSnapshot);
+    await this.reloadFromDb();
+    this.driveSync.resetUploadCache();
+    this.setPendingSync(null);
+    this.setSyncBanner({
+      kind: 'success',
+      text: `Backup merged (${importedCounts.habits} habits, ${importedCounts.tasks} tasks imported).`,
+    });
+  }
+
   public async startDriveSync(): Promise<void> {
     if (this.mode() !== 'google') return;
 
@@ -400,6 +463,119 @@ export class TrackerStore {
       this.setSyncBanner({ kind: 'error', text: msg });
     } finally {
       this.setSyncBusy(false);
+    }
+  }
+
+  public closeDriveRevisions(): void {
+    this.setRevisionsModalOpen(false);
+    this.setRevisionsError(null);
+    this.setInspectedRevision(null);
+    this.setInspectingRevisionId(null);
+  }
+
+  public async openDriveRevisions(): Promise<void> {
+    if (this.mode() !== 'google') return;
+
+    if (!this.session.hasAccessToken()) {
+      await this.reconnectGoogle();
+      if (!this.session.hasAccessToken()) return;
+    }
+
+    this.setAccountModalOpen(false);
+    this.setRevisionsModalOpen(true);
+    this.setRevisionsError(null);
+    this.setInspectedRevision(null);
+    this.setInspectingRevisionId(null);
+    this.setRevisionsLoading(true);
+
+    try {
+      const result = await this.driveSync.listRevisions(
+        this.mode(),
+        this.session.getAccessToken()
+      );
+      this.setRevisionsFileId(result.fileId);
+      this.setRevisions(result.revisions);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load Drive version history.';
+      if (msg.toLowerCase().includes('authorization')) {
+        this.session.clearAccessTokenOnly();
+        this.setHasGoogleToken(false);
+      }
+      this.setRevisionsError(msg);
+    } finally {
+      this.setRevisionsLoading(false);
+    }
+  }
+
+  public async inspectDriveRevision(revisionId: string): Promise<void> {
+    const fileId = this.revisionsFileId();
+    if (!fileId || this.mode() !== 'google') return;
+
+    if (!this.session.hasAccessToken()) {
+      await this.reconnectGoogle();
+      if (!this.session.hasAccessToken()) return;
+    }
+
+    this.setInspectingRevisionId(revisionId);
+    this.setRevisionsError(null);
+    try {
+      const inspected = await this.driveSync.inspectRevision(
+        this.mode(),
+        this.session.getAccessToken(),
+        fileId,
+        revisionId
+      );
+      this.setInspectedRevision(inspected);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to inspect Drive revision.';
+      if (msg.toLowerCase().includes('authorization')) {
+        this.session.clearAccessTokenOnly();
+        this.setHasGoogleToken(false);
+      }
+      this.setRevisionsError(msg);
+      this.setInspectedRevision(null);
+    } finally {
+      this.setInspectingRevisionId(null);
+    }
+  }
+
+  public async restoreDriveRevision(revisionId: string): Promise<void> {
+    const fileId = this.revisionsFileId();
+    if (!fileId || this.mode() !== 'google') return;
+
+    if (!this.session.hasAccessToken()) {
+      await this.reconnectGoogle();
+      if (!this.session.hasAccessToken()) return;
+    }
+
+    this.setRestoringRevision(true);
+    this.setRevisionsError(null);
+    try {
+      const localSnapshot = await this.db.getAllSnapshot();
+      const result = await this.driveSync.restoreRevision(
+        this.mode(),
+        this.session.getAccessToken(),
+        fileId,
+        revisionId,
+        localSnapshot
+      );
+      await this.db.replaceSnapshot(result.restoredSnapshot);
+      await this.reloadFromDb();
+      this.setPendingSync(null);
+      this.closeDriveRevisions();
+      this.setSyncBanner({
+        kind: 'success',
+        text: `Restored Drive version (${result.summary.habitsCount} habits, ${result.summary.tasksCount} tasks) and saved as latest.`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to restore Drive revision.';
+      if (msg.toLowerCase().includes('authorization')) {
+        this.session.clearAccessTokenOnly();
+        this.setHasGoogleToken(false);
+      }
+      this.setRevisionsError(msg);
+    } finally {
+      this.setRestoringRevision(false);
     }
   }
 }

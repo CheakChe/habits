@@ -134,4 +134,45 @@ export class SnapshotMerger {
       tasks: Array.from(taskMap.values()).sort((a, b) => a.id - b.id),
     };
   }
+
+  /**
+   * Rebases updatedAt timestamps on a restored historical snapshot so it stays
+   * strictly newer than any known local or remote edits in LWW merges, while
+   * preserving immutable createdAt identities and completedDay history.
+   */
+  public static rebaseForRestore(
+    target: DomainSnapshot,
+    againstSnapshots: DomainSnapshot[] = [],
+    now: number = Date.now()
+  ): DomainSnapshot {
+    let maxUpdatedAt = 0;
+    const scan = (snap: DomainSnapshot) => {
+      for (const h of snap.habits) {
+        if (h.updatedAt > maxUpdatedAt) maxUpdatedAt = h.updatedAt;
+      }
+      for (const c of snap.checkins) {
+        if (c.updatedAt > maxUpdatedAt) maxUpdatedAt = c.updatedAt;
+      }
+      for (const n of snap.notes) {
+        if (n.updatedAt > maxUpdatedAt) maxUpdatedAt = n.updatedAt;
+      }
+      for (const t of snap.tasks) {
+        if (t.updatedAt > maxUpdatedAt) maxUpdatedAt = t.updatedAt;
+      }
+    };
+
+    scan(target);
+    for (const snap of againstSnapshots) {
+      scan(snap);
+    }
+
+    const restoreTs = Math.max(now, maxUpdatedAt + 1);
+
+    return {
+      habits: target.habits.map((h) => ({ ...h, updatedAt: restoreTs })),
+      checkins: target.checkins.map((c) => ({ ...c, updatedAt: restoreTs })),
+      notes: target.notes.map((n) => ({ ...n, updatedAt: restoreTs })),
+      tasks: target.tasks.map((t) => ({ ...t, updatedAt: restoreTs })),
+    };
+  }
 }

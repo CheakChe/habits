@@ -1,11 +1,12 @@
 import { DomainSnapshot, Habit, HabitCheckin, HabitNote, Task } from '../types/domain';
+import { CivilCalendar } from '../utils/civil-calendar';
 import { IdTable } from './id-table';
 import { SnapshotBytes } from './snapshot-bytes';
 import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 
 export class SnapshotCodec {
   public static pack(snapshot: DomainSnapshot): Uint8Array {
@@ -131,6 +132,12 @@ export class SnapshotCodec {
       } else {
         body.writeUint8(0);
       }
+      if (task.completedDay !== null) {
+        body.writeUint8(1);
+        body.writeVarInt(task.completedDay);
+      } else {
+        body.writeUint8(0);
+      }
       body.writeFloat64(task.createdAt);
       body.writeFloat64(task.updatedAt);
     }
@@ -164,7 +171,7 @@ export class SnapshotCodec {
       }
     }
     const version = reader.readUint8();
-    if (version !== 1 && version !== FORMAT_VERSION) {
+    if (version !== 1 && version !== 2 && version !== FORMAT_VERSION) {
       throw new Error(`Unsupported snapshot version: ${version}`);
     }
 
@@ -274,14 +281,30 @@ export class SnapshotCodec {
         }
         deletedAt = hasDeletedAt === 1 ? reader.readFloat64() : null;
       }
+      let hasExplicitCompletedDay = false;
+      let explicitCompletedDay: number | null = null;
+      if (version >= 3) {
+        hasExplicitCompletedDay = true;
+        const hasCompleted = reader.readUint8();
+        if (hasCompleted !== 0 && hasCompleted !== 1) {
+          throw new Error('Invalid task completedDay flag in snapshot');
+        }
+        explicitCompletedDay = hasCompleted === 1 ? reader.readVarInt() : null;
+      }
       const createdAt = reader.readFloat64();
       const updatedAt = reader.readFloat64();
+      const completedDay = hasExplicitCompletedDay
+        ? explicitCompletedDay
+        : doneByte === 1
+          ? CivilCalendar.fromTimestamp(updatedAt)
+          : null;
       tasks.push({
         id,
         title,
         note,
         dueDay,
         done: doneByte === 1,
+        completedDay,
         deletedAt,
         createdAt,
         updatedAt,

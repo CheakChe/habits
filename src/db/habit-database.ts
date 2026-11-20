@@ -5,6 +5,7 @@ import {
   HabitNote,
   Task,
 } from '../types/domain';
+import { CivilCalendar } from '../utils/civil-calendar';
 
 const DB_NAME = 'habits_tracker_db';
 const DB_VERSION = 1;
@@ -34,6 +35,7 @@ export interface UpdateTaskPatch {
   note?: string;
   dueDay?: number | null;
   done?: boolean;
+  completedDay?: number | null;
 }
 
 export class HabitDatabase {
@@ -119,7 +121,16 @@ export class HabitDatabase {
       checkins: checkins.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       notes: notes.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       tasks: tasks
-        .map((t) => ({ ...t, deletedAt: t.deletedAt ?? null }))
+        .map((t) => ({
+          ...t,
+          completedDay:
+            t.completedDay !== undefined
+              ? t.completedDay
+              : t.done
+                ? CivilCalendar.fromTimestamp(t.updatedAt)
+                : null,
+          deletedAt: t.deletedAt ?? null,
+        }))
         .sort((a, b) => a.id - b.id),
     };
   }
@@ -273,6 +284,7 @@ export class HabitDatabase {
       note: input.note.trim(),
       dueDay: input.dueDay,
       done: false,
+      completedDay: null,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -290,12 +302,35 @@ export class HabitDatabase {
     if (!existing) {
       throw new Error(`Task ${id} not found`);
     }
+    const existingCompletedDay =
+      existing.completedDay !== undefined
+        ? existing.completedDay
+        : existing.done
+          ? CivilCalendar.fromTimestamp(existing.updatedAt)
+          : null;
+    const nextDone = patch.done !== undefined ? patch.done : existing.done;
+    let nextCompletedDay: number | null;
+    if (patch.completedDay !== undefined) {
+      nextCompletedDay = nextDone ? patch.completedDay : null;
+    } else if (patch.done !== undefined) {
+      if (patch.done && !existing.done) {
+        nextCompletedDay = CivilCalendar.todayDayIndex();
+      } else if (!patch.done) {
+        nextCompletedDay = null;
+      } else {
+        nextCompletedDay = existingCompletedDay;
+      }
+    } else {
+      nextCompletedDay = existingCompletedDay;
+    }
+
     const updated: Task = {
       ...existing,
       title: patch.title !== undefined ? patch.title.trim() : existing.title,
       note: patch.note !== undefined ? patch.note.trim() : existing.note,
       dueDay: patch.dueDay !== undefined ? patch.dueDay : existing.dueDay,
-      done: patch.done !== undefined ? patch.done : existing.done,
+      done: nextDone,
+      completedDay: nextCompletedDay,
       deletedAt: existing.deletedAt ?? null,
       updatedAt: this.nextTimestamp(existing.updatedAt),
     };
@@ -316,6 +351,12 @@ export class HabitDatabase {
     const now = this.nextTimestamp(existing.updatedAt);
     const deleted: Task = {
       ...existing,
+      completedDay:
+        existing.completedDay !== undefined
+          ? existing.completedDay
+          : existing.done
+            ? CivilCalendar.fromTimestamp(existing.updatedAt)
+            : null,
       deletedAt: now,
       updatedAt: now,
     };
