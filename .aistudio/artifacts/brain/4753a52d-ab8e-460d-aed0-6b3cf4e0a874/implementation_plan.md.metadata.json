@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan for Habits, an offline-first habit and task tracker with Apple-inspired dark minimalism, IndexedDB persistence, binary snapshot codec, analytics/heatmaps, and remembered Guest vs. Google Drive OAuth 2.0 sync.",
-  "updatedAt":  "2026-11-20T18:58:26.114573259Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}
