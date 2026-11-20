@@ -219,6 +219,66 @@ test('StreakCalculator milestone helpers classify 7, 30, and 100 day streaks cle
   assert.equal(StreakCalculator.isExactMilestone(100), true);
 });
 
+test('StreakCalculator.summarizeHabitsForPeriod computes done/missed counts and sorts active habits by completion rate', () => {
+  const today = CivilCalendar.fromLocalDate(2026, 11, 20);
+  const start = today - 3; // 4 days total
+
+  const h1: Habit = {
+    id: 1,
+    name: 'Half done',
+    color: '#3B82F6',
+    weekdays: 127,
+    startDay: start,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 100,
+  };
+  const h2: Habit = {
+    id: 2,
+    name: 'Perfect',
+    color: '#22C55E',
+    weekdays: 127,
+    startDay: start,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 100,
+  };
+  const h3: Habit = {
+    id: 3,
+    name: 'Archived perfect',
+    color: '#A855F7',
+    weekdays: 127,
+    startDay: start,
+    archivedAt: 500,
+    createdAt: 100,
+    updatedAt: 500,
+  };
+
+  const checkins: HabitCheckin[] = [
+    { habitId: 1, dayIndex: start, done: true, updatedAt: 1 },
+    { habitId: 1, dayIndex: start + 1, done: true, updatedAt: 1 },
+    { habitId: 2, dayIndex: start, done: true, updatedAt: 1 },
+    { habitId: 2, dayIndex: start + 1, done: true, updatedAt: 1 },
+    { habitId: 2, dayIndex: start + 2, done: true, updatedAt: 1 },
+    { habitId: 2, dayIndex: start + 3, done: true, updatedAt: 1 },
+    { habitId: 3, dayIndex: start, done: true, updatedAt: 1 },
+    { habitId: 3, dayIndex: start + 1, done: true, updatedAt: 1 },
+    { habitId: 3, dayIndex: start + 2, done: true, updatedAt: 1 },
+    { habitId: 3, dayIndex: start + 3, done: true, updatedAt: 1 },
+  ];
+
+  const rows = StreakCalculator.summarizeHabitsForPeriod([h1, h2, h3], checkins, 30, today);
+  assert.deepEqual(
+    rows.map((r) => r.habit.id),
+    [2, 1, 3]
+  );
+  assert.equal(rows[0].completedDays, 4);
+  assert.equal(rows[0].missedDays, 0);
+  assert.equal(rows[1].completedDays, 2);
+  assert.equal(rows[1].missedDays, 2);
+  assert.equal(rows[2].habit.archivedAt, 500);
+});
+
 test('TaskAnalytics aggregates weekly completed tasks accurately and handles empty/out-of-range inputs', () => {
   const today = CivilCalendar.fromLocalDate(2026, 11, 20); // Friday
   assert.deepEqual(TaskAnalytics.weeklyCompletedCounts([], today, 0), []);
@@ -394,6 +454,24 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
   assert.deepEqual(
     TodayBoard.filterTasks(tasks, today, 'today', 'receipt').map((t) => t.id),
     [1]
+  );
+
+  // TaskSortMode options (due_asc, due_desc, newest, title)
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'all', '', 'due_asc').map((t) => t.id),
+    [2, 6, 1, 3, 5, 4]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'all', '', 'due_desc').map((t) => t.id),
+    [5, 1, 3, 6, 2, 4]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'all', '', 'newest').map((t) => t.id),
+    [6, 5, 4, 3, 2, 1]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'all', '', 'title').map((t) => t.title),
+    ['Future', 'No date', 'Overdue newer', 'Overdue older', 'Today A', 'Today B']
   );
 });
 

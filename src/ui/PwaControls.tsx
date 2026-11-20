@@ -1,4 +1,5 @@
 import { JSX, Show, createSignal, onCleanup, onMount } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { CloseIcon, InstallAppIcon, WifiOffIcon } from './Icons';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -90,48 +91,54 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
             </button>
 
             <Show when={showIOSGuide()}>
-              <div
-                class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="ios-install-title"
-              >
-                <div class="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4">
-                  <div class="flex items-center justify-between">
-                    <h3
-                      id="ios-install-title"
-                      class="font-display text-base font-semibold text-[#F5F7FA]"
-                    >
-                      Install on iPhone / iPad
-                    </h3>
+              <Portal>
+                <div
+                  class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="ios-install-title"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) setShowIOSGuide(false);
+                  }}
+                >
+                  <div class="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-4">
+                    <div class="flex items-center justify-between">
+                      <h3
+                        id="ios-install-title"
+                        class="font-display text-base font-semibold text-[#F5F7FA]"
+                      >
+                        Install on iPhone / iPad
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowIOSGuide(false)}
+                        aria-label="Close instructions"
+                        class="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
+                      >
+                        <CloseIcon class="w-4 h-4" />
+                      </button>
+                    </div>
+                    <ol class="text-xs text-[#C8CDD8] space-y-2.5 leading-relaxed list-decimal list-inside">
+                      <li>
+                        Tap the <strong class="text-[#F5F7FA]">Share</strong> button in
+                        Safari&apos;s toolbar (or inside the{' '}
+                        <strong class="text-[#F5F7FA]">···</strong> menu).
+                      </li>
+                      <li>
+                        Scroll down and tap{' '}
+                        <strong class="text-[#F5F7FA]">Add to Home Screen</strong>.
+                      </li>
+                    </ol>
                     <button
                       type="button"
                       onClick={() => setShowIOSGuide(false)}
-                      aria-label="Close instructions"
-                      class="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
+                      class="w-full h-10 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white transition-colors cursor-pointer"
                     >
-                      <CloseIcon class="w-4 h-4" />
+                      Done
                     </button>
                   </div>
-                  <ol class="text-xs text-[#C8CDD8] space-y-2 leading-relaxed list-decimal list-inside">
-                    <li>
-                      Tap the <strong class="text-[#F5F7FA]">Share</strong> button in
-                      Safari&apos;s toolbar.
-                    </li>
-                    <li>
-                      Scroll down and tap{' '}
-                      <strong class="text-[#F5F7FA]">Add to Home Screen</strong>.
-                    </li>
-                  </ol>
-                  <button
-                    type="button"
-                    onClick={() => setShowIOSGuide(false)}
-                    class="w-full h-10 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white transition-colors cursor-pointer"
-                  >
-                    Done
-                  </button>
                 </div>
-              </div>
+              </Portal>
             </Show>
           </>
         }

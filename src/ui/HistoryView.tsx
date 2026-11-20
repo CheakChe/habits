@@ -91,8 +91,18 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       completionRate: totalScheduled === 0 ? 0 : totalCompleted / totalScheduled,
       scheduledDays: totalScheduled,
       completedScheduledDays: totalCompleted,
+      missedScheduledDays: Math.max(0, totalScheduled - totalCompleted),
     };
   });
+
+  const habitBreakdown = createMemo(() =>
+    StreakCalculator.summarizeHabitsForPeriod(
+      props.snapshot.habits,
+      props.snapshot.checkins,
+      periodDays(),
+      props.todayDay
+    )
+  );
 
   const weeklyTasks = createMemo(() =>
     TaskAnalytics.weeklyCompletedCounts(props.snapshot.tasks, props.todayDay, 8)
@@ -279,8 +289,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {Math.round(analyticsSummary().completionRate * 100)}%
           </p>
-          <span class="text-[11px] font-mono tabular-nums text-[#6B7280] block">
-            {analyticsSummary().completedScheduledDays}/{analyticsSummary().scheduledDays} scheduled
+          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
+            {analyticsSummary().completedScheduledDays} done ·{' '}
+            {analyticsSummary().missedScheduledDays} missed
           </span>
         </div>
 
@@ -738,6 +749,85 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             </Show>
           </section>
         </div>
+
+        <Show when={selectedHabitId() === 'all' && habitBreakdown().length > 0}>
+          <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
+            <div class="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between gap-4">
+              <div>
+                <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
+                  Habit Breakdown
+                </h2>
+                <p class="text-xs text-[#8E95A5]">
+                  {periodDays() === 'all'
+                    ? 'All-time completion and streaks per habit'
+                    : `Last ${periodDays()} days completion and streaks per habit`}
+                </p>
+              </div>
+              <span class="text-xs font-mono tabular-nums text-[#8E95A5]">
+                {habitBreakdown().length} {habitBreakdown().length === 1 ? 'habit' : 'habits'}
+              </span>
+            </div>
+
+            <ul class="divide-y divide-white/[0.06]">
+              <For each={habitBreakdown()}>
+                {(row) => {
+                  const pct = () => Math.round(row.completionRate * 100);
+                  return (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHabitId(row.habit.id)}
+                        class="w-full text-left px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        <div class="min-w-0 space-y-1 flex-1">
+                          <div class="flex items-center gap-2.5">
+                            <span
+                              class="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ 'background-color': row.habit.color }}
+                              aria-hidden="true"
+                            />
+                            <span class="text-sm font-medium text-[#F5F7FA] truncate">
+                              {row.habit.name}
+                            </span>
+                            <Show when={row.habit.archivedAt !== null}>
+                              <span class="text-[11px] text-[#6B7280] shrink-0">
+                                (Archived)
+                              </span>
+                            </Show>
+                          </div>
+                          <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs font-mono tabular-nums text-[#8E95A5]">
+                            <span>
+                              {row.completedDays} done · {row.missedDays} missed
+                            </span>
+                            <span aria-hidden="true">·</span>
+                            <span>{row.currentStreak}d current</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{row.longestStreak}d best</span>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-3 sm:w-52 shrink-0">
+                          <div class="flex-1 h-2 rounded-full bg-[#0A0B0E] border border-white/[0.06] overflow-hidden">
+                            <div
+                              class="h-full rounded-full transition-all"
+                              style={{
+                                width: `${pct()}%`,
+                                'background-color': row.habit.color,
+                              }}
+                            />
+                          </div>
+                          <span class="w-10 text-right text-sm font-mono tabular-nums font-medium text-[#F5F7FA]">
+                            {pct()}%
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                }}
+              </For>
+            </ul>
+          </section>
+        </Show>
       </Show>
     </div>
   );

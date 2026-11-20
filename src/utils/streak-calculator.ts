@@ -20,7 +20,58 @@ export interface WeeklyHabitProgress {
   isComplete: boolean;
 }
 
+export interface HabitPeriodSummary {
+  habit: Habit;
+  currentStreak: number;
+  longestStreak: number;
+  completionRate: number;
+  scheduledDays: number;
+  completedDays: number;
+  missedDays: number;
+}
+
 export class StreakCalculator {
+  public static summarizeHabitsForPeriod(
+    habits: Habit[],
+    checkins: HabitCheckin[],
+    periodDays: number | 'all',
+    todayDay: number
+  ): HabitPeriodSummary[] {
+    const rows: HabitPeriodSummary[] = habits.map((habit) => {
+      const startDay =
+        periodDays === 'all' ? habit.startDay : todayDay - (periodDays - 1);
+      const metrics = StreakCalculator.calculate(
+        habit,
+        checkins,
+        startDay,
+        todayDay,
+        true
+      );
+      return {
+        habit,
+        currentStreak: metrics.currentStreak,
+        longestStreak: metrics.longestStreak,
+        completionRate: metrics.completionRate,
+        scheduledDays: metrics.scheduledDays,
+        completedDays: metrics.completedScheduledDays,
+        missedDays: Math.max(0, metrics.scheduledDays - metrics.completedScheduledDays),
+      };
+    });
+
+    return rows.sort((a, b) => {
+      const aArch = a.habit.archivedAt !== null ? 1 : 0;
+      const bArch = b.habit.archivedAt !== null ? 1 : 0;
+      if (aArch !== bArch) return aArch - bArch;
+      if (b.completionRate !== a.completionRate) {
+        return b.completionRate - a.completionRate;
+      }
+      if (b.completedDays !== a.completedDays) {
+        return b.completedDays - a.completedDays;
+      }
+      return a.habit.id - b.habit.id;
+    });
+  }
+
   public static getMilestone(streak: number): StreakMilestone | null {
     if (streak >= 100) return 100;
     if (streak >= 30) return 30;

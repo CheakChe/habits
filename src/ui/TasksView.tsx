@@ -1,7 +1,8 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
-import { TaskFilterMode, TodayBoard } from '../utils/today-board';
+import { TaskFilterMode, TaskSortMode, TodayBoard } from '../utils/today-board';
+import { CustomSelect } from './CustomControls';
 import {
   AlertIcon,
   CheckIcon,
@@ -32,13 +33,20 @@ const FILTER_TABS: { id: TaskFilterMode; label: string }[] = [
 export function TasksView(props: TasksViewProps): JSX.Element {
   const [filter, setFilter] = createSignal<TaskFilterMode>('all');
   const [searchQuery, setSearchQuery] = createSignal('');
+  const [sortMode, setSortMode] = createSignal<TaskSortMode>('default');
 
   const visibleTasks = createMemo(() =>
     props.snapshot.tasks.filter((task) => task.deletedAt === null)
   );
 
   const filtered = createMemo(() =>
-    TodayBoard.filterTasks(props.snapshot.tasks, props.todayDay, filter(), searchQuery())
+    TodayBoard.filterTasks(
+      props.snapshot.tasks,
+      props.todayDay,
+      filter(),
+      searchQuery(),
+      sortMode()
+    )
   );
 
   const openCount = createMemo(
@@ -86,28 +94,43 @@ export function TasksView(props: TasksViewProps): JSX.Element {
         </button>
       </div>
 
-      {/* Search & Status Filters */}
+      {/* Search, Sort & Status Filters */}
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div class="relative flex-1 max-w-md">
-          <SearchIcon class="w-4 h-4 text-[#6B7280] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="search"
-            value={searchQuery()}
-            onInput={(e) => setSearchQuery(e.currentTarget.value)}
-            placeholder="Search tasks or notes..."
-            aria-label="Search tasks or notes"
-            class="w-full h-10 rounded-xl bg-[#14161B] border border-white/[0.08] pl-10 pr-9 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1">
+          <div class="relative flex-1 max-w-md">
+            <SearchIcon class="w-4 h-4 text-[#6B7280] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="search"
+              value={searchQuery()}
+              onInput={(e) => setSearchQuery(e.currentTarget.value)}
+              placeholder="Search tasks or notes..."
+              aria-label="Search tasks or notes"
+              class="w-full h-10 rounded-xl bg-[#14161B] border border-white/[0.08] pl-10 pr-9 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+            />
+            <Show when={searchQuery().length > 0}>
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
+              >
+                <CloseIcon class="w-3.5 h-3.5" />
+              </button>
+            </Show>
+          </div>
+
+          <CustomSelect
+            ariaLabel="Sort tasks"
+            value={sortMode()}
+            options={[
+              { value: 'default', label: 'Default Order' },
+              { value: 'due_asc', label: 'Due: Earliest' },
+              { value: 'due_desc', label: 'Due: Latest' },
+              { value: 'newest', label: 'Newest First' },
+              { value: 'title', label: 'Title A–Z' },
+            ]}
+            onChange={(val) => setSortMode(val as TaskSortMode)}
           />
-          <Show when={searchQuery().length > 0}>
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              aria-label="Clear search"
-              class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
-            >
-              <CloseIcon class="w-3.5 h-3.5" />
-            </button>
-          </Show>
         </div>
 
         <div class="flex items-center gap-1 p-1 bg-[#14161B] border border-white/[0.08] rounded-xl overflow-x-auto max-w-full">

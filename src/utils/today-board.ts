@@ -2,6 +2,7 @@ import { Habit, Task } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
 
 export type TaskFilterMode = 'all' | 'today' | 'overdue' | 'nodate' | 'completed';
+export type TaskSortMode = 'default' | 'due_asc' | 'due_desc' | 'newest' | 'title';
 
 export interface TodayTasksPartition {
   overdue: Task[];
@@ -43,7 +44,8 @@ export class TodayBoard {
     tasks: Task[],
     todayDay: number,
     filter: TaskFilterMode,
-    searchQuery: string = ''
+    searchQuery: string = '',
+    sort: TaskSortMode = 'default'
   ): Task[] {
     const q = searchQuery.trim().toLowerCase();
 
@@ -72,6 +74,30 @@ export class TodayBoard {
         return true;
       })
       .sort((a, b) => {
+        if (sort === 'title') {
+          const cmp = a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+          return cmp !== 0 ? cmp : a.id - b.id;
+        }
+        if (sort === 'newest') {
+          return b.createdAt - a.createdAt || b.id - a.id;
+        }
+        if (sort === 'due_asc') {
+          if (a.dueDay === null && b.dueDay !== null) return 1;
+          if (a.dueDay !== null && b.dueDay === null) return -1;
+          if (a.dueDay !== null && b.dueDay !== null && a.dueDay !== b.dueDay) {
+            return a.dueDay - b.dueDay;
+          }
+          return a.id - b.id;
+        }
+        if (sort === 'due_desc') {
+          if (a.dueDay === null && b.dueDay !== null) return 1;
+          if (a.dueDay !== null && b.dueDay === null) return -1;
+          if (a.dueDay !== null && b.dueDay !== null && a.dueDay !== b.dueDay) {
+            return b.dueDay - a.dueDay;
+          }
+          return a.id - b.id;
+        }
+
         if (filter === 'completed') {
           const dayDiff = (b.completedDay ?? 0) - (a.completedDay ?? 0);
           if (dayDiff !== 0) return dayDiff;
