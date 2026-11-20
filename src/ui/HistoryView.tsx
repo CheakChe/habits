@@ -364,8 +364,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
 
   return (
     <div class="space-y-8">
-      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/[0.08] pb-6">
-        <div class="space-y-1">
+      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4 border-b border-white/[0.08] pb-6">
+        <div class="space-y-1 min-w-0">
           <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
             History &amp; Analytics
           </h1>
@@ -374,7 +374,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </p>
         </div>
 
-        <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-3 flex-wrap lg:flex-nowrap shrink-0">
           <CustomSelect
             ariaLabel="Filter by habit"
             value={selectedHabitId() === 'all' ? 'all' : String(selectedHabitId())}

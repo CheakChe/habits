@@ -417,6 +417,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
   const [tzExpanded, setTzExpanded] = createSignal(false);
   const [tzQuery, setTzQuery] = createSignal('');
   const [clockNow, setClockNow] = createSignal(new Date());
+  const [popoverAlign, setPopoverAlign] = createSignal<'right' | 'left' | 'fixed'>('right');
   let containerRef: HTMLDivElement | undefined;
 
   const allTimeZones = createMemo(() => CivilCalendar.getAvailableTimeZones());
@@ -438,6 +439,18 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     setDraftStartDay(null);
     setHoverDay(null);
     setClockNow(new Date());
+
+    if (containerRef) {
+      const rect = containerRef.getBoundingClientRect();
+      const vw = window.innerWidth;
+      if (rect.right >= 676) {
+        setPopoverAlign('right');
+      } else if (vw - rect.left >= 676) {
+        setPopoverAlign('left');
+      } else {
+        setPopoverAlign('fixed');
+      }
+    }
 
     const timer = window.setInterval(() => setClockNow(new Date()), 30_000);
 
@@ -588,7 +601,13 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
         <div
           role="dialog"
           aria-label="Choose date range and timezone"
-          class="absolute left-0 sm:left-auto sm:right-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px] rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 overflow-hidden z-50"
+          class={`${
+            popoverAlign() === 'fixed'
+              ? 'fixed left-4 right-4 top-20 sm:top-28 mx-auto max-w-[660px]'
+              : popoverAlign() === 'left'
+                ? 'absolute left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px]'
+                : 'absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px]'
+          } rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 overflow-hidden z-50`}
         >
           <div class="grid grid-cols-1 sm:grid-cols-12">
             {/* Presets list */}
