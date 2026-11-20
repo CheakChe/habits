@@ -1,0 +1,6 @@
+{
+  "name": "Habits",
+  "description": "Offline-first habit and task tracker with local IndexedDB persistence, analytics, and optional Google Drive snapshot sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
