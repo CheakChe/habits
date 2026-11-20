@@ -31,21 +31,24 @@ export interface HabitPeriodSummary {
 }
 
 export class StreakCalculator {
-  public static summarizeHabitsForPeriod(
+  public static summarizeHabitsForRange(
     habits: Habit[],
     checkins: HabitCheckin[],
-    periodDays: number | 'all',
+    startDay: number,
+    endDay: number,
     todayDay: number
   ): HabitPeriodSummary[] {
+    const effectiveEnd = Math.min(endDay, todayDay);
+    const allowPending = effectiveEnd >= todayDay;
+
     const rows: HabitPeriodSummary[] = habits.map((habit) => {
-      const startDay =
-        periodDays === 'all' ? habit.startDay : todayDay - (periodDays - 1);
+      const effectiveStart = Math.max(habit.startDay, startDay);
       const metrics = StreakCalculator.calculate(
         habit,
         checkins,
-        startDay,
-        todayDay,
-        true
+        effectiveStart,
+        effectiveEnd,
+        allowPending
       );
       return {
         habit,
@@ -70,6 +73,27 @@ export class StreakCalculator {
       }
       return a.habit.id - b.habit.id;
     });
+  }
+
+  public static summarizeHabitsForPeriod(
+    habits: Habit[],
+    checkins: HabitCheckin[],
+    periodDays: number | 'all',
+    todayDay: number
+  ): HabitPeriodSummary[] {
+    const minHabitStart = habits.reduce(
+      (min, h) => (h.startDay < min ? h.startDay : min),
+      todayDay
+    );
+    const startDay =
+      periodDays === 'all' ? minHabitStart : todayDay - (periodDays - 1);
+    return StreakCalculator.summarizeHabitsForRange(
+      habits,
+      checkins,
+      startDay,
+      todayDay,
+      todayDay
+    );
   }
 
   public static getMilestone(streak: number): StreakMilestone | null {

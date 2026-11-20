@@ -211,6 +211,15 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
   await new Promise((r) => setTimeout(r, 15));
   assert.equal(store.dbReady(), true);
 
+  // Default timezone is UTC and setTimeZone persists to localStorage
+  assert.equal(store.timeZone(), 'UTC');
+  store.setTimeZone('America/New_York');
+  assert.equal(store.timeZone(), 'America/New_York');
+  assert.equal(env.storageMap.get('habits.timezone'), 'America/New_York');
+  store.setTimeZone('Invalid/Zone');
+  assert.equal(store.timeZone(), 'UTC');
+  assert.equal(env.storageMap.get('habits.timezone'), 'UTC');
+
   // Create habit & toggle check-in & note
   store.openCreateHabit();
   assert.equal(store.habitModalOpen(), true);

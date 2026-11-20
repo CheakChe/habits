@@ -1,16 +1,69 @@
-import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
+import { For, JSX, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import {
+  DateRangePresetId,
+  DateRangeResolver,
+  DayCellClassifier,
+  DayCellTone,
+} from '../utils/date-range';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { TaskAnalytics } from '../utils/task-analytics';
-import { CustomSelect, SelectOption } from './CustomControls';
+import { CustomSelect, HistoryRangePicker, SelectOption } from './CustomControls';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, NoteIcon } from './Icons';
 
 interface HistoryViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
+  timeZone: string;
+  onChangeTimeZone: (timeZone: string) => void;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
   onSaveNote: (habitId: number, dayIndex: number, text: string) => Promise<void>;
+}
+
+function heatmapSquareClass(tone: DayCellTone): string {
+  switch (tone) {
+    case 'complete':
+      return 'bg-[#39D353]';
+    case 'missed-slight':
+      return 'bg-[#581C24]';
+    case 'missed-moderate':
+      return 'bg-[#881B22]';
+    case 'missed-heavy':
+      return 'bg-[#B91C1C]';
+    case 'missed-all':
+      return 'bg-[#EF4444]';
+    case 'today-open':
+      return 'bg-[#3B181E] border border-[#EF4444]/40';
+    case 'unscheduled':
+    case 'future':
+    default:
+      return 'bg-[#0D1016] border border-white/[0.06]';
+  }
+}
+
+function calendarTileClass(tone: DayCellTone, isSelected: boolean): string {
+  if (isSelected) {
+    return 'bg-[#3B82F6]/25 border-[#3B82F6] text-white';
+  }
+  switch (tone) {
+    case 'complete':
+      return 'bg-[#22C55E]/15 border-[#22C55E]/35 text-[#F5F7FA] hover:bg-[#22C55E]/25';
+    case 'missed-slight':
+      return 'bg-[#7F1D1D]/20 border-[#EF4444]/25 text-[#FECACA] hover:bg-[#7F1D1D]/30';
+    case 'missed-moderate':
+      return 'bg-[#991B1B]/30 border-[#EF4444]/40 text-[#FECACA] hover:bg-[#991B1B]/40';
+    case 'missed-heavy':
+      return 'bg-[#B91C1C]/40 border-[#EF4444]/55 text-[#FEE2E2] hover:bg-[#B91C1C]/50';
+    case 'missed-all':
+      return 'bg-[#DC2626]/35 border-[#EF4444]/75 text-[#FEE2E2] hover:bg-[#DC2626]/45';
+    case 'today-open':
+      return 'bg-[#451A1D]/55 border-[#EF4444]/40 text-[#F5F7FA] hover:bg-[#451A1D]/75';
+    case 'unscheduled':
+    case 'future':
+    default:
+      return 'bg-[#0A0B0E] border-white/[0.06] text-[#9AA1B1] hover:border-white/20';
+  }
 }
 
 export function HistoryView(props: HistoryViewProps): JSX.Element {
@@ -19,15 +72,67 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   const [viewMonth, setViewMonth] = createSignal(initialLocal.month);
   const [selectedDay, setSelectedDay] = createSignal(props.todayDay);
   const [selectedHabitId, setSelectedHabitId] = createSignal<number | 'all'>('all');
-  const [periodDays, setPeriodDays] = createSignal<30 | 90 | 'all'>(30);
+  const [rangePreset, setRangePreset] = createSignal<DateRangePresetId>('last_30');
+  const [customStartDay, setCustomStartDay] = createSignal(props.todayDay - 29);
+  const [customEndDay, setCustomEndDay] = createSignal(props.todayDay);
   const [editingNoteHabitId, setEditingNoteHabitId] = createSignal<number | null>(null);
   const [noteDraft, setNoteDraft] = createSignal('');
-  const [heatmapWeeksCount, setHeatmapWeeksCount] = createSignal<number>(26);
   const [hoveredCell, setHoveredCell] = createSignal<{
     dayIndex: number;
     done: number;
     scheduled: number;
   } | null>(null);
+
+  createEffect(() => {
+    if (selectedDay() > props.todayDay) {
+      setSelectedDay(props.todayDay);
+    }
+  });
+
+  const resolvedRange = createMemo(() =>
+    DateRangeResolver.resolve(rangePreset(), props.todayDay, {
+      customStartDay: customStartDay(),
+      customEndDay: customEndDay(),
+      snapshot: props.snapshot,
+      timeZone: props.timeZone,
+    })
+  );
+
+  const effectiveRangeEnd = createMemo(() =>
+    Math.min(resolvedRange().endDay, props.todayDay)
+  );
+  const effectiveRangeStart = createMemo(() =>
+    Math.min(resolvedRange().startDay, effectiveRangeEnd())
+  );
+
+  const syncCalendarToRangeEnd = (endDay: number) => {
+    const target = Math.min(endDay, props.todayDay);
+    const local = CivilCalendar.toLocalDate(target);
+    setViewYear(local.year);
+    setViewMonth(local.month);
+    setSelectedDay(target);
+    setEditingNoteHabitId(null);
+  };
+
+  const handleSelectPreset = (nextPreset: DateRangePresetId) => {
+    setRangePreset(nextPreset);
+    if (nextPreset !== 'custom') {
+      const next = DateRangeResolver.resolve(nextPreset, props.todayDay, {
+        snapshot: props.snapshot,
+        timeZone: props.timeZone,
+      });
+      syncCalendarToRangeEnd(next.endDay);
+    }
+  };
+
+  const handleSelectCustomRange = (startDay: number, endDay: number) => {
+    const s = Math.min(startDay, endDay);
+    const e = Math.min(Math.max(startDay, endDay), props.todayDay);
+    setCustomStartDay(s);
+    setCustomEndDay(e);
+    setRangePreset('custom');
+    syncCalendarToRangeEnd(e);
+  };
 
   const checkinIndex = createMemo(() => {
     const map = new Map<string, boolean>();
@@ -60,6 +165,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         completionRate: 0,
         scheduledDays: 0,
         completedScheduledDays: 0,
+        missedScheduledDays: 0,
       };
     }
 
@@ -67,17 +173,17 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     let bestLongest = 0;
     let totalScheduled = 0;
     let totalCompleted = 0;
-    const pDays = periodDays();
+    const startDay = effectiveRangeStart();
+    const endDay = effectiveRangeEnd();
+    const allowPending = endDay >= props.todayDay;
 
     for (const habit of habits) {
-      const startDay =
-        pDays === 'all' ? habit.startDay : props.todayDay - (pDays - 1);
       const m = StreakCalculator.calculate(
         habit,
         props.snapshot.checkins,
         startDay,
-        props.todayDay,
-        true
+        endDay,
+        allowPending
       );
       if (m.currentStreak > bestCurrent) bestCurrent = m.currentStreak;
       if (m.longestStreak > bestLongest) bestLongest = m.longestStreak;
@@ -96,37 +202,65 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   });
 
   const habitBreakdown = createMemo(() =>
-    StreakCalculator.summarizeHabitsForPeriod(
+    StreakCalculator.summarizeHabitsForRange(
       props.snapshot.habits,
       props.snapshot.checkins,
-      periodDays(),
+      effectiveRangeStart(),
+      effectiveRangeEnd(),
       props.todayDay
     )
   );
 
-  const weeklyTasks = createMemo(() =>
-    TaskAnalytics.weeklyCompletedCounts(props.snapshot.tasks, props.todayDay, 8)
+  const totalTasksInRange = createMemo(() =>
+    TaskAnalytics.countCompletedInRange(
+      props.snapshot.tasks,
+      effectiveRangeStart(),
+      effectiveRangeEnd(),
+      props.timeZone
+    )
   );
 
-  const totalWeeklyCompleted = createMemo(() =>
-    weeklyTasks().reduce((acc, b) => acc + b.count, 0)
+  const taskBuckets = createMemo(() =>
+    TaskAnalytics.rangeCompletedBuckets(
+      props.snapshot.tasks,
+      effectiveRangeStart(),
+      effectiveRangeEnd(),
+      12,
+      props.timeZone
+    )
   );
 
-  const maxWeeklyCount = createMemo(() =>
-    Math.max(1, ...weeklyTasks().map((b) => b.count))
+  const maxBucketCount = createMemo(() =>
+    Math.max(1, ...taskBuckets().map((b) => b.count))
   );
 
   const heatmapData = createMemo(() => {
-    const weeksCount = heatmapWeeksCount();
-    const endWeekStart = CivilCalendar.startOfWeek(props.todayDay);
-    const firstWeekStart = endWeekStart - (weeksCount - 1) * 7;
+    const effectiveEnd = effectiveRangeEnd();
+    const effectiveStart = effectiveRangeStart();
+    const maxWeeks = 104;
+    const minAllowedStart = effectiveEnd - (maxWeeks * 7 - 1);
+    const clampedStart = Math.max(effectiveStart, minAllowedStart);
+    const isCapped = clampedStart > effectiveStart;
+
+    const firstWeekStart = CivilCalendar.startOfWeek(clampedStart);
+    const endWeekStart = CivilCalendar.startOfWeek(effectiveEnd);
+    const weeksCount = Math.max(
+      1,
+      Math.floor((endWeekStart - firstWeekStart) / 7) + 1
+    );
     const habits = targetHabits();
     const cIndex = checkinIndex();
 
     const weeks: {
       weekStart: number;
       monthLabel: string;
-      days: { dayIndex: number; ratio: number; done: number; scheduled: number }[];
+      days: {
+        dayIndex: number;
+        inRange: boolean;
+        done: number;
+        scheduled: number;
+        tone: DayCellTone;
+      }[];
     }[] = [];
 
     let lastMonth = -1;
@@ -138,7 +272,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       let monthLabel = '';
       if (startLocal.month !== lastMonth) {
         const shortMonth = CivilCalendar.formatShortDate(weekStart).split(' ')[0];
-        // Avoid crowded overlapping labels on the first column if the next week starts a new month
         if (w === 0 && weeksCount > 4) {
           const nextLocal = CivilCalendar.toLocalDate(weekStart + 7);
           if (nextLocal.month === startLocal.month) {
@@ -150,11 +283,24 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         lastMonth = startLocal.month;
       }
 
-      const days: { dayIndex: number; ratio: number; done: number; scheduled: number }[] = [];
+      const days: {
+        dayIndex: number;
+        inRange: boolean;
+        done: number;
+        scheduled: number;
+        tone: DayCellTone;
+      }[] = [];
+
       for (let d = 0; d < 7; d++) {
         const dayIndex = weekStart + d;
-        if (dayIndex > props.todayDay) {
-          days.push({ dayIndex, ratio: -1, done: 0, scheduled: 0 });
+        if (dayIndex < clampedStart || dayIndex > effectiveEnd) {
+          days.push({
+            dayIndex,
+            inRange: false,
+            done: 0,
+            scheduled: 0,
+            tone: 'future',
+          });
           continue;
         }
         let scheduled = 0;
@@ -168,13 +314,18 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           }
         }
         totalDone += done;
-        const ratio = scheduled === 0 ? 0 : done / scheduled;
-        days.push({ dayIndex, ratio, done, scheduled });
+        const tone = DayCellClassifier.classify(
+          dayIndex,
+          props.todayDay,
+          scheduled,
+          done
+        );
+        days.push({ dayIndex, inRange: true, done, scheduled, tone });
       }
       weeks.push({ weekStart, monthLabel, days });
     }
 
-    return { weeks, totalDone };
+    return { weeks, totalDone, clampedStart, effectiveEnd, isCapped };
   });
 
   const monthGrid = createMemo(() =>
@@ -246,23 +397,17 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             }
           />
 
-          <div class="flex items-center gap-1 p-1 bg-[#14161B] border border-white/[0.08] rounded-xl">
-            <For each={[30, 90, 'all'] as const}>
-              {(p) => (
-                <button
-                  type="button"
-                  onClick={() => setPeriodDays(p)}
-                  class={`h-8 px-3 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    periodDays() === p
-                      ? 'bg-[#1C1F26] text-[#F5F7FA]'
-                      : 'text-[#8E95A5] hover:text-[#F5F7FA]'
-                  }`}
-                >
-                  {p === 'all' ? 'All Time' : `${p} Days`}
-                </button>
-              )}
-            </For>
-          </div>
+          <HistoryRangePicker
+            preset={rangePreset()}
+            customStartDay={customStartDay()}
+            customEndDay={customEndDay()}
+            resolvedRange={resolvedRange()}
+            todayDay={props.todayDay}
+            timeZone={props.timeZone}
+            onSelectPreset={handleSelectPreset}
+            onSelectCustomRange={handleSelectCustomRange}
+            onChangeTimeZone={props.onChangeTimeZone}
+          />
         </div>
       </div>
 
@@ -296,10 +441,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         </div>
 
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">Tasks Done (8 Weeks)</span>
+          <span class="text-xs text-[#8E95A5]">Tasks Done</span>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {totalWeeklyCompleted()}
+            {totalTasksInRange()}
           </p>
+          <span class="text-[11px] text-[#8E95A5] block truncate">
+            {resolvedRange().label}
+          </span>
         </div>
       </div>
 
@@ -378,10 +526,14 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                     return { scheduled, done };
                   });
 
-                  const allDone = () =>
-                    stats().scheduled > 0 && stats().done === stats().scheduled;
-                  const partialDone = () =>
-                    stats().done > 0 && stats().done < stats().scheduled;
+                  const tone = createMemo(() =>
+                    DayCellClassifier.classify(
+                      dayIndex,
+                      props.todayDay,
+                      stats().scheduled,
+                      stats().done
+                    )
+                  );
 
                   return (
                     <button
@@ -391,19 +543,22 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                         setSelectedDay(dayIndex);
                         setEditingNoteHabitId(null);
                       }}
-                      class={`h-11 rounded-xl flex flex-col items-center justify-center gap-0.5 text-xs font-mono tabular-nums transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default border ${
+                      class={`h-11 rounded-xl flex flex-col items-center justify-center gap-0.5 text-xs font-mono tabular-nums transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default border ${calendarTileClass(
+                        tone(),
                         isSelected()
-                          ? 'bg-[#3B82F6]/20 border-[#3B82F6] text-white'
-                          : allDone()
-                            ? 'bg-[#22C55E]/15 border-[#22C55E]/30 text-[#F5F7FA] hover:bg-[#22C55E]/25'
-                            : partialDone()
-                              ? 'bg-[#3B82F6]/10 border-white/[0.08] text-[#F5F7FA] hover:bg-white/[0.06]'
-                              : 'bg-[#0A0B0E] border-white/[0.06] text-[#9AA1B1] hover:border-white/20'
-                      }`}
+                      )}`}
                     >
                       <span>{local.day}</span>
                       <Show when={stats().scheduled > 0 && !isFuture()}>
-                        <span class="text-[9px] text-[#8E95A5]">
+                        <span
+                          class={`text-[9px] ${
+                            tone() === 'complete'
+                              ? 'text-[#86EFAC]'
+                              : tone().startsWith('missed')
+                                ? 'text-[#FCA5A5]'
+                                : 'text-[#8E95A5]'
+                          }`}
+                        >
                           {stats().done}/{stats().scheduled}
                         </span>
                       </Show>
@@ -556,26 +711,19 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                   <span class="font-mono tabular-nums text-[#C8CDD8]">
                     {heatmapData().totalDone}
                   </span>{' '}
-                  check-ins in the selected range
+                  check-ins ·{' '}
+                  <span class="font-mono tabular-nums">
+                    {DateRangeResolver.formatRangeLabel(
+                      heatmapData().clampedStart,
+                      heatmapData().effectiveEnd
+                    )}
+                  </span>
+                  {heatmapData().isCapped ? ' (last 2 years shown)' : ''}
                 </p>
               </div>
-
-              <CustomSelect
-                ariaLabel="Heatmap time range"
-                value={String(heatmapWeeksCount())}
-                options={[
-                  { value: '1', label: '1 Week' },
-                  { value: '2', label: '2 Weeks' },
-                  { value: '4', label: '1 Month' },
-                  { value: '13', label: '3 Months' },
-                  { value: '26', label: '6 Months' },
-                  { value: '53', label: '1 Year' },
-                ]}
-                onChange={(val) => setHeatmapWeeksCount(Number(val))}
-              />
             </div>
 
-            {/* GitHub-style square contribution grid */}
+            {/* Square contribution grid */}
             <div class="overflow-x-auto pb-1">
               <div class="inline-flex gap-2 items-start py-1 pl-0.5 pr-2">
                 {/* Weekday axis labels */}
@@ -606,54 +754,44 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                       {(week) => (
                         <div class="flex flex-col gap-[3px] shrink-0">
                           <For each={week.days}>
-                            {(cell) => {
-                              const squareClass = () => {
-                                if (cell.scheduled === 0 || cell.done === 0) {
-                                  return 'bg-[#0D1016] border border-white/[0.06]';
+                            {(cell) => (
+                              <Show
+                                when={cell.inRange}
+                                fallback={
+                                  <div class="w-[12px] h-[12px] rounded-[2px] bg-transparent" />
                                 }
-                                if (cell.ratio >= 1) return 'bg-[#39D353]';
-                                if (cell.ratio >= 0.6) return 'bg-[#26A641]';
-                                if (cell.ratio >= 0.3) return 'bg-[#006D32]';
-                                return 'bg-[#0E4429]';
-                              };
-
-                              return (
-                                <Show
-                                  when={cell.ratio >= 0}
-                                  fallback={
-                                    <div class="w-[12px] h-[12px] rounded-[2px] bg-transparent" />
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedDay(cell.dayIndex)}
+                                  onMouseEnter={() =>
+                                    setHoveredCell({
+                                      dayIndex: cell.dayIndex,
+                                      done: cell.done,
+                                      scheduled: cell.scheduled,
+                                    })
                                   }
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => setSelectedDay(cell.dayIndex)}
-                                    onMouseEnter={() =>
-                                      setHoveredCell({
-                                        dayIndex: cell.dayIndex,
-                                        done: cell.done,
-                                        scheduled: cell.scheduled,
-                                      })
-                                    }
-                                    onMouseLeave={() => setHoveredCell(null)}
-                                    onFocus={() =>
-                                      setHoveredCell({
-                                        dayIndex: cell.dayIndex,
-                                        done: cell.done,
-                                        scheduled: cell.scheduled,
-                                      })
-                                    }
-                                    onBlur={() => setHoveredCell(null)}
-                                    title={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done}/${cell.scheduled} scheduled`}
-                                    aria-label={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done} of ${cell.scheduled} completed`}
-                                    class={`w-[12px] h-[12px] rounded-[2px] transition-transform duration-100 hover:scale-125 cursor-pointer ${squareClass()} ${
-                                      cell.dayIndex === selectedDay()
-                                        ? 'ring-1 ring-white ring-offset-1 ring-offset-[#14161B]'
-                                        : ''
-                                    }`}
-                                  />
-                                </Show>
-                              );
-                            }}
+                                  onMouseLeave={() => setHoveredCell(null)}
+                                  onFocus={() =>
+                                    setHoveredCell({
+                                      dayIndex: cell.dayIndex,
+                                      done: cell.done,
+                                      scheduled: cell.scheduled,
+                                    })
+                                  }
+                                  onBlur={() => setHoveredCell(null)}
+                                  title={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done}/${cell.scheduled} scheduled`}
+                                  aria-label={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done} of ${cell.scheduled} completed`}
+                                  class={`w-[12px] h-[12px] rounded-[2px] transition-transform duration-100 hover:scale-125 cursor-pointer ${heatmapSquareClass(
+                                    cell.tone
+                                  )} ${
+                                    cell.dayIndex === selectedDay()
+                                      ? 'ring-1 ring-white ring-offset-1 ring-offset-[#14161B]'
+                                      : ''
+                                  }`}
+                                />
+                              </Show>
+                            )}
                           </For>
                         </div>
                       )}
@@ -663,7 +801,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               </div>
             </div>
 
-            {/* Footer: hovered day readout + GitHub Less/More legend */}
+            {/* Footer: hovered day readout + Red-to-Green severity legend */}
             <div class="flex items-center justify-between flex-wrap gap-2 text-[11px] text-[#8E95A5] pt-1 border-t border-white/[0.06]">
               <Show
                 when={hoveredCell()}
@@ -681,14 +819,16 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                 )}
               </Show>
 
-              <div class="flex items-center gap-1.5">
-                <span>Less</span>
+              <div class="flex items-center gap-1.5" title="Rest = unscheduled · Red = unclosed severity · Green = 100% done">
+                <span>Rest</span>
                 <span class="w-[11px] h-[11px] rounded-[2px] bg-[#0D1016] border border-white/[0.06]" />
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#0E4429]" />
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#006D32]" />
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#26A641]" />
+                <span class="ml-1">0%</span>
+                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#EF4444]" />
+                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#B91C1C]" />
+                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#881B22]" />
+                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#581C24]" />
+                <span>Done</span>
                 <span class="w-[11px] h-[11px] rounded-[2px] bg-[#39D353]" />
-                <span>More</span>
               </div>
             </div>
           </section>
@@ -696,30 +836,33 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-5">
             <div>
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Completed Tasks by Week
+                Completed Tasks
               </h2>
-              <p class="text-xs text-[#8E95A5]">
-                Last 8 weeks derived from task completion records
+              <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
+                {DateRangeResolver.formatRangeLabel(
+                  effectiveRangeStart(),
+                  effectiveRangeEnd()
+                )}
               </p>
             </div>
 
             <Show
-              when={totalWeeklyCompleted() > 0}
+              when={totalTasksInRange() > 0}
               fallback={
                 <div class="py-10 text-center">
                   <p class="text-sm text-[#8E95A5]">
-                    No completed tasks in the last 8 weeks.
+                    No completed tasks in the selected date range.
                   </p>
                 </div>
               }
             >
-              <div class="grid grid-cols-8 gap-2 items-end h-40 pt-4">
-                <For each={weeklyTasks()}>
+              <div class="flex items-end gap-2 h-40 pt-4">
+                <For each={taskBuckets()}>
                   {(bucket) => {
                     const heightPct = () =>
-                      Math.round((bucket.count / maxWeeklyCount()) * 100);
+                      Math.round((bucket.count / maxBucketCount()) * 100);
                     return (
-                      <div class="h-full flex flex-col items-center justify-end gap-1.5">
+                      <div class="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5">
                         <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
                           {bucket.count > 0 ? bucket.count : ''}
                         </span>
@@ -735,11 +878,11 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                                 ? { height: `${Math.max(12, heightPct())}%` }
                                 : undefined
                             }
-                            title={`Week of ${bucket.label}: ${bucket.count} tasks`}
+                            title={`${bucket.label}: ${bucket.count} tasks`}
                           />
                         </div>
                         <span class="text-[10px] font-mono tabular-nums text-[#6B7280] truncate max-w-full">
-                          {bucket.label.split(' ')[1]}
+                          {bucket.shortLabel}
                         </span>
                       </div>
                     );
@@ -758,9 +901,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                   Habit Breakdown
                 </h2>
                 <p class="text-xs text-[#8E95A5]">
-                  {periodDays() === 'all'
-                    ? 'All-time completion and streaks per habit'
-                    : `Last ${periodDays()} days completion and streaks per habit`}
+                  {resolvedRange().label} ·{' '}
+                  <span class="font-mono tabular-nums">
+                    {DateRangeResolver.formatRangeLabel(
+                      effectiveRangeStart(),
+                      effectiveRangeEnd()
+                    )}
+                  </span>
                 </p>
               </div>
               <span class="text-xs font-mono tabular-nums text-[#8E95A5]">

@@ -18,14 +18,11 @@ const WEEKDAY_NAMES_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export class CivilCalendar {
   /**
-   * Returns local civil dayIndex (days since 1970-01-01) using device local year, month, day.
+   * Returns civil dayIndex (days since 1970-01-01) for `now` in the given IANA timezone
+   * (e.g. 'UTC', 'Europe/Kyiv', or 'local'/undefined for device local timezone).
    */
-  public static todayDayIndex(now: Date = new Date()): number {
-    return CivilCalendar.fromLocalDate(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      now.getDate()
-    );
+  public static todayDayIndex(now: Date = new Date(), timeZone?: string): number {
+    return CivilCalendar.fromTimestamp(now.getTime(), timeZone);
   }
 
   /**
@@ -37,11 +34,42 @@ export class CivilCalendar {
   }
 
   /**
-   * Converts a Unix ms timestamp into a local civil dayIndex using device timezone.
+   * Converts a Unix ms timestamp into a civil dayIndex using device local timezone
+   * (when timeZone is omitted or 'local') or an explicit IANA timezone such as 'UTC'.
    */
-  public static fromTimestamp(timestampMs: number): number {
+  public static fromTimestamp(timestampMs: number, timeZone?: string): number {
     const d = new Date(timestampMs);
-    return CivilCalendar.fromLocalDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    if (!timeZone || timeZone === 'local') {
+      return CivilCalendar.fromLocalDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
+    if (timeZone.toUpperCase() === 'UTC') {
+      return CivilCalendar.fromLocalDate(
+        d.getUTCFullYear(),
+        d.getUTCMonth() + 1,
+        d.getUTCDate()
+      );
+    }
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(d);
+      const year = Number(parts.find((p) => p.type === 'year')?.value);
+      const month = Number(parts.find((p) => p.type === 'month')?.value);
+      const day = Number(parts.find((p) => p.type === 'day')?.value);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+        return CivilCalendar.fromLocalDate(year, month, day);
+      }
+    } catch {
+      // Fallback to UTC if an unsupported timezone string is provided.
+    }
+    return CivilCalendar.fromLocalDate(
+      d.getUTCFullYear(),
+      d.getUTCMonth() + 1,
+      d.getUTCDate()
+    );
   }
 
   /**
@@ -58,6 +86,20 @@ export class CivilCalendar {
 
   public static shiftDays(dayIndex: number, deltaDays: number): number {
     return dayIndex + deltaDays;
+  }
+
+  public static addMonths(dayIndex: number, deltaMonths: number): number {
+    const { year, month, day } = CivilCalendar.toLocalDate(dayIndex);
+    const totalMonths = year * 12 + (month - 1) + deltaMonths;
+    const targetYear = Math.floor(totalMonths / 12);
+    const targetMonth = ((totalMonths % 12) + 12) % 12 + 1;
+    const nextMonthYear = targetMonth === 12 ? targetYear + 1 : targetYear;
+    const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1;
+    const daysInTargetMonth =
+      CivilCalendar.fromLocalDate(nextMonthYear, nextMonth, 1) -
+      CivilCalendar.fromLocalDate(targetYear, targetMonth, 1);
+    const clampedDay = Math.min(day, daysInTargetMonth);
+    return CivilCalendar.fromLocalDate(targetYear, targetMonth, clampedDay);
   }
 
   /**
@@ -84,6 +126,11 @@ export class CivilCalendar {
   public static formatShortDate(dayIndex: number): string {
     const { month, day } = CivilCalendar.toLocalDate(dayIndex);
     return `${MONTH_NAMES_SHORT[month - 1]} ${day}`;
+  }
+
+  public static formatShortDateWithYear(dayIndex: number): string {
+    const { year, month, day } = CivilCalendar.toLocalDate(dayIndex);
+    return `${MONTH_NAMES_SHORT[month - 1]} ${day}, ${year}`;
   }
 
   public static formatFullDate(dayIndex: number): string {
@@ -129,5 +176,72 @@ export class CivilCalendar {
 
   public static startOfWeek(dayIndex: number): number {
     return dayIndex - CivilCalendar.weekdayBit(dayIndex);
+  }
+
+  public static isValidTimeZone(timeZone: string): boolean {
+    if (timeZone === 'UTC' || timeZone === 'local') return true;
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public static getDeviceTimeZone(): string {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
+  }
+
+  public static getAvailableTimeZones(): string[] {
+    const fallback = [
+      'UTC',
+      'Europe/London',
+      'Europe/Berlin',
+      'Europe/Kyiv',
+      'Europe/Warsaw',
+      'America/New_York',
+      'America/Chicago',
+      'America/Denver',
+      'America/Los_Angeles',
+      'Asia/Dubai',
+      'Asia/Almaty',
+      'Asia/Singapore',
+      'Asia/Tokyo',
+      'Australia/Sydney',
+    ];
+    try {
+      const intlAny = Intl as unknown as {
+        supportedValuesOf?: (key: string) => string[];
+      };
+      if (typeof intlAny.supportedValuesOf === 'function') {
+        const zones = intlAny.supportedValuesOf('timeZone');
+        const withoutUtc = zones.filter((z) => z !== 'UTC');
+        return ['UTC', ...withoutUtc];
+      }
+    } catch {
+      // ignore and return fallback list
+    }
+    return fallback;
+  }
+
+  public static formatClockInTimeZone(now: Date, timeZone: string): string {
+    const effectiveZone =
+      !timeZone || timeZone === 'local' ? CivilCalendar.getDeviceTimeZone() : timeZone;
+    try {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: effectiveZone,
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(now);
+    } catch {
+      return now.toISOString().slice(0, 16).replace('T', ' ');
+    }
   }
 }

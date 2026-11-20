@@ -102,8 +102,27 @@ export class TrackerStore {
   public readonly todayDay: Accessor<number>;
   private readonly setTodayDay: Setter<number>;
 
+  public readonly timeZone: Accessor<string>;
+  private readonly setTimeZoneSignal: Setter<string>;
+
   private unsubscribeAuth: (() => void) | null = null;
   private midnightTimer: number | null = null;
+  private static readonly TIMEZONE_STORAGE_KEY = 'habits.timezone';
+
+  private static readStoredTimeZone(): string {
+    try {
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.TIMEZONE_STORAGE_KEY)
+          : null;
+      if (saved && CivilCalendar.isValidTimeZone(saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'UTC';
+  }
 
   constructor() {
     [this.mode, this.setMode] = createSignal<SessionMode | null>(
@@ -139,7 +158,24 @@ export class TrackerStore {
     [this.inspectedRevision, this.setInspectedRevision] =
       createSignal<DriveRevisionInspectResult | null>(null);
     [this.restoringRevision, this.setRestoringRevision] = createSignal(false);
-    [this.todayDay, this.setTodayDay] = createSignal(CivilCalendar.todayDayIndex());
+    const initialTz = TrackerStore.readStoredTimeZone();
+    [this.timeZone, this.setTimeZoneSignal] = createSignal(initialTz);
+    [this.todayDay, this.setTodayDay] = createSignal(
+      CivilCalendar.todayDayIndex(new Date(), initialTz)
+    );
+  }
+
+  public setTimeZone(nextTz: string): void {
+    const normalized = CivilCalendar.isValidTimeZone(nextTz) ? nextTz : 'UTC';
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(TrackerStore.TIMEZONE_STORAGE_KEY, normalized);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setTimeZoneSignal(normalized);
+    this.setTodayDay(CivilCalendar.todayDayIndex(new Date(), normalized));
   }
 
   public init(): void {
@@ -156,7 +192,7 @@ export class TrackerStore {
     });
 
     this.midnightTimer = window.setInterval(() => {
-      const current = CivilCalendar.todayDayIndex();
+      const current = CivilCalendar.todayDayIndex(new Date(), this.timeZone());
       if (current !== this.todayDay()) {
         this.setTodayDay(current);
       }
@@ -310,7 +346,11 @@ export class TrackerStore {
   }
 
   public async toggleTaskDone(task: Task): Promise<void> {
-    await this.db.updateTask(task.id, { done: !task.done });
+    const nextDone = !task.done;
+    await this.db.updateTask(task.id, {
+      done: nextDone,
+      completedDay: nextDone ? this.todayDay() : null,
+    });
     await this.reloadFromDb();
   }
 

@@ -243,6 +243,8 @@ export default function App(): JSX.Element {
                 <HistoryView
                   snapshot={store.snapshot()}
                   todayDay={store.todayDay()}
+                  timeZone={store.timeZone()}
+                  onChangeTimeZone={(tz) => store.setTimeZone(tz)}
                   onToggleCheckin={(hId, d, next) => store.toggleCheckin(hId, d, next)}
                   onSaveNote={(hId, d, txt) => store.saveNote(hId, d, txt)}
                 />

@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Habit, HabitCheckin, Task } from '../src/types/domain';
 import { CivilCalendar } from '../src/utils/civil-calendar';
+import {
+  DATE_RANGE_PRESETS,
+  DateRangeResolver,
+  DayCellClassifier,
+} from '../src/utils/date-range';
 import { Helpers, NonRetryableError } from '../src/utils/helpers';
 import { StreakCalculator } from '../src/utils/streak-calculator';
 import { TaskAnalytics } from '../src/utils/task-analytics';
@@ -523,4 +528,202 @@ test('Helpers bytesEqual and withRetry handle retries, NonRetryableError, and by
     /still failing/
   );
   assert.equal(exhaustedAttempts, 2);
+});
+
+test('CivilCalendar supports IANA timezones, addMonths clamping, and validation', () => {
+  // 2026-11-20T02:30:00Z -> Nov 20 in UTC, Nov 19 in America/New_York (UTC-5), Nov 20 in Asia/Tokyo (UTC+9)
+  const utcInstant = Date.UTC(2026, 10, 20, 2, 30, 0);
+  const nov19 = CivilCalendar.fromLocalDate(2026, 11, 19);
+  const nov20 = CivilCalendar.fromLocalDate(2026, 11, 20);
+  assert.equal(CivilCalendar.fromTimestamp(utcInstant, 'UTC'), nov20);
+  assert.equal(CivilCalendar.todayDayIndex(new Date(utcInstant), 'UTC'), nov20);
+  assert.equal(CivilCalendar.fromTimestamp(utcInstant, 'America/New_York'), nov19);
+  assert.equal(CivilCalendar.fromTimestamp(utcInstant, 'Asia/Tokyo'), nov20);
+
+  // Month arithmetic clamps end-of-month properly (leap vs non-leap Feb)
+  assert.equal(
+    CivilCalendar.addMonths(CivilCalendar.fromLocalDate(2024, 5, 31), -3),
+    CivilCalendar.fromLocalDate(2024, 2, 29)
+  );
+  assert.equal(
+    CivilCalendar.addMonths(CivilCalendar.fromLocalDate(2026, 5, 31), -3),
+    CivilCalendar.fromLocalDate(2026, 2, 28)
+  );
+  assert.equal(CivilCalendar.formatShortDateWithYear(nov20), 'Nov 20, 2026');
+
+  assert.equal(CivilCalendar.isValidTimeZone('UTC'), true);
+  assert.equal(CivilCalendar.isValidTimeZone('local'), true);
+  assert.equal(CivilCalendar.isValidTimeZone('Europe/Kyiv'), true);
+  assert.equal(CivilCalendar.isValidTimeZone('Invalid/Nowhere_Zone'), false);
+});
+
+test('DateRangeResolver resolves all 17 presets and DayCellClassifier assigns severity tones', () => {
+  assert.equal(DATE_RANGE_PRESETS.length, 17);
+
+  // Reference: Wednesday 2024-03-20 (leap year)
+  const mar20 = CivilCalendar.fromLocalDate(2024, 3, 20);
+  const monWeek = CivilCalendar.fromLocalDate(2024, 3, 18);
+
+  assert.deepEqual(
+    [
+      DateRangeResolver.resolve('today', mar20).startDay,
+      DateRangeResolver.resolve('today', mar20).endDay,
+    ],
+    [mar20, mar20]
+  );
+  assert.deepEqual(
+    [
+      DateRangeResolver.resolve('yesterday', mar20).startDay,
+      DateRangeResolver.resolve('yesterday', mar20).endDay,
+    ],
+    [mar20 - 1, mar20 - 1]
+  );
+  assert.deepEqual(
+    [
+      DateRangeResolver.resolve('this_week', mar20).startDay,
+      DateRangeResolver.resolve('this_week', mar20).endDay,
+    ],
+    [monWeek, mar20]
+  );
+  assert.deepEqual(
+    [
+      DateRangeResolver.resolve('prev_week', mar20).startDay,
+      DateRangeResolver.resolve('prev_week', mar20).endDay,
+    ],
+    [monWeek - 7, monWeek - 1]
+  );
+  assert.equal(DateRangeResolver.resolve('last_7', mar20).startDay, mar20 - 6);
+  assert.equal(
+    DateRangeResolver.resolve('this_month', mar20).startDay,
+    CivilCalendar.fromLocalDate(2024, 3, 1)
+  );
+
+  // Previous month in leap year Feb 2024 (1..29) and Jan -> Dec previous year
+  const prevFeb = DateRangeResolver.resolve('prev_month', mar20);
+  assert.equal(prevFeb.startDay, CivilCalendar.fromLocalDate(2024, 2, 1));
+  assert.equal(prevFeb.endDay, CivilCalendar.fromLocalDate(2024, 2, 29));
+
+  const jan10 = CivilCalendar.fromLocalDate(2026, 1, 10);
+  const prevDec = DateRangeResolver.resolve('prev_month', jan10);
+  assert.equal(prevDec.startDay, CivilCalendar.fromLocalDate(2025, 12, 1));
+  assert.equal(prevDec.endDay, CivilCalendar.fromLocalDate(2025, 12, 31));
+
+  assert.equal(DateRangeResolver.resolve('last_30', mar20).startDay, mar20 - 29);
+  assert.equal(
+    DateRangeResolver.resolve('3_months', mar20).startDay,
+    CivilCalendar.fromLocalDate(2023, 12, 20)
+  );
+  assert.equal(DateRangeResolver.resolve('last_90', mar20).startDay, mar20 - 89);
+  assert.equal(
+    DateRangeResolver.resolve('6_months', mar20).startDay,
+    CivilCalendar.fromLocalDate(2023, 9, 20)
+  );
+  assert.equal(DateRangeResolver.resolve('last_180', mar20).startDay, mar20 - 179);
+  assert.equal(
+    DateRangeResolver.resolve('this_year', mar20).startDay,
+    CivilCalendar.fromLocalDate(2024, 1, 1)
+  );
+
+  const prevYr = DateRangeResolver.resolve('prev_year', mar20);
+  assert.equal(prevYr.startDay, CivilCalendar.fromLocalDate(2023, 1, 1));
+  assert.equal(prevYr.endDay, CivilCalendar.fromLocalDate(2023, 12, 31));
+  assert.equal(DateRangeResolver.resolve('last_365', mar20).startDay, mar20 - 364);
+
+  const customSwapped = DateRangeResolver.resolve('custom', mar20, {
+    customStartDay: mar20,
+    customEndDay: mar20 - 10,
+  });
+  assert.equal(customSwapped.startDay, mar20 - 10);
+  assert.equal(customSwapped.endDay, mar20);
+
+  const allTime = DateRangeResolver.resolve('all_time', mar20, {
+    snapshot: {
+      habits: [
+        {
+          id: 1,
+          name: 'H',
+          color: '#3B82F6',
+          weekdays: 127,
+          startDay: CivilCalendar.fromLocalDate(2024, 1, 15),
+          archivedAt: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      checkins: [],
+      notes: [],
+      tasks: [],
+    },
+  });
+  assert.equal(allTime.startDay, CivilCalendar.fromLocalDate(2024, 1, 15));
+  assert.equal(allTime.endDay, mar20);
+
+  // DayCellClassifier severity tones
+  assert.equal(DayCellClassifier.classify(mar20 + 1, mar20, 2, 0), 'future');
+  assert.equal(DayCellClassifier.classify(mar20 - 1, mar20, 0, 0), 'unscheduled');
+  assert.equal(DayCellClassifier.classify(mar20, mar20, 3, 3), 'complete');
+  assert.equal(DayCellClassifier.classify(mar20, mar20, 3, 0), 'today-open');
+  assert.equal(DayCellClassifier.classify(mar20 - 1, mar20, 3, 0), 'missed-all');
+  assert.equal(DayCellClassifier.classify(mar20 - 1, mar20, 4, 1), 'missed-heavy'); // 25%
+  assert.equal(DayCellClassifier.classify(mar20 - 1, mar20, 4, 2), 'missed-moderate'); // 50%
+  assert.equal(DayCellClassifier.classify(mar20 - 1, mar20, 4, 3), 'missed-slight'); // 75%
+});
+
+test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly, and multi-year spans', () => {
+  const start = CivilCalendar.fromLocalDate(2026, 1, 1);
+  const end = CivilCalendar.fromLocalDate(2026, 6, 30);
+  const tasks: Task[] = [
+    {
+      id: 1,
+      title: 'Jan task',
+      note: '',
+      dueDay: null,
+      done: true,
+      completedDay: CivilCalendar.fromLocalDate(2026, 1, 15),
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 2,
+      title: 'Jun task',
+      note: '',
+      dueDay: null,
+      done: true,
+      completedDay: CivilCalendar.fromLocalDate(2026, 6, 10),
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 3,
+      title: 'Deleted task',
+      note: '',
+      dueDay: null,
+      done: true,
+      completedDay: CivilCalendar.fromLocalDate(2026, 3, 1),
+      deletedAt: 99,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ];
+
+  assert.equal(TaskAnalytics.countCompletedInRange(tasks, start, end, 'UTC'), 2);
+  const monthly = TaskAnalytics.rangeCompletedBuckets(tasks, start, end, 12, 'UTC');
+  assert.equal(monthly.length, 6);
+  assert.equal(monthly[0].count, 1);
+  assert.equal(monthly[5].count, 1);
+
+  const wide = TaskAnalytics.rangeCompletedBuckets(
+    tasks,
+    CivilCalendar.fromLocalDate(2024, 1, 1),
+    CivilCalendar.fromLocalDate(2026, 12, 31),
+    10,
+    'UTC'
+  );
+  assert.ok(wide.length <= 10);
+  assert.equal(
+    wide.reduce((s, b) => s + b.count, 0),
+    2
+  );
 });
