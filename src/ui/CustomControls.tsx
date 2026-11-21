@@ -1,4 +1,5 @@
 import { For, JSX, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { CivilCalendar } from '../utils/civil-calendar';
 import {
   DATE_RANGE_PRESETS,
@@ -157,7 +158,34 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
   const initialDate = CivilCalendar.toLocalDate(props.value ?? props.todayDay);
   const [viewYear, setViewYear] = createSignal(initialDate.year);
   const [viewMonth, setViewMonth] = createSignal(initialDate.month);
+  const [coords, setCoords] = createSignal<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 304,
+  });
   let containerRef: HTMLDivElement | undefined;
+  let popoverRef: HTMLDivElement | undefined;
+
+  const updatePosition = () => {
+    if (!containerRef) return;
+    const rect = containerRef.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(304, vw - 24);
+    const measuredHeight = popoverRef?.getBoundingClientRect().height || 344;
+    const spaceAbove = rect.top - 12;
+    const spaceBelow = vh - rect.bottom - 12;
+    const preferTop = props.placement !== 'bottom';
+    const openAbove = preferTop
+      ? spaceAbove >= measuredHeight || spaceAbove >= spaceBelow
+      : !(spaceBelow >= measuredHeight || spaceBelow >= spaceAbove);
+
+    const rawTop = openAbove ? rect.top - measuredHeight - 8 : rect.bottom + 8;
+    const maxTop = Math.max(8, vh - measuredHeight - 8);
+    const top = Math.max(8, Math.min(rawTop, maxTop));
+    const left = Math.max(12, Math.min(rect.left, vw - width - 12));
+    setCoords({ top, left, width });
+  };
 
   createEffect(() => {
     if (!open()) return;
@@ -165,8 +193,14 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
     setViewYear(target.year);
     setViewMonth(target.month);
 
+    updatePosition();
+    const rafId = window.requestAnimationFrame(() => updatePosition());
+
     const handlePointerDown = (e: PointerEvent) => {
-      if (containerRef && !containerRef.contains(e.target as Node)) {
+      const targetNode = e.target as Node;
+      const inTrigger = containerRef?.contains(targetNode) ?? false;
+      const inPopover = popoverRef?.contains(targetNode) ?? false;
+      if (!inTrigger && !inPopover) {
         setOpen(false);
       }
     };
@@ -177,12 +211,27 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
       }
     };
 
+    const handleReposition = () => updatePosition();
+
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
     onCleanup(() => {
+      window.cancelAnimationFrame(rafId);
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
     });
+  });
+
+  createEffect(() => {
+    if (!open()) return;
+    viewYear();
+    viewMonth();
+    const rafId = window.requestAnimationFrame(() => updatePosition());
+    onCleanup(() => window.cancelAnimationFrame(rafId));
   });
 
   const monthGrid = createMemo(() =>
@@ -215,9 +264,6 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
       return `Tomorrow · ${CivilCalendar.formatShortDate(val)}`;
     return CivilCalendar.formatFullDate(val);
   });
-
-  const placementClass = () =>
-    props.placement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2';
 
   return (
     <div ref={containerRef} class="relative">
@@ -271,11 +317,18 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
       </div>
 
       <Show when={open()}>
-        <div
-          role="dialog"
-          aria-label="Choose date"
-          class={`absolute left-0 right-0 sm:right-auto sm:w-[304px] ${placementClass()} rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-4 space-y-3 z-50`}
-        >
+        <Portal>
+          <div
+            ref={popoverRef}
+            role="dialog"
+            aria-label="Choose date"
+            style={{
+              top: `${coords().top}px`,
+              left: `${coords().left}px`,
+              width: `${coords().width}px`,
+            }}
+            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-4 space-y-3 z-[70] max-h-[calc(100vh-16px)] overflow-y-auto"
+          >
           <div class="flex items-center justify-between">
             <span class="font-display text-sm font-semibold text-[#F5F7FA]">
               {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
@@ -376,7 +429,8 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
               </div>
             </Show>
           </div>
-        </div>
+          </div>
+        </Portal>
       </Show>
     </div>
   );
@@ -668,7 +722,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
               : popoverAlign() === 'left'
                 ? 'absolute left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px]'
                 : 'absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px]'
-          } rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 overflow-hidden z-50`}
+          } rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 overflow-y-auto max-h-[calc(100vh-2rem)] z-50`}
         >
           <div class="grid grid-cols-1 sm:grid-cols-12">
             {/* Presets list */}
