@@ -18,13 +18,30 @@
     color: #F5F7FA;
   }
 
+  body {
+    overflow-wrap: break-word;
+  }
+
   h1, h2, h3, h4, .font-display {
     font-family: var(--font-display);
     text-wrap: balance;
+    overflow-wrap: break-word;
+  }
+
+  p, li, dd, dt, blockquote {
+    text-wrap: pretty;
+    overflow-wrap: break-word;
   }
 
   .font-mono, .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }
 

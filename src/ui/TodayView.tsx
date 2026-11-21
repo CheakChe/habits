@@ -124,7 +124,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
           <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
             Today
           </h1>
-          <div class="flex items-center gap-2 text-sm text-[#8E95A5]">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#8E95A5]">
             <span>{CivilCalendar.formatFullDate(props.todayDay)}</span>
             <span aria-hidden="true">·</span>
             <span class="font-mono tabular-nums">
@@ -259,12 +259,13 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                         </button>
 
                         <div class="min-w-0 flex-1">
-                          <div class="flex items-center gap-2.5">
+                          <div class="flex items-start gap-2.5">
                             <HabitBadge appearanceRaw={habit.color} size="sm" />
                             <p
-                              class={`text-sm font-medium truncate transition-colors ${
+                              class={`text-sm font-medium line-clamp-2 break-words transition-colors ${
                                 isDone() ? 'text-[#8E95A5] line-through' : 'text-[#F5F7FA]'
                               }`}
+                              title={habit.name}
                             >
                               {habit.name}
                             </p>
@@ -314,7 +315,12 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             </span>
                             <Show when={existingNote() && !isNoteOpen()}>
                               <span aria-hidden="true">·</span>
-                              <span class="truncate text-[#9AA1B1]">{existingNote()}</span>
+                              <span
+                                class="line-clamp-2 break-words max-w-full text-[#9AA1B1]"
+                                title={existingNote()}
+                              >
+                                {existingNote()}
+                              </span>
                             </Show>
                           </div>
                         </div>
@@ -428,7 +434,10 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                         onClick={() => props.onOpenEditTask(task)}
                         class="min-w-0 flex-1 text-left cursor-pointer py-0.5"
                       >
-                        <p class="text-sm font-medium text-[#F5F7FA] truncate">
+                        <p
+                          class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                          title={task.title}
+                        >
                           {task.title}
                         </p>
                         <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-xs text-[#FCA5A5]">
@@ -465,7 +474,10 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                         onClick={() => props.onOpenEditTask(task)}
                         class="min-w-0 flex-1 text-left cursor-pointer py-0.5"
                       >
-                        <p class="text-sm font-medium text-[#F5F7FA] truncate">
+                        <p
+                          class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                          title={task.title}
+                        >
                           {task.title}
                         </p>
                         <div class="flex flex-wrap items-center gap-1.5 mt-0.5 text-xs text-[#8E95A5]">
@@ -479,7 +491,12 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           </Show>
                           <Show when={task.note}>
                             <span aria-hidden="true" class="text-[#5B6270]">·</span>
-                            <span class="truncate">{task.note}</span>
+                            <span
+                              class="line-clamp-2 break-words max-w-full"
+                              title={task.note}
+                            >
+                              {task.note}
+                            </span>
                           </Show>
                         </div>
                       </button>
@@ -565,7 +582,10 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             onClick={() => props.onOpenEditTask(task)}
                             class="min-w-0 flex-1 text-left cursor-pointer py-0.5"
                           >
-                            <p class="text-sm font-medium text-[#F5F7FA] truncate">
+                            <p
+                              class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                              title={task.title}
+                            >
                               {task.title}
                             </p>
                             <Show when={task.note || task.repeatable}>
@@ -580,7 +600,12 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                                   </Show>
                                 </Show>
                                 <Show when={task.note}>
-                                  <span class="truncate">{task.note}</span>
+                                  <span
+                                    class="line-clamp-2 break-words max-w-full"
+                                    title={task.note}
+                                  >
+                                    {task.note}
+                                  </span>
                                 </Show>
                               </div>
                             </Show>

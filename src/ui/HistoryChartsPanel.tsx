@@ -590,7 +590,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </div>
             }
           >
-            <div class="flex items-center gap-5">
+            <div class="flex flex-col sm:flex-row items-center gap-5">
               {/* Donut SVG */}
               <div class="relative w-32 h-32 shrink-0 flex items-center justify-center">
                 <svg
@@ -690,10 +690,10 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             </div>
           </Show>
 
-          <div class="grid grid-cols-3 gap-2 pt-3 border-t border-white/[0.06] text-[11px]">
+          <div class="grid grid-cols-1 min-[380px]:grid-cols-3 gap-2.5 pt-3 border-t border-white/[0.06] text-[11px]">
             <div class="min-w-0">
               <span class="text-[#6B7280] block">On-Time</span>
-              <span class="font-mono tabular-nums text-[#F5F7FA] truncate block">
+              <span class="font-mono tabular-nums text-[#F5F7FA] break-words block">
                 {props.taskSummary.onTimeRate !== null
                   ? `${Math.round(props.taskSummary.onTimeRate * 100)}% (${props.taskSummary.onTimeCount}/${props.taskSummary.datedDoneCount})`
                   : '—'}
@@ -702,7 +702,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             <div class="min-w-0">
               <span class="text-[#6B7280] block">Goals</span>
               <span
-                class="font-mono tabular-nums text-[#F5F7FA] truncate block"
+                class="font-mono tabular-nums text-[#F5F7FA] break-words block"
                 title={`${props.taskSummary.goalsDoneCount} done, ${props.taskSummary.goalsArchivedCount} archived, ${props.taskSummary.goalsOpenCount} open`}
               >
                 {props.taskSummary.goalsDoneCount}d · {props.taskSummary.goalsArchivedCount}a ·{' '}
@@ -711,7 +711,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             </div>
             <div class="min-w-0">
               <span class="text-[#6B7280] block">Repeats</span>
-              <span class="font-mono tabular-nums text-[#F5F7FA] truncate block">
+              <span class="font-mono tabular-nums text-[#F5F7FA] break-words block">
                 {props.taskSummary.repeatableDoneCount} done
               </span>
             </div>
@@ -833,12 +833,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
         </section>
 
         <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
                 Weekday Rhythm
               </h2>
-              <p class="text-xs text-[#8E95A5] font-mono tabular-nums truncate">
+              <p class="text-xs text-[#8E95A5] font-mono tabular-nums break-words">
                 <Show
                   when={hoveredWeekdaySummary()}
                   fallback={
@@ -1204,9 +1204,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                       class="w-full text-left px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                       <div class="min-w-0 space-y-1 flex-1">
-                        <div class="flex items-center gap-2.5">
+                        <div class="flex items-start gap-2.5">
                           <HabitBadge appearanceRaw={row.habit.color} size="sm" />
-                          <span class="text-sm font-medium text-[#F5F7FA] truncate">
+                          <span
+                            class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                            title={row.habit.name}
+                          >
                             {row.habit.name}
                           </span>
                           <Show when={row.habit.archivedAt !== null}>

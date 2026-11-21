@@ -205,13 +205,13 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
             </div>
 
             <div class="space-y-3">
-              <div class="flex items-center justify-between gap-2">
-                <span class="block text-xs font-medium text-[#9AA1B1]">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="block text-xs font-medium text-[#9AA1B1] shrink-0">
                   Color &amp; Icon
                 </span>
-                <div class="flex items-center gap-2 text-xs text-[#C8CDD8] min-w-0">
+                <div class="flex items-center gap-2 text-xs text-[#C8CDD8] min-w-0 flex-1 justify-end">
                   <HabitBadge appearanceRaw={composedAppearance()} size="sm" />
-                  <span class="truncate max-w-[140px]">
+                  <span class="truncate max-w-[200px]" title={name().trim() || 'Preview'}>
                     {name().trim() || 'Preview'}
                   </span>
                   <span
@@ -699,7 +699,7 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
             </div>
 
             <div class="space-y-2">
-              <div class="flex items-center justify-between">
+              <div class="flex flex-wrap items-center justify-between gap-2">
                 <label for="task-due" class="text-xs font-medium text-[#9AA1B1]">
                   Due date
                 </label>
@@ -855,12 +855,12 @@ export function SyncConfirmModal(props: SyncConfirmModalProps): JSX.Element {
           aria-modal="true"
           aria-labelledby="sync-confirm-title"
         >
-          <div class="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
-            <div class="flex items-center gap-3">
+          <div class="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+            <div class="flex items-start gap-3">
               <div class="w-10 h-10 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0">
                 <CloudSyncIcon class="w-5 h-5" />
               </div>
-              <div>
+              <div class="min-w-0 flex-1">
                 <h2
                   id="sync-confirm-title"
                   class="font-display text-lg font-semibold text-[#F5F7FA]"
@@ -1037,16 +1037,19 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
         aria-modal="true"
         aria-labelledby="account-modal-title"
       >
-        <div class="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
-          <div class="flex items-center justify-between">
-            <h2 id="account-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
+        <div class="w-full sm:max-w-sm max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+          <div class="flex items-center justify-between gap-2">
+            <h2
+              id="account-modal-title"
+              class="font-display text-lg font-semibold text-[#F5F7FA] min-w-0"
+            >
               Workspace &amp; Sync Mode
             </h2>
             <button
               type="button"
               onClick={() => props.onClose()}
               aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer shrink-0"
             >
               <CloseIcon class="w-4 h-4" />
             </button>
@@ -1054,7 +1057,7 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
 
           <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-4 flex items-start gap-3">
             <DriveIcon class="w-5 h-5 text-[#60A5FA] shrink-0 mt-0.5" />
-            <div class="space-y-1">
+            <div class="min-w-0 flex-1 space-y-1">
               <p class="text-sm font-medium text-[#F5F7FA]">
                 {props.mode === 'google' ? 'Google Drive Sync Mode' : 'Local Guest Mode'}
               </p>
@@ -1078,7 +1081,7 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
 
             <Show when={backupError()}>
               {(msg) => (
-                <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3 py-2 text-xs text-[#FCA5A5]">
+                <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3 py-2 text-xs text-[#FCA5A5] break-anywhere">
                   {msg()}
                 </div>
               )}
@@ -1195,13 +1198,13 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
         aria-modal="true"
         aria-labelledby="revisions-modal-title"
       >
-        <div class="w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5 max-h-[88vh] flex flex-col">
-          <div class="flex items-center justify-between gap-3 shrink-0">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0">
+        <div class="w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-5 sm:p-6 space-y-4 max-h-[90vh] flex flex-col">
+          <div class="flex items-start justify-between gap-3 shrink-0">
+            <div class="flex items-start gap-3 min-w-0 flex-1">
+              <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0 mt-0.5">
                 <HistoryClockIcon class="w-4 h-4" />
               </div>
-              <div>
+              <div class="min-w-0 flex-1 space-y-0.5">
                 <h2
                   id="revisions-modal-title"
                   class="font-display text-lg font-semibold text-[#F5F7FA]"
@@ -1218,7 +1221,7 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
               onClick={() => props.onClose()}
               disabled={props.restoring}
               aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
             >
               <CloseIcon class="w-4 h-4" />
             </button>
@@ -1226,7 +1229,7 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
 
           <Show when={props.error}>
             {(msg) => (
-              <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0">
+              <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0 break-anywhere">
                 {msg()}
               </div>
             )}
@@ -1267,24 +1270,27 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
                               : 'bg-[#0A0B0E] border-white/[0.08]'
                           }`}
                         >
-                          <div class="flex items-center justify-between gap-3">
-                            <div class="min-w-0 space-y-0.5">
+                          <div class="flex flex-wrap sm:flex-nowrap items-start sm:items-center justify-between gap-3">
+                            <div class="min-w-0 flex-1 space-y-0.5">
                               <div class="flex items-center gap-2 flex-wrap">
                                 <span class="text-xs font-medium text-[#F5F7FA]">
                                   {formatRevisionTime(rev.modifiedTime)}
                                 </span>
                                 <Show when={isCurrent()}>
-                                  <span class="px-1.5 py-0.5 rounded-md bg-[#22C55E]/15 text-[10px] font-medium text-[#86EFAC]">
+                                  <span class="px-1.5 py-0.5 rounded-md bg-[#22C55E]/15 text-[10px] font-medium text-[#86EFAC] shrink-0">
                                     Current
                                   </span>
                                 </Show>
                                 <Show when={rev.keepForever}>
-                                  <span class="px-1.5 py-0.5 rounded-md bg-[#3B82F6]/15 text-[10px] font-medium text-[#93C5FD]">
+                                  <span class="px-1.5 py-0.5 rounded-md bg-[#3B82F6]/15 text-[10px] font-medium text-[#93C5FD] shrink-0">
                                     Pinned
                                   </span>
                                 </Show>
                               </div>
-                              <p class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                              <p
+                                class="text-[11px] font-mono tabular-nums text-[#8E95A5] break-anywhere"
+                                title={`Rev #${rev.id} · ${formatByteSize(rev.size)}`}
+                              >
                                 Rev #{rev.id} · {formatByteSize(rev.size)}
                               </p>
                             </div>
@@ -1313,74 +1319,74 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
                 </div>
               </Show>
             </Show>
+
+            <Show when={props.inspectedRevision}>
+              {(inspected) => {
+                const isLatest = () => props.revisions[0]?.id === inspected().revisionId;
+                return (
+                  <div class="rounded-2xl bg-[#0A0B0E] border border-[#3B82F6]/30 p-4 space-y-3">
+                    <div class="flex items-start justify-between gap-3">
+                      <span class="text-xs font-medium text-[#F5F7FA] min-w-0 flex-1 break-anywhere">
+                        Revision #{inspected().revisionId} Contents
+                      </span>
+                      <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] shrink-0 whitespace-nowrap">
+                        {inspected().summary.byteSize} B
+                      </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                      <div class="rounded-xl bg-[#14161B] p-2.5 min-w-0">
+                        <span class="text-[11px] text-[#8E95A5] block">Habits</span>
+                        <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                          {inspected().summary.habitsCount}
+                        </span>
+                      </div>
+                      <div class="rounded-xl bg-[#14161B] p-2.5 min-w-0">
+                        <span class="text-[11px] text-[#8E95A5] block">Check-ins</span>
+                        <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                          {inspected().summary.checkinsCount}
+                        </span>
+                      </div>
+                      <div class="rounded-xl bg-[#14161B] p-2.5 min-w-0">
+                        <span class="text-[11px] text-[#8E95A5] block">Notes</span>
+                        <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                          {inspected().summary.notesCount}
+                        </span>
+                      </div>
+                      <div class="rounded-xl bg-[#14161B] p-2.5 min-w-0">
+                        <span class="text-[11px] text-[#8E95A5] block">Tasks</span>
+                        <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                          {inspected().summary.tasksCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p class="text-[11px] text-[#8E95A5] leading-relaxed">
+                      {isLatest()
+                        ? 'This is the current latest version on Google Drive. Restoring it overwrites your local IndexedDB with this snapshot.'
+                        : 'Restoring replaces your local IndexedDB with this snapshot and saves it as a new latest version on Google Drive (your previous state remains in version history).'}
+                    </p>
+
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void props.onRestore(inspected().revisionId)}
+                        disabled={props.restoring}
+                        class="h-9 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                      >
+                        <RestoreIcon class="w-3.5 h-3.5 shrink-0" />
+                        <span>
+                          {props.restoring ? 'Restoring...' : 'Restore This Version'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }}
+            </Show>
           </div>
 
-          <Show when={props.inspectedRevision}>
-            {(inspected) => {
-              const isLatest = () => props.revisions[0]?.id === inspected().revisionId;
-              return (
-                <div class="rounded-2xl bg-[#0A0B0E] border border-[#3B82F6]/30 p-4 space-y-3 shrink-0">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs font-medium text-[#F5F7FA]">
-                      Revision #{inspected().revisionId} Contents
-                    </span>
-                    <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                      {inspected().summary.byteSize} B
-                    </span>
-                  </div>
-
-                  <div class="grid grid-cols-4 gap-2 text-xs">
-                    <div class="rounded-xl bg-[#14161B] p-2.5">
-                      <span class="text-[11px] text-[#8E95A5] block">Habits</span>
-                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
-                        {inspected().summary.habitsCount}
-                      </span>
-                    </div>
-                    <div class="rounded-xl bg-[#14161B] p-2.5">
-                      <span class="text-[11px] text-[#8E95A5] block">Check-ins</span>
-                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
-                        {inspected().summary.checkinsCount}
-                      </span>
-                    </div>
-                    <div class="rounded-xl bg-[#14161B] p-2.5">
-                      <span class="text-[11px] text-[#8E95A5] block">Notes</span>
-                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
-                        {inspected().summary.notesCount}
-                      </span>
-                    </div>
-                    <div class="rounded-xl bg-[#14161B] p-2.5">
-                      <span class="text-[11px] text-[#8E95A5] block">Tasks</span>
-                      <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
-                        {inspected().summary.tasksCount}
-                      </span>
-                    </div>
-                  </div>
-
-                  <p class="text-[11px] text-[#8E95A5] leading-relaxed">
-                    {isLatest()
-                      ? 'This is the current latest version on Google Drive. Restoring it overwrites your local IndexedDB with this snapshot.'
-                      : 'Restoring replaces your local IndexedDB with this snapshot and saves it as a new latest version on Google Drive (your previous state remains in version history).'}
-                  </p>
-
-                  <div class="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void props.onRestore(inspected().revisionId)}
-                      disabled={props.restoring}
-                      class="h-9 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      <RestoreIcon class="w-3.5 h-3.5" />
-                      <span>
-                        {props.restoring ? 'Restoring...' : 'Restore This Version'}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              );
-            }}
-          </Show>
-
-          <div class="flex items-center justify-between gap-3 pt-1 shrink-0">
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-1 shrink-0">
             <button
               type="button"
               onClick={() => void props.onRefresh()}

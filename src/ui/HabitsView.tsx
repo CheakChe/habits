@@ -147,9 +147,12 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                     }`}
                   >
                     <div class="space-y-2 min-w-0">
-                      <div class="flex items-center gap-3">
+                      <div class="flex items-start gap-3">
                         <HabitBadge appearanceRaw={habit.color} size="md" />
-                        <h2 class="text-base font-medium text-[#F5F7FA] truncate">
+                        <h2
+                          class="text-base font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                          title={habit.name}
+                        >
                           {habit.name}
                         </h2>
                       </div>

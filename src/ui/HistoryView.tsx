@@ -724,13 +724,23 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                           </button>
 
                           <div class="min-w-0 flex-1">
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-start gap-2">
                               <HabitBadge appearanceRaw={habit.color} size="xs" />
-                              <p class="text-sm font-medium text-[#F5F7FA] truncate">
+                              <p
+                                class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                                title={habit.name}
+                              >
                                 {habit.name}
                               </p>
                             </div>
-                            <p class="text-xs text-[#8E95A5] truncate">
+                            <p
+                              class="text-xs text-[#8E95A5] line-clamp-2 break-words"
+                              title={
+                                noteText() && !isEditingNote()
+                                  ? `${scheduleStatusLabel()} · ${noteText()}`
+                                  : scheduleStatusLabel()
+                              }
+                            >
                               {scheduleStatusLabel()}
                               {noteText() && !isEditingNote() ? ` · ${noteText()}` : ''}
                             </p>
@@ -796,7 +806,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             </Show>
 
             <div class="border-t border-white/[0.06]">
-              <div class="px-6 py-3 border-b border-white/[0.06] flex items-center justify-between gap-2">
+              <div class="px-6 py-3 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
                 <span class="text-xs font-medium text-[#9AA1B1]">Tasks</span>
                 <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
                   {selectedDayTasksCount() === 0
@@ -834,10 +844,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                             <CheckIcon class="w-3.5 h-3.5" />
                           </span>
                           <div class="min-w-0 flex-1">
-                            <p class="text-xs font-medium text-[#9AA1B1] line-through truncate">
+                            <p
+                              class="text-xs font-medium text-[#9AA1B1] line-through line-clamp-2 break-words"
+                              title={task.title}
+                            >
                               {task.title}
                             </p>
-                            <p class="text-[11px] text-[#6B7280] truncate">
+                            <p class="text-[11px] text-[#6B7280] line-clamp-2 break-words">
                               Done · {timingHint()}
                               {task.repeatable ? ' · Repeats' : ''}
                               {task.note ? ` · ${task.note}` : ''}
@@ -855,10 +868,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                           <CloseIcon class="w-3.5 h-3.5" />
                         </span>
                         <div class="min-w-0 flex-1">
-                          <p class="text-xs font-medium text-[#C8CDD8] truncate">
+                          <p
+                            class="text-xs font-medium text-[#C8CDD8] line-clamp-2 break-words"
+                            title={task.title}
+                          >
                             {task.title}
                           </p>
-                          <p class="text-[11px] text-[#FCA5A5]/80 truncate">
+                          <p class="text-[11px] text-[#FCA5A5]/80 line-clamp-2 break-words">
                             Not Done
                             {task.note ? ` · ${task.note}` : ''}
                           </p>
@@ -874,10 +890,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                           <ArchiveIcon class="w-3.5 h-3.5" />
                         </span>
                         <div class="min-w-0 flex-1">
-                          <p class="text-xs font-medium text-[#8E95A5] truncate">
+                          <p
+                            class="text-xs font-medium text-[#8E95A5] line-clamp-2 break-words"
+                            title={task.title}
+                          >
                             {task.title}
                           </p>
-                          <p class="text-[11px] text-[#6B7280] truncate">
+                          <p class="text-[11px] text-[#6B7280] line-clamp-2 break-words">
                             Archived
                             {task.note ? ` · ${task.note}` : ''}
                           </p>
@@ -893,17 +912,22 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                           <span class="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" />
                         </span>
                         <div class="min-w-0 flex-1">
-                          <p class="text-xs font-medium text-[#F5F7FA] truncate">
+                          <p
+                            class="text-xs font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                            title={task.title}
+                          >
                             {task.title}
                           </p>
-                          <div class="text-[11px] text-[#8E95A5] flex items-center gap-1 min-w-0">
+                          <div class="text-[11px] text-[#8E95A5] flex flex-wrap items-center gap-1 min-w-0">
                             <span class="shrink-0">Open · Due</span>
                             <Show when={task.repeatable}>
                               <span aria-hidden="true" class="shrink-0">·</span>
                               <RepeatIcon class="w-3 h-3 text-[#60A5FA] shrink-0" />
                             </Show>
                             <Show when={task.note}>
-                              <span class="truncate">· {task.note}</span>
+                              <span class="line-clamp-2 break-words max-w-full">
+                                · {task.note}
+                              </span>
                             </Show>
                           </div>
                         </div>

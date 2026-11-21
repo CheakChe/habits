@@ -75,7 +75,7 @@ export function CustomSelect<T extends string | number>(
         aria-haspopup="listbox"
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
-        class={`h-10 min-w-[180px] rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium text-[#F5F7FA] flex items-center justify-between gap-3 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+        class={`h-10 min-w-[140px] sm:min-w-[180px] max-w-full rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium text-[#F5F7FA] flex items-center justify-between gap-3 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
           open()
             ? 'border-[#3B82F6]'
             : 'border-white/[0.08] hover:border-white/20'
@@ -685,15 +685,15 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
         aria-haspopup="dialog"
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
-        class={`h-10 rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium text-[#F5F7FA] flex items-center gap-2.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+        class={`h-10 max-w-full rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium text-[#F5F7FA] flex items-center gap-2 sm:gap-2.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
           open()
             ? 'border-[#3B82F6]'
             : 'border-white/[0.08] hover:border-white/20'
         }`}
       >
         <CalendarIcon class="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
-        <span>{props.resolvedRange.label}</span>
-        <span class="text-[#6B7280]" aria-hidden="true">
+        <span class="truncate min-w-0">{props.resolvedRange.label}</span>
+        <span class="text-[#6B7280] hidden sm:inline" aria-hidden="true">
           ·
         </span>
         <span class="font-mono tabular-nums text-[#9AA1B1] hidden sm:inline">

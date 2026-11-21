@@ -261,7 +261,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                   status() === 'open' && task.dueDay !== null && task.dueDay < props.todayDay;
 
                 return (
-                  <li class="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors">
+                  <li class="px-5 py-3.5 flex flex-wrap sm:flex-nowrap items-start sm:items-center justify-between gap-3 sm:gap-4 hover:bg-white/[0.02] transition-colors">
                     <div class="flex items-start gap-3.5 min-w-0 flex-1">
                       <Show
                         when={status() === 'open' || status() === 'done'}
@@ -313,7 +313,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
 
                       <div class="min-w-0 flex-1 py-0.5">
                         <p
-                          class={`text-sm font-medium truncate ${
+                          class={`text-sm font-medium line-clamp-2 break-words ${
                             status() === 'done'
                               ? 'text-[#8E95A5] line-through'
                               : status() === 'not_done'
@@ -322,6 +322,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                                   ? 'text-[#8E95A5]'
                                   : 'text-[#F5F7FA]'
                           }`}
+                          title={task.title}
                         >
                           {task.title}
                         </p>
@@ -369,7 +370,10 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                           </Show>
                           <Show when={task.note}>
                             <span aria-hidden="true" class="text-[#5B6270]">·</span>
-                            <span class="text-[#9AA1B1] truncate max-w-md">
+                            <span
+                              class="text-[#9AA1B1] line-clamp-2 break-words max-w-full"
+                              title={task.note}
+                            >
                               {task.note}
                             </span>
                           </Show>

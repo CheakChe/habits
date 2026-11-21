@@ -49,7 +49,7 @@ export default function App(): JSX.Element {
       <div class="min-h-screen bg-[#0A0B0E] text-[#F5F7FA] pb-24 md:pb-12">
         {/* Top Bar Contract: 3 zones separated by gap-8 */}
         <header class="sticky top-0 z-30 h-14 bg-[#0A0B0E]/85 backdrop-blur-md border-b border-white/[0.08]">
-          <div class="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-8">
+          <div class="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-8">
             {/* Zone 1: Brand Wordmark */}
             <button
               type="button"
@@ -155,9 +155,11 @@ export default function App(): JSX.Element {
           <OfflineBanner />
 
           <Show when={store.mode() === 'google'}>
-            <div class="flex items-center justify-between gap-4 text-xs text-[#8E95A5]">
-              <span>Google Drive Sync Mode · Snapshot stored in private app folder</span>
-              <div class="flex items-center gap-4 shrink-0">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-[#8E95A5]">
+              <span class="min-w-0">
+                Google Drive Sync Mode · Snapshot stored in private app folder
+              </span>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 shrink-0">
                 <button
                   type="button"
                   onClick={() => void store.openDriveRevisions()}
@@ -180,18 +182,18 @@ export default function App(): JSX.Element {
             {(banner) => (
               <div
                 role="status"
-                class={`rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-xs border ${
+                class={`rounded-2xl px-4 py-3 flex items-start sm:items-center justify-between gap-3 text-xs border ${
                   banner().kind === 'error'
                     ? 'bg-[#EF4444]/10 border-[#EF4444]/25 text-[#FCA5A5]'
                     : 'bg-[#22C55E]/10 border-[#22C55E]/25 text-[#86EFAC]'
                 }`}
               >
-                <span>{banner().text}</span>
+                <span class="min-w-0 flex-1 break-anywhere">{banner().text}</span>
                 <button
                   type="button"
                   onClick={() => store.setSyncBanner(null)}
                   aria-label="Dismiss message"
-                  class="p-1 rounded-lg hover:bg-white/[0.08] cursor-pointer"
+                  class="p-1 rounded-lg hover:bg-white/[0.08] cursor-pointer shrink-0"
                 >
                   <CloseIcon class="w-3.5 h-3.5" />
                 </button>
