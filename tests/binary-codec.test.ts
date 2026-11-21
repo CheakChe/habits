@@ -96,6 +96,7 @@ test('SnapshotCodec produces deterministic bytes regardless of input ordering an
         name: 'Вода 💧',
         color: '#14B8A6',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: 20000,
         archivedAt: null,
         createdAt: 5000,
@@ -106,6 +107,7 @@ test('SnapshotCodec produces deterministic bytes regardless of input ordering an
         name: 'Reading',
         color: '#3B82F6',
         weekdays: 0b0011111,
+        weeklyTarget: 3,
         startDay: 19900,
         archivedAt: 9000,
         createdAt: 4000,
@@ -254,6 +256,7 @@ test('SnapshotMerger is idempotent and preserves remote edits when remote.update
         name: 'Local Older',
         color: '#3B82F6',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: 20000,
         archivedAt: null,
         createdAt: 100,
@@ -286,6 +289,7 @@ test('SnapshotMerger is idempotent and preserves remote edits when remote.update
         name: 'Remote Newer',
         color: '#22C55E',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: 20000,
         archivedAt: 500,
         createdAt: 100,
@@ -337,6 +341,7 @@ test('BackupService builds dated filenames, exports binary snapshots, and safely
         name: 'Local Habit',
         color: '#3B82F6',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: today,
         archivedAt: null,
         createdAt: 100,
@@ -355,6 +360,7 @@ test('BackupService builds dated filenames, exports binary snapshots, and safely
         name: 'Backup Colliding Habit',
         color: '#22C55E',
         weekdays: 127,
+        weeklyTarget: 4,
         startDay: today,
         archivedAt: null,
         createdAt: 500,
@@ -385,7 +391,47 @@ test('BackupService builds dated filenames, exports binary snapshots, and safely
   assert.equal(imported.importedCounts.habits, 1);
   assert.equal(imported.importedCounts.tasks, 1);
   assert.equal(imported.mergedSnapshot.habits.length, 2);
+  assert.equal(imported.mergedSnapshot.habits[1].weeklyTarget, 4);
   assert.equal(imported.mergedSnapshot.tasks[0].completedDay, today - 2);
 
   assert.throws(() => BackupService.importBytes(localSnap, new Uint8Array([9, 9, 9])));
+});
+
+test('SnapshotCodec backward-compatibly unpacks v5 habit records with weeklyTarget: null', () => {
+  const stringTable = new StringTable();
+  const idTable = new IdTable();
+  const nameIdx = stringTable.intern('Legacy v5 habit');
+  const colorIdx = stringTable.intern('#3B82F6');
+  const idIdx = idTable.intern(1);
+
+  const body = new SnapshotBytes(128);
+  body.writeUint8(0x48); // H
+  body.writeUint8(0x42); // B
+  body.writeUint8(0x54); // T
+  body.writeUint8(0x31); // 1
+  body.writeUint8(5); // version = 5
+  stringTable.writeTo(body);
+  idTable.writeTo(body);
+  body.writeVarUint(1); // 1 habit
+  body.writeVarUint(idIdx);
+  body.writeVarUint(nameIdx);
+  body.writeVarUint(colorIdx);
+  body.writeUint8(127); // weekdays
+  body.writeVarInt(20770); // startDay
+  body.writeUint8(0); // archivedAt = null
+  body.writeFloat64(1000); // createdAt
+  body.writeFloat64(2000); // updatedAt
+  body.writeVarUint(0); // checkins count
+  body.writeVarUint(0); // notes count
+  body.writeVarUint(0); // tasks count
+
+  const payload = body.toUint8Array();
+  const frame = new SnapshotBytes(payload.byteLength + 4);
+  frame.writeBytes(payload);
+  frame.writeUint32BE(SnapshotBytes.computeChecksum(payload));
+
+  const unpacked = SnapshotCodec.unpack(frame.toUint8Array());
+  assert.equal(unpacked.habits.length, 1);
+  assert.equal(unpacked.habits[0].weeklyTarget, null);
+  assert.equal(unpacked.habits[0].name, 'Legacy v5 habit');
 });

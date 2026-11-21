@@ -92,6 +92,7 @@ test('StreakCalculator handles allowPendingEndDay, broken streaks, longest vs cu
     name: 'Daily',
     color: '#3B82F6',
     weekdays: 0b1111111, // every day
+    weeklyTarget: null,
     startDay: mon,
     archivedAt: null,
     createdAt: 1000,
@@ -134,6 +135,7 @@ test('StreakCalculator ignores off-schedule check-ins in scheduled metrics', () 
     name: 'Weekdays only',
     color: '#22C55E',
     weekdays: 0b0011111, // Mon-Fri
+    weeklyTarget: null,
     startDay: mon,
     archivedAt: null,
     createdAt: 1000,
@@ -162,6 +164,7 @@ test('StreakCalculator.calculateWeeklyProgress respects habit weekdays and start
     name: 'Strength',
     color: '#3B82F6',
     weekdays: mwfMask,
+    weeklyTarget: null,
     startDay: mon - 14,
     archivedAt: null,
     createdAt: 1000,
@@ -236,6 +239,7 @@ test('StreakCalculator.summarizeHabitsForPeriod computes done/missed counts and 
     name: 'Half done',
     color: '#3B82F6',
     weekdays: 127,
+    weeklyTarget: null,
     startDay: start,
     archivedAt: null,
     createdAt: 100,
@@ -246,6 +250,7 @@ test('StreakCalculator.summarizeHabitsForPeriod computes done/missed counts and 
     name: 'Perfect',
     color: '#22C55E',
     weekdays: 127,
+    weeklyTarget: null,
     startDay: start,
     archivedAt: null,
     createdAt: 100,
@@ -256,6 +261,7 @@ test('StreakCalculator.summarizeHabitsForPeriod computes done/missed counts and 
     name: 'Archived perfect',
     color: '#A855F7',
     weekdays: 127,
+    weeklyTarget: null,
     startDay: start,
     archivedAt: 500,
     createdAt: 100,
@@ -411,6 +417,7 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
       name: 'Active Friday B',
       color: '#3B82F6',
       weekdays: fridayBit,
+      weeklyTarget: null,
       startDay: today - 10,
       archivedAt: null,
       createdAt: 1,
@@ -421,6 +428,7 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
       name: 'Active Friday A',
       color: '#22C55E',
       weekdays: fridayBit | mondayBit,
+      weeklyTarget: null,
       startDay: today,
       archivedAt: null,
       createdAt: 1,
@@ -431,6 +439,7 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
       name: 'Archived Friday',
       color: '#F59E0B',
       weekdays: fridayBit,
+      weeklyTarget: null,
       startDay: today - 10,
       archivedAt: 500,
       createdAt: 1,
@@ -441,6 +450,7 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
       name: 'Future start',
       color: '#F43F5E',
       weekdays: fridayBit,
+      weeklyTarget: null,
       startDay: today + 1,
       archivedAt: null,
       createdAt: 1,
@@ -451,6 +461,7 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
       name: 'Monday only',
       color: '#A855F7',
       weekdays: mondayBit,
+      weeklyTarget: null,
       startDay: today - 10,
       archivedAt: null,
       createdAt: 1,
@@ -695,6 +706,7 @@ test('DateRangeResolver resolves all 17 presets and DayCellClassifier assigns se
           name: 'H',
           color: '#3B82F6',
           weekdays: 127,
+          weeklyTarget: null,
           startDay: CivilCalendar.fromLocalDate(2024, 1, 15),
           archivedAt: null,
           createdAt: 1,
@@ -855,6 +867,7 @@ test('HabitAppearance normalizes hex, encodes icons/emojis, computes contrast, a
         name: 'Gym',
         color: '#FF5733|icon:dumbbell',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: day,
         archivedAt: null,
         createdAt: 100,
@@ -865,6 +878,7 @@ test('HabitAppearance normalizes hex, encodes icons/emojis, computes contrast, a
         name: 'Hydrate',
         color: '#06B6D4|emoji:💧',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: day,
         archivedAt: null,
         createdAt: 100,
@@ -1062,6 +1076,7 @@ test('ChartsAnalytics computes adaptive habit trend buckets and weekday stats fo
       name: 'Run',
       color: '#3B82F6',
       weekdays,
+      weeklyTarget: null,
       startDay: tue1,
       archivedAt: null,
       createdAt: 1,
@@ -1175,6 +1190,146 @@ test('ChartsAnalytics computes adaptive habit trend buckets and weekday stats fo
   assert.equal(wTasks[1].totalCount, 0);
   assert.equal(wTasks[1].rate, null);
 });
+
+test('Flexible weekly target habits work across TodayBoard, StreakCalculator, DayStats, and ChartsAnalytics', () => {
+  // Week 1 starts Monday 2026-11-02; Habit starts Saturday of Week 0 (2026-10-31)
+  const w1Mon = CivilCalendar.fromLocalDate(2026, 11, 2);
+  const w0Sat = w1Mon - 2; // 2 remaining days in Week 0 (Sat, Sun)
+  const w2Mon = w1Mon + 7;
+  const w3Mon = w1Mon + 14;
+
+  const flexHabit: Habit = {
+    id: 10,
+    name: 'Gym 3x/wk',
+    color: '#22C55E',
+    weekdays: 127,
+    weeklyTarget: 3,
+    startDay: w0Sat,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 100,
+  };
+
+  // Week 0 (Sat, Sun -> effective target clamped to 2): 2/2 complete!
+  // Week 1 (target 3): over-achieved 4 check-ins (Mon, Tue, Wed, Fri) -> 4/3 complete!
+  // Week 2 (target 3): missed week (only Mon) -> 1/3 failed!
+  // Week 3 (target 3): Mon & Wed done, evaluating on Fri (3 days left incl Fri..Sun -> 2 done + 2 future >= 3, still achievable!)
+  const checkins: HabitCheckin[] = [
+    { habitId: 10, dayIndex: w0Sat, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w0Sat + 1, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w1Mon, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w1Mon + 1, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w1Mon + 2, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w1Mon + 4, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w2Mon, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w3Mon, done: true, updatedAt: 1 },
+    { habitId: 10, dayIndex: w3Mon + 2, done: true, updatedAt: 1 },
+  ];
+
+  // 1. StreakCalculator: Week 0 + Week 1 -> longest streak 2w; Week 2 failed; Week 3 pending on Fri -> currentStreak 0w
+  const w3Fri = w3Mon + 4;
+  const mPending = StreakCalculator.calculate(flexHabit, checkins, w0Sat, w3Fri, true);
+  assert.equal(mPending.streakUnit, 'weeks');
+  assert.equal(mPending.longestStreak, 2);
+  assert.equal(mPending.currentStreak, 0);
+
+  // If Week 2 had been completed (add Wed + Fri), Week 3 still achievable on Fri -> currentStreak preserves 3w!
+  const w3ThuBeforeComplete: HabitCheckin[] = [
+    ...checkins,
+    { habitId: 10, dayIndex: w2Mon + 2, done: true, updatedAt: 2 },
+    { habitId: 10, dayIndex: w2Mon + 4, done: true, updatedAt: 2 },
+  ];
+  const preservedStreak = StreakCalculator.calculate(
+    flexHabit,
+    w3ThuBeforeComplete,
+    w0Sat,
+    w3Fri,
+    true
+  );
+  assert.equal(preservedStreak.currentStreak, 3); // W0, W1, W2 (W3 still pending)
+  assert.equal(preservedStreak.longestStreak, 3);
+
+  // If evaluating on Sunday with only 2/3 done and Sun not done yet + allowPending=true -> no remaining future days after Sun -> broken!
+  const w3Sun = w3Mon + 6;
+  const brokenOnSun = StreakCalculator.calculate(
+    flexHabit,
+    w3ThuBeforeComplete,
+    w0Sat,
+    w3Sun,
+    true
+  );
+  assert.equal(brokenOnSun.currentStreak, 0);
+
+  // Complete W3 on Fri -> currentStreak becomes 4w immediately!
+  const withW3Done: HabitCheckin[] = [
+    ...w3ThuBeforeComplete,
+    { habitId: 10, dayIndex: w3Fri, done: true, updatedAt: 3 },
+  ];
+  const active4w = StreakCalculator.calculate(flexHabit, withW3Done, w0Sat, w3Fri, true);
+  assert.equal(active4w.currentStreak, 4);
+  assert.equal(active4w.longestStreak, 4);
+
+  // 2. Over-achievement capping in completionRate:
+  // Full Week 1 (4 done vs target 3 -> capped at 3/3) + Full Week 2 (1 done vs target 3 -> 1/3) = 4/6
+  const w2Sun = w2Mon + 6;
+  const rateMetrics = StreakCalculator.calculate(flexHabit, checkins, w1Mon, w2Sun, false);
+  assert.equal(rateMetrics.scheduledDays, 6);
+  assert.equal(rateMetrics.completedScheduledDays, 4);
+  assert.ok(Math.abs(rateMetrics.completionRate - 4 / 6) < 1e-9);
+
+  // 3. calculateWeeklyProgress on Week 0 Sat-Sun (target clamped to 2)
+  const wk0Prog = StreakCalculator.calculateWeeklyProgress(flexHabit, checkins, w0Sat + 1);
+  assert.equal(wk0Prog.scheduledDays, 2);
+  assert.equal(wk0Prog.completedDays, 2);
+  assert.equal(wk0Prog.isComplete, true);
+
+  // 4. TodayBoard scheduling & deadline hints
+  // Week 1 Wed (w1Mon + 2): 3rd check-in happened on Wed -> MUST still stay visible on Wed (checked today!)
+  assert.equal(
+    TodayBoard.getScheduledHabits([flexHabit], w1Mon + 2, checkins).length,
+    1
+  );
+  // Week 1 Thu (w1Mon + 3): target 3/3 was already closed Mon-Wed & Thu is unchecked -> hidden from Today!
+  assert.equal(
+    TodayBoard.getScheduledHabits([flexHabit], w1Mon + 3, checkins).length,
+    0
+  );
+  // Week 2 Sat (w2Mon + 5): only 1/3 done in Mon, 2 days left (Sat & Sun) for 2 remaining -> visible & mustDoToday = true!
+  assert.equal(
+    TodayBoard.getScheduledHabits([flexHabit], w2Mon + 5, checkins).length,
+    1
+  );
+  const satStatus = TodayBoard.getFlexibleWeekStatus(flexHabit, checkins, w2Mon + 5);
+  assert.ok(satStatus);
+  assert.equal(satStatus.remainingDays, 2);
+  assert.equal(satStatus.remainingNeeded, 2);
+  assert.equal(satStatus.mustDoToday, true);
+
+  // 5. getPeriodDayStats & ChartsAnalytics:
+  // In Week 2 (Mon done, Tue-Fri rest, Sat-Sun shortfall 2), Tue-Fri have scheduled=0, Mon=1/1, Sat & Sun=0/1!
+  const w2Stats = StreakCalculator.getPeriodDayStats(
+    [flexHabit],
+    checkins,
+    w2Mon,
+    w2Sun,
+    w2Sun
+  );
+  assert.deepEqual(w2Stats.get(w2Mon), { scheduled: 1, done: 1 });
+  assert.equal(w2Stats.get(w2Mon + 1), undefined); // Tue rest
+  assert.equal(w2Stats.get(w2Mon + 4), undefined); // Fri rest
+  assert.deepEqual(w2Stats.get(w2Mon + 5), { scheduled: 1, done: 0 }); // Sat deficit
+  assert.deepEqual(w2Stats.get(w2Mon + 6), { scheduled: 1, done: 0 }); // Sun deficit
+
+  const trend = ChartsAnalytics.habitTrendBuckets([flexHabit], checkins, w1Mon, w2Sun, 5);
+  assert.equal(trend.length, 2);
+  assert.equal(trend[0].doneCount, 3);
+  assert.equal(trend[0].scheduledCount, 3);
+  assert.equal(trend[0].rate, 1);
+  assert.equal(trend[1].doneCount, 1);
+  assert.equal(trend[1].scheduledCount, 3);
+  assert.ok(Math.abs(trend[1].rate! - 1 / 3) < 1e-9);
+});
+
 
 
 

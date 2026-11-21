@@ -42,6 +42,7 @@ interface HabitModalProps {
     name: string;
     color: string;
     weekdays: number;
+    weeklyTarget: number | null;
     startDay: number;
   }) => Promise<void>;
 }
@@ -52,7 +53,9 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
   const [hexInput, setHexInput] = createSignal(DEFAULT_HABIT_COLOR);
   const [badge, setBadge] = createSignal<HabitBadgeType>({ kind: 'none' });
   const [badgeTab, setBadgeTab] = createSignal<'none' | 'icon' | 'emoji'>('none');
+  const [scheduleMode, setScheduleMode] = createSignal<'weekdays' | 'weekly_target'>('weekdays');
   const [weekdays, setWeekdays] = createSignal(ALL_WEEKDAYS_MASK);
+  const [weeklyTarget, setWeeklyTarget] = createSignal(3);
   const [startDay, setStartDay] = createSignal<number>(props.todayDay);
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
@@ -67,7 +70,9 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setHexInput(parsed.color);
       setBadge(parsed.badge);
       setBadgeTab(parsed.badge.kind);
+      setScheduleMode(habit.weeklyTarget !== null ? 'weekly_target' : 'weekdays');
       setWeekdays(habit.weekdays);
+      setWeeklyTarget(habit.weeklyTarget ?? 3);
       setStartDay(habit.startDay);
     } else {
       setName('');
@@ -75,7 +80,9 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setHexInput(DEFAULT_HABIT_COLOR);
       setBadge({ kind: 'none' });
       setBadgeTab('none');
+      setScheduleMode('weekdays');
       setWeekdays(ALL_WEEKDAYS_MASK);
+      setWeeklyTarget(3);
       setStartDay(props.todayDay);
     }
     setError(null);
@@ -125,17 +132,21 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setError('Enter a valid hex color (e.g. #3B82F6).');
       return;
     }
-    if ((weekdays() & 0x7f) === 0) {
+    if (scheduleMode() === 'weekdays' && (weekdays() & 0x7f) === 0) {
       setError('Select at least one scheduled day.');
       return;
     }
     setSaving(true);
     setError(null);
     try {
+      const isFlexible = scheduleMode() === 'weekly_target';
       await props.onSave({
         name: trimmed,
         color: HabitAppearance.format(normalizedHex, badge()),
-        weekdays: weekdays() & 0x7f,
+        weekdays: isFlexible
+          ? (weekdays() & 0x7f) || ALL_WEEKDAYS_MASK
+          : weekdays() & 0x7f,
+        weeklyTarget: isFlexible ? weeklyTarget() : null,
         startDay: startDay(),
       });
       props.onClose();
@@ -386,29 +397,91 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
               </div>
             </div>
 
-            <div class="space-y-2">
-              <span class="block text-xs font-medium text-[#9AA1B1]">Scheduled days</span>
-              <div class="grid grid-cols-7 gap-1.5">
-                <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                  {(bit) => {
-                    const active = () => (weekdays() & (1 << bit)) !== 0;
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => toggleWeekday(bit)}
-                        aria-pressed={active()}
-                        class={`min-h-[40px] rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                          active()
-                            ? 'bg-[#3B82F6] text-white'
-                            : 'bg-[#0A0B0E] border border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
-                        }`}
-                      >
-                        {CivilCalendar.weekdayShortLabel(bit)}
-                      </button>
-                    );
-                  }}
-                </For>
+            <div class="space-y-2.5">
+              <div class="flex items-center justify-between gap-2">
+                <span class="block text-xs font-medium text-[#9AA1B1]">Schedule</span>
+                <div class="inline-flex items-center p-0.5 rounded-xl bg-[#0A0B0E] border border-white/[0.08]">
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode('weekdays')}
+                    aria-pressed={scheduleMode() === 'weekdays'}
+                    class={`h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      scheduleMode() === 'weekdays'
+                        ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                        : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    Specific days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode('weekly_target')}
+                    aria-pressed={scheduleMode() === 'weekly_target'}
+                    class={`h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      scheduleMode() === 'weekly_target'
+                        ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                        : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    Times per week
+                  </button>
+                </div>
               </div>
+
+              <Show
+                when={scheduleMode() === 'weekdays'}
+                fallback={
+                  <div class="space-y-2">
+                    <div class="grid grid-cols-7 gap-1.5" role="group" aria-label="Weekly target count">
+                      <For each={[1, 2, 3, 4, 5, 6, 7]}>
+                        {(count) => {
+                          const active = () => weeklyTarget() === count;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setWeeklyTarget(count)}
+                              aria-pressed={active()}
+                              aria-label={`${count} times per week`}
+                              class={`min-h-[40px] rounded-xl text-xs font-mono tabular-nums font-medium transition-colors cursor-pointer ${
+                                active()
+                                  ? 'bg-[#3B82F6] text-white'
+                                  : 'bg-[#0A0B0E] border border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                              }`}
+                            >
+                              {count}×
+                            </button>
+                          );
+                        }}
+                      </For>
+                    </div>
+                    <p class="text-[11px] text-[#8E95A5]">
+                      Complete {weeklyTarget()}× on any days each week (Mon–Sun). Once finished, it clears from Today until next week.
+                    </p>
+                  </div>
+                }
+              >
+                <div class="grid grid-cols-7 gap-1.5">
+                  <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                    {(bit) => {
+                      const active = () => (weekdays() & (1 << bit)) !== 0;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => toggleWeekday(bit)}
+                          aria-pressed={active()}
+                          class={`min-h-[40px] rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                            active()
+                              ? 'bg-[#3B82F6] text-white'
+                              : 'bg-[#0A0B0E] border border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                          }`}
+                        >
+                          {CivilCalendar.weekdayShortLabel(bit)}
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
             </div>
 
             <div class="space-y-1.5">

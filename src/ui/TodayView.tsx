@@ -37,7 +37,11 @@ export function TodayView(props: TodayViewProps): JSX.Element {
   const [addingGoal, setAddingGoal] = createSignal(false);
 
   const scheduledHabits = createMemo(() =>
-    TodayBoard.getScheduledHabits(props.snapshot.habits, props.todayDay)
+    TodayBoard.getScheduledHabits(
+      props.snapshot.habits,
+      props.todayDay,
+      props.snapshot.checkins
+    )
   );
 
   const partitionedTasks = createMemo(() =>
@@ -197,6 +201,17 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                       props.todayDay
                     )
                   );
+                  const flexStatus = createMemo(() =>
+                    TodayBoard.getFlexibleWeekStatus(
+                      habit,
+                      props.snapshot.checkins,
+                      props.todayDay
+                    )
+                  );
+                  const streakUnitShort = () =>
+                    metrics().streakUnit === 'weeks' ? 'w' : 'd';
+                  const streakUnitLong = () =>
+                    metrics().streakUnit === 'weeks' ? 'week' : 'day';
                   const milestone = () =>
                     StreakCalculator.getMilestone(metrics().currentStreak);
                   const exactMilestone = () =>
@@ -259,13 +274,18 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               class={`font-mono tabular-nums ${streakToneClass()}`}
                               title={
                                 milestone()
-                                  ? `${milestone()}-day streak milestone`
+                                  ? `${milestone()}-${streakUnitLong()} streak milestone`
                                   : undefined
                               }
                             >
-                              {metrics().currentStreak}d streak
+                              {metrics().currentStreak}
+                              {streakUnitShort()} streak
                               <Show when={exactMilestone()}>
-                                <span> · {metrics().currentStreak}d milestone</span>
+                                <span>
+                                  {' '}
+                                  · {metrics().currentStreak}
+                                  {streakUnitShort()} milestone
+                                </span>
                               </Show>
                             </span>
                             <Show when={weekly().scheduledDays > 0}>
@@ -278,6 +298,14 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                                 {weekly().isComplete
                                   ? `Week complete (${weekly().completedDays}/${weekly().scheduledDays})`
                                   : `${weekly().completedDays}/${weekly().scheduledDays} this week`}
+                              </span>
+                            </Show>
+                            <Show when={flexStatus()?.mustDoToday}>
+                              <span aria-hidden="true">·</span>
+                              <span class="text-[#F59E0B] font-mono tabular-nums">
+                                {flexStatus()!.remainingDays === 1
+                                  ? 'Last day this week'
+                                  : `${flexStatus()!.remainingDays}d left for ${flexStatus()!.remainingNeeded}`}
                               </span>
                             </Show>
                             <span aria-hidden="true">·</span>

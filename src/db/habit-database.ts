@@ -5,6 +5,7 @@ import {
   HabitNote,
   Task,
   TaskStatus,
+  normalizeWeeklyTarget,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 
@@ -15,6 +16,7 @@ export interface CreateHabitInput {
   name: string;
   color: string;
   weekdays: number;
+  weeklyTarget?: number | null;
   startDay: number;
 }
 
@@ -22,6 +24,7 @@ export interface UpdateHabitPatch {
   name?: string;
   color?: string;
   weekdays?: number;
+  weeklyTarget?: number | null;
   startDay?: number;
 }
 
@@ -133,7 +136,12 @@ export class HabitDatabase {
     ]);
 
     return {
-      habits: habits.sort((a, b) => a.id - b.id),
+      habits: habits
+        .map((h) => ({
+          ...h,
+          weeklyTarget: normalizeWeeklyTarget(h.weeklyTarget),
+        }))
+        .sort((a, b) => a.id - b.id),
       checkins: checkins.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       notes: notes.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       tasks: tasks
@@ -181,7 +189,10 @@ export class HabitDatabase {
     tasksStore.clear();
 
     for (const habit of snapshot.habits) {
-      habitsStore.put(habit);
+      habitsStore.put({
+        ...habit,
+        weeklyTarget: normalizeWeeklyTarget(habit.weeklyTarget),
+      });
     }
     for (const checkin of snapshot.checkins) {
       checkinsStore.put(checkin);
@@ -201,10 +212,13 @@ export class HabitDatabase {
     const now = Date.now();
     const tx = db.transaction('habits', 'readwrite');
     const store = tx.objectStore('habits');
+    const weeklyTarget = normalizeWeeklyTarget(input.weeklyTarget);
+    const maskedWeekdays = input.weekdays & 0x7f;
     const payload: Omit<Habit, 'id'> = {
       name: input.name.trim(),
       color: input.color,
-      weekdays: input.weekdays & 0x7f,
+      weekdays: weeklyTarget !== null && maskedWeekdays === 0 ? 0x7f : maskedWeekdays,
+      weeklyTarget,
       startDay: input.startDay,
       archivedAt: null,
       createdAt: now,
@@ -223,11 +237,18 @@ export class HabitDatabase {
     if (!existing) {
       throw new Error(`Habit ${id} not found`);
     }
+    const nextWeeklyTarget =
+      patch.weeklyTarget !== undefined
+        ? normalizeWeeklyTarget(patch.weeklyTarget)
+        : normalizeWeeklyTarget(existing.weeklyTarget);
+    const rawWeekdays =
+      patch.weekdays !== undefined ? patch.weekdays & 0x7f : existing.weekdays & 0x7f;
     const updated: Habit = {
       ...existing,
       name: patch.name !== undefined ? patch.name.trim() : existing.name,
       color: patch.color !== undefined ? patch.color : existing.color,
-      weekdays: patch.weekdays !== undefined ? patch.weekdays & 0x7f : existing.weekdays,
+      weekdays: nextWeeklyTarget !== null && rawWeekdays === 0 ? 0x7f : rawWeekdays,
+      weeklyTarget: nextWeeklyTarget,
       startDay: patch.startDay !== undefined ? patch.startDay : existing.startDay,
       updatedAt: this.nextTimestamp(existing.updatedAt),
     };

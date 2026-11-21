@@ -135,6 +135,11 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                   return '';
                 };
 
+                const streakUnitShort = () =>
+                  metrics().streakUnit === 'weeks' ? 'w' : 'd';
+                const streakUnitLong = () =>
+                  metrics().streakUnit === 'weeks' ? 'week' : 'day';
+
                 return (
                   <li
                     class={`px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors ${
@@ -156,18 +161,24 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           class={`font-mono tabular-nums ${streakToneClass()}`}
                           title={
                             milestone()
-                              ? `${milestone()}-day streak milestone`
+                              ? `${milestone()}-${streakUnitLong()} streak milestone`
                               : undefined
                           }
                         >
-                          {metrics().currentStreak}d current
+                          {metrics().currentStreak}
+                          {streakUnitShort()} current
                           <Show when={exactMilestone()}>
-                            <span> · {metrics().currentStreak}d milestone</span>
+                            <span>
+                              {' '}
+                              · {metrics().currentStreak}
+                              {streakUnitShort()} milestone
+                            </span>
                           </Show>
                         </span>
                         <span aria-hidden="true">·</span>
                         <span class="font-mono tabular-nums">
-                          {metrics().longestStreak}d best
+                          {metrics().longestStreak}
+                          {streakUnitShort()} best
                         </span>
                         <Show when={habit.archivedAt === null && weekly().scheduledDays > 0}>
                           <span aria-hidden="true">·</span>
@@ -189,27 +200,39 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                     </div>
 
                     <div class="flex items-center justify-between sm:justify-end gap-4 shrink-0">
-                      <div
-                        class="flex items-center gap-1"
-                        aria-label="Scheduled weekdays"
+                      <Show
+                        when={habit.weeklyTarget === null}
+                        fallback={
+                          <span
+                            class="text-xs font-mono tabular-nums text-[#C8CDD8] whitespace-nowrap"
+                            aria-label="Flexible weekly schedule"
+                          >
+                            {habit.weeklyTarget}× / week
+                          </span>
+                        }
                       >
-                        <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                          {(bit) => {
-                            const active = (habit.weekdays & (1 << bit)) !== 0;
-                            return (
-                              <span
-                                class={`w-6 h-6 rounded-md text-[11px] font-mono flex items-center justify-center ${
-                                  active
-                                    ? 'bg-white/[0.1] text-[#F5F7FA]'
-                                    : 'text-[#4B5563]'
-                                }`}
-                              >
-                                {CivilCalendar.weekdayShortLabel(bit).slice(0, 1)}
-                              </span>
-                            );
-                          }}
-                        </For>
-                      </div>
+                        <div
+                          class="flex items-center gap-1"
+                          aria-label="Scheduled weekdays"
+                        >
+                          <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                            {(bit) => {
+                              const active = (habit.weekdays & (1 << bit)) !== 0;
+                              return (
+                                <span
+                                  class={`w-6 h-6 rounded-md text-[11px] font-mono flex items-center justify-center ${
+                                    active
+                                      ? 'bg-white/[0.1] text-[#F5F7FA]'
+                                      : 'text-[#4B5563]'
+                                  }`}
+                                >
+                                  {CivilCalendar.weekdayShortLabel(bit).slice(0, 1)}
+                                </span>
+                              );
+                            }}
+                          </For>
+                        </div>
+                      </Show>
 
                       <div class="flex items-center gap-1">
                         <button

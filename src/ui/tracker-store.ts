@@ -485,6 +485,7 @@ export class TrackerStore {
     name: string;
     color: string;
     weekdays: number;
+    weeklyTarget?: number | null;
     startDay: number;
   }): Promise<void> {
     const target = this.editingHabit();

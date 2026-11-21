@@ -92,11 +92,17 @@ test('HabitDatabase manages habits, checkins, notes, tasks, monotonic timestamps
   assert.equal(h1.id, 1);
   assert.equal(h1.name, 'Morning Run');
   assert.equal(h1.weekdays, 0x7f);
+  assert.equal(h1.weeklyTarget, null);
   assert.equal(h1.archivedAt, null);
 
-  const h1Updated = await db.updateHabit(h1.id, { name: '  Evening Run  ', weekdays: 0b0000101 });
+  const h1Updated = await db.updateHabit(h1.id, {
+    name: '  Evening Run  ',
+    weekdays: 0b0000101,
+    weeklyTarget: 3,
+  });
   assert.equal(h1Updated.name, 'Evening Run');
   assert.equal(h1Updated.weekdays, 0b0000101);
+  assert.equal(h1Updated.weeklyTarget, 3);
   assert.ok(h1Updated.updatedAt > h1.updatedAt);
 
   const h1Archived = await db.setHabitArchived(h1.id, true);
@@ -176,6 +182,7 @@ test('HabitDatabase manages habits, checkins, notes, tasks, monotonic timestamps
         name: 'Replaced Habit',
         color: '#22C55E',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: 20700,
         archivedAt: null,
         createdAt: 100,
@@ -298,6 +305,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
         name: 'Remote Stretch',
         color: '#A855F7',
         weekdays: 127,
+        weeklyTarget: null,
         startDay: store.todayDay(),
         archivedAt: null,
         createdAt: 500,

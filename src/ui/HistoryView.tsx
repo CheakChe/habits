@@ -7,7 +7,7 @@ import {
   DayCellClassifier,
   DayCellTone,
 } from '../utils/date-range';
-import { StreakCalculator } from '../utils/streak-calculator';
+import { StreakCalculator, StreakUnit } from '../utils/streak-calculator';
 import { TaskAnalytics } from '../utils/task-analytics';
 import { HabitAppearance } from '../utils/habit-appearance';
 import { CustomSelect, HistoryRangePicker, SelectOption } from './CustomControls';
@@ -157,7 +157,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     if (habits.length === 0) {
       return {
         currentStreak: 0,
+        currentStreakUnit: 'days' as StreakUnit,
         longestStreak: 0,
+        longestStreakUnit: 'days' as StreakUnit,
         completionRate: 0,
         scheduledDays: 0,
         completedScheduledDays: 0,
@@ -166,7 +168,11 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     }
 
     let bestCurrent = 0;
+    let bestCurrentEquiv = -1;
+    let bestCurrentUnit: StreakUnit = 'days';
     let bestLongest = 0;
+    let bestLongestEquiv = -1;
+    let bestLongestUnit: StreakUnit = 'days';
     let totalScheduled = 0;
     let totalCompleted = 0;
     const startDay = effectiveRangeStart();
@@ -181,15 +187,27 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         endDay,
         allowPending
       );
-      if (m.currentStreak > bestCurrent) bestCurrent = m.currentStreak;
-      if (m.longestStreak > bestLongest) bestLongest = m.longestStreak;
+      const currEquiv = m.streakUnit === 'weeks' ? m.currentStreak * 7 : m.currentStreak;
+      if (currEquiv > bestCurrentEquiv) {
+        bestCurrentEquiv = currEquiv;
+        bestCurrent = m.currentStreak;
+        bestCurrentUnit = m.streakUnit;
+      }
+      const longEquiv = m.streakUnit === 'weeks' ? m.longestStreak * 7 : m.longestStreak;
+      if (longEquiv > bestLongestEquiv) {
+        bestLongestEquiv = longEquiv;
+        bestLongest = m.longestStreak;
+        bestLongestUnit = m.streakUnit;
+      }
       totalScheduled += m.scheduledDays;
       totalCompleted += m.completedScheduledDays;
     }
 
     return {
       currentStreak: bestCurrent,
+      currentStreakUnit: bestCurrentUnit,
       longestStreak: bestLongest,
+      longestStreakUnit: bestLongestUnit,
       completionRate: totalScheduled === 0 ? 0 : totalCompleted / totalScheduled,
       scheduledDays: totalScheduled,
       completedScheduledDays: totalCompleted,
@@ -254,7 +272,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       Math.floor((endWeekStart - firstWeekStart) / 7) + 1
     );
     const habits = targetHabits();
-    const cIndex = checkinIndex();
+    const dayStats = StreakCalculator.getPeriodDayStats(
+      habits,
+      props.snapshot.checkins,
+      clampedStart,
+      effectiveEnd,
+      props.todayDay
+    );
 
     const weeks: {
       weekStart: number;
@@ -308,16 +332,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           });
           continue;
         }
-        let scheduled = 0;
-        let done = 0;
-        for (const h of habits) {
-          if (h.startDay <= dayIndex && CivilCalendar.isScheduled(h.weekdays, dayIndex)) {
-            scheduled += 1;
-            if (cIndex.get(`${h.id}:${dayIndex}`) === true) {
-              done += 1;
-            }
-          }
-        }
+        const entry = dayStats.get(dayIndex);
+        const scheduled = entry?.scheduled ?? 0;
+        const done = entry?.done ?? 0;
         totalDone += done;
         const tone = DayCellClassifier.classify(
           dayIndex,
@@ -336,6 +353,18 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   const monthGrid = createMemo(() =>
     CivilCalendar.getMonthDays(viewYear(), viewMonth())
   );
+
+  const monthDayStats = createMemo(() => {
+    const days = monthGrid().days;
+    if (days.length === 0) return new Map<number, { scheduled: number; done: number }>();
+    return StreakCalculator.getPeriodDayStats(
+      targetHabits(),
+      props.snapshot.checkins,
+      days[0],
+      Math.min(days[days.length - 1], props.todayDay),
+      props.todayDay
+    );
+  });
 
   const goPrevMonth = () => {
     if (viewMonth() === 1) {
@@ -471,8 +500,10 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
 
           <Show when={props.subTab === 'calendar'}>
             <span class="text-xs font-mono tabular-nums text-[#8E95A5]">
-              Best streak: {analyticsSummary().currentStreak}d current ·{' '}
-              {analyticsSummary().longestStreak}d best
+              Best streak: {analyticsSummary().currentStreak}
+              {analyticsSummary().currentStreakUnit === 'weeks' ? 'w' : 'd'} current ·{' '}
+              {analyticsSummary().longestStreak}
+              {analyticsSummary().longestStreakUnit === 'weeks' ? 'w' : 'd'} best
             </span>
           </Show>
         </div>
@@ -559,24 +590,10 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                   const isFuture = () => dayIndex > props.todayDay;
                   const isSelected = () => dayIndex === selectedDay();
 
-                  const stats = createMemo(() => {
+                  const stats = () => {
                     if (isFuture()) return { scheduled: 0, done: 0 };
-                    let scheduled = 0;
-                    let done = 0;
-                    const cIndex = checkinIndex();
-                    for (const h of targetHabits()) {
-                      if (
-                        h.startDay <= dayIndex &&
-                        CivilCalendar.isScheduled(h.weekdays, dayIndex)
-                      ) {
-                        scheduled += 1;
-                        if (cIndex.get(`${h.id}:${dayIndex}`) === true) {
-                          done += 1;
-                        }
-                      }
-                    }
-                    return { scheduled, done };
-                  });
+                    return monthDayStats().get(dayIndex) ?? { scheduled: 0, done: 0 };
+                  };
 
                   const tone = createMemo(() =>
                     DayCellClassifier.classify(
@@ -650,8 +667,25 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                   {(habit) => {
                     const isDone = () =>
                       checkinIndex().get(`${habit.id}:${selectedDay()}`) === true;
-                    const isScheduled = () =>
-                      CivilCalendar.isScheduled(habit.weekdays, selectedDay());
+                    const scheduleStatusLabel = () => {
+                      if (habit.weeklyTarget !== null) {
+                        const wkEnd = Math.min(
+                          CivilCalendar.startOfWeek(selectedDay()) + 6,
+                          props.todayDay
+                        );
+                        const wk = StreakCalculator.calculateWeeklyProgress(
+                          habit,
+                          props.snapshot.checkins,
+                          wkEnd
+                        );
+                        return wk.isComplete
+                          ? `Flexible (${wk.completedDays}/${wk.scheduledDays} wk complete)`
+                          : `Flexible (${wk.completedDays}/${wk.scheduledDays} wk)`;
+                      }
+                      return CivilCalendar.isScheduled(habit.weekdays, selectedDay())
+                        ? 'Scheduled'
+                        : 'Off-schedule day';
+                    };
                     const noteText = () =>
                       noteIndex().get(`${habit.id}:${selectedDay()}`) ?? '';
                     const isEditingNote = () => editingNoteHabitId() === habit.id;
@@ -697,7 +731,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                               </p>
                             </div>
                             <p class="text-xs text-[#8E95A5] truncate">
-                              {isScheduled() ? 'Scheduled' : 'Off-schedule day'}
+                              {scheduleStatusLabel()}
                               {noteText() && !isEditingNote() ? ` · ${noteText()}` : ''}
                             </p>
                           </div>

@@ -5,6 +5,7 @@ import {
   HabitNote,
   Task,
   TaskStatus,
+  normalizeWeeklyTarget,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { IdTable } from './id-table';
@@ -13,7 +14,7 @@ import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 5;
+const FORMAT_VERSION = 6;
 
 function encodeTaskStatus(task: Task): number {
   const status = task.status ?? (task.done ? 'done' : 'open');
@@ -96,6 +97,7 @@ export class SnapshotCodec {
       body.writeVarUint(stringTable.intern(habit.name));
       body.writeVarUint(stringTable.intern(habit.color));
       body.writeUint8(habit.weekdays & 0x7f);
+      body.writeUint8(normalizeWeeklyTarget(habit.weeklyTarget) ?? 0);
       body.writeVarInt(habit.startDay);
 
       if (habit.archivedAt !== null) {
@@ -209,13 +211,7 @@ export class SnapshotCodec {
       }
     }
     const version = reader.readUint8();
-    if (
-      version !== 1 &&
-      version !== 2 &&
-      version !== 3 &&
-      version !== 4 &&
-      version !== FORMAT_VERSION
-    ) {
+    if (version < 1 || version > FORMAT_VERSION) {
       throw new Error(`Unsupported snapshot version: ${version}`);
     }
 
@@ -238,6 +234,14 @@ export class SnapshotCodec {
       if (weekdays > 0x7f) {
         throw new Error(`Invalid weekdays mask: ${weekdays}`);
       }
+      let weeklyTarget: number | null = null;
+      if (version >= 6) {
+        const wtByte = reader.readUint8();
+        if (wtByte > 7) {
+          throw new Error(`Invalid weeklyTarget byte in snapshot: ${wtByte}`);
+        }
+        weeklyTarget = wtByte === 0 ? null : wtByte;
+      }
       const startDay = reader.readVarInt();
       const hasArchivedAt = reader.readUint8();
       if (hasArchivedAt !== 0 && hasArchivedAt !== 1) {
@@ -252,6 +256,7 @@ export class SnapshotCodec {
         name,
         color,
         weekdays,
+        weeklyTarget,
         startDay,
         archivedAt,
         createdAt,

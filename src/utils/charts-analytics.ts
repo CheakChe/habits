@@ -1,5 +1,12 @@
-import { Habit, HabitCheckin, Task, TaskStatus } from '../types/domain';
+import {
+  Habit,
+  HabitCheckin,
+  Task,
+  TaskStatus,
+  normalizeWeeklyTarget,
+} from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
+import { StreakCalculator } from './streak-calculator';
 
 export interface HabitTrendBucket {
   key: string;
@@ -41,34 +48,62 @@ function resolveTaskStatus(task: Task): TaskStatus {
   return task.done ? 'done' : 'open';
 }
 
-function buildDoneLookup(checkins: HabitCheckin[]): Set<string> {
-  const doneSet = new Set<string>();
-  for (const c of checkins) {
-    if (c.done) {
-      doneSet.add(`${c.habitId}:${c.dayIndex}`);
-    }
-  }
-  return doneSet;
-}
-
 function countHabitRange(
   habits: Habit[],
-  doneSet: Set<string>,
+  checkins: HabitCheckin[],
+  dayStats: Map<number, { scheduled: number; done: number }>,
   startDay: number,
   endDay: number
 ): { scheduledCount: number; doneCount: number; rate: number | null } {
   let scheduledCount = 0;
   let doneCount = 0;
-  for (let d = startDay; d <= endDay; d++) {
+
+  if (startDay === endDay) {
+    const entry = dayStats.get(startDay);
+    if (entry) {
+      scheduledCount = entry.scheduled;
+      doneCount = entry.done;
+    }
+  } else {
     for (const h of habits) {
-      if (h.startDay <= d && CivilCalendar.isScheduled(h.weekdays, d)) {
-        scheduledCount += 1;
-        if (doneSet.has(`${h.id}:${d}`)) {
-          doneCount += 1;
+      if (normalizeWeeklyTarget(h.weeklyTarget) !== null) {
+        const m = StreakCalculator.calculate(h, checkins, startDay, endDay, false);
+        scheduledCount += m.scheduledDays;
+        doneCount += m.completedScheduledDays;
+      } else {
+        const effStart = Math.max(startDay, h.startDay);
+        for (let d = effStart; d <= endDay; d++) {
+          if (CivilCalendar.isScheduled(h.weekdays, d)) {
+            scheduledCount += 1;
+          }
+        }
+      }
+    }
+    // For fixed habits' doneCount in multi-day buckets, derive from checkins directly
+    const fixedIds = new Set(
+      habits
+        .filter((h) => normalizeWeeklyTarget(h.weeklyTarget) === null)
+        .map((h) => h.id)
+    );
+    if (fixedIds.size > 0) {
+      const doneLookup = new Set<string>();
+      for (const c of checkins) {
+        if (c.done && fixedIds.has(c.habitId) && c.dayIndex >= startDay && c.dayIndex <= endDay) {
+          doneLookup.add(`${c.habitId}:${c.dayIndex}`);
+        }
+      }
+      for (const h of habits) {
+        if (!fixedIds.has(h.id)) continue;
+        const effStart = Math.max(startDay, h.startDay);
+        for (let d = effStart; d <= endDay; d++) {
+          if (CivilCalendar.isScheduled(h.weekdays, d) && doneLookup.has(`${h.id}:${d}`)) {
+            doneCount += 1;
+          }
         }
       }
     }
   }
+
   return {
     scheduledCount,
     doneCount,
@@ -87,14 +122,17 @@ export class ChartsAnalytics {
     const s = Math.min(startDay, endDay);
     const e = Math.max(startDay, endDay);
     const cap = Math.max(1, maxBuckets);
-    const doneSet = buildDoneLookup(checkins);
-
     const totalDays = e - s + 1;
+    const dayStats =
+      totalDays <= cap
+        ? StreakCalculator.getPeriodDayStats(habits, checkins, s, e, e)
+        : new Map<number, { scheduled: number; done: number }>();
+
     if (totalDays <= cap) {
       const out: HabitTrendBucket[] = [];
       for (let d = s; d <= e; d++) {
         const formatted = CivilCalendar.formatShortDate(d);
-        const counts = countHabitRange(habits, doneSet, d, d);
+        const counts = countHabitRange(habits, checkins, dayStats, d, d);
         out.push({
           key: `d:${d}`,
           label: formatted,
@@ -118,7 +156,7 @@ export class ChartsAnalytics {
         const bucketStart = Math.max(s, ws);
         const bucketEnd = Math.min(e, ws + 6);
         const formatted = CivilCalendar.formatShortDate(bucketStart);
-        const counts = countHabitRange(habits, doneSet, bucketStart, bucketEnd);
+        const counts = countHabitRange(habits, checkins, dayStats, bucketStart, bucketEnd);
         out.push({
           key: `w:${ws}`,
           label: `${CivilCalendar.formatShortDate(bucketStart)} – ${CivilCalendar.formatShortDate(bucketEnd)}`,
@@ -147,7 +185,7 @@ export class ChartsAnalytics {
         const monthEnd = monthStart + daysInMonth - 1;
         const bucketStart = Math.max(s, monthStart);
         const bucketEnd = Math.min(e, monthEnd);
-        const counts = countHabitRange(habits, doneSet, bucketStart, bucketEnd);
+        const counts = countHabitRange(habits, checkins, dayStats, bucketStart, bucketEnd);
         out.push({
           key: `m:${year}-${month}`,
           label: CivilCalendar.formatMonthYear(year, month),
@@ -164,7 +202,7 @@ export class ChartsAnalytics {
     const out: HabitTrendBucket[] = [];
     for (let cursor = s; cursor <= e; cursor += step) {
       const bucketEnd = Math.min(e, cursor + step - 1);
-      const counts = countHabitRange(habits, doneSet, cursor, bucketEnd);
+      const counts = countHabitRange(habits, checkins, dayStats, cursor, bucketEnd);
       out.push({
         key: `r:${cursor}-${bucketEnd}`,
         label: `${CivilCalendar.formatShortDate(cursor)} – ${CivilCalendar.formatShortDate(bucketEnd)}`,
@@ -185,21 +223,17 @@ export class ChartsAnalytics {
   ): WeekdayHabitStat[] {
     const s = Math.min(startDay, endDay);
     const e = Math.max(startDay, endDay);
-    const doneSet = buildDoneLookup(checkins);
+    const dayStats = StreakCalculator.getPeriodDayStats(habits, checkins, s, e, e);
 
     const scheduled = new Array<number>(7).fill(0);
     const done = new Array<number>(7).fill(0);
 
     for (let d = s; d <= e; d++) {
+      const entry = dayStats.get(d);
+      if (!entry) continue;
       const bit = CivilCalendar.weekdayBit(d);
-      for (const h of habits) {
-        if (h.startDay <= d && CivilCalendar.isScheduled(h.weekdays, d)) {
-          scheduled[bit] += 1;
-          if (doneSet.has(`${h.id}:${d}`)) {
-            done[bit] += 1;
-          }
-        }
-      }
+      scheduled[bit] += entry.scheduled;
+      done[bit] += entry.done;
     }
 
     return [0, 1, 2, 3, 4, 5, 6].map((bit) => ({

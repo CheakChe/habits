@@ -4,7 +4,7 @@ import { ChartsAnalytics } from '../utils/charts-analytics';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DateRangeResolver, DayCellTone } from '../utils/date-range';
 import { HabitAppearance } from '../utils/habit-appearance';
-import { HabitPeriodSummary } from '../utils/streak-calculator';
+import { HabitPeriodSummary, StreakUnit } from '../utils/streak-calculator';
 import { TaskOutcomeBucket, TaskRangeSummary } from '../utils/task-analytics';
 import { HabitBadge } from './HabitBadge';
 import { CalendarIcon } from './Icons';
@@ -31,7 +31,9 @@ export interface HeatmapDataView {
 
 interface AnalyticsSummaryView {
   currentStreak: number;
+  currentStreakUnit: StreakUnit;
   longestStreak: number;
+  longestStreakUnit: StreakUnit;
   completionRate: number;
   scheduledDays: number;
   completedScheduledDays: number;
@@ -319,14 +321,16 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             {props.selectedHabitId === 'all' ? 'Best Current Streak' : 'Current Streak'}
           </span>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {props.analyticsSummary.currentStreak}d
+            {props.analyticsSummary.currentStreak}
+            {props.analyticsSummary.currentStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
         </div>
 
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
           <span class="text-xs text-[#8E95A5]">Longest Streak</span>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {props.analyticsSummary.longestStreak}d
+            {props.analyticsSummary.longestStreak}
+            {props.analyticsSummary.longestStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
         </div>
 
@@ -1215,10 +1219,20 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                           <span>
                             {row.completedDays} done · {row.missedDays} missed
                           </span>
+                          <Show when={row.habit.weeklyTarget !== null}>
+                            <span aria-hidden="true">·</span>
+                            <span>{row.habit.weeklyTarget}×/wk</span>
+                          </Show>
                           <span aria-hidden="true">·</span>
-                          <span>{row.currentStreak}d current</span>
+                          <span>
+                            {row.currentStreak}
+                            {row.streakUnit === 'weeks' ? 'w' : 'd'} current
+                          </span>
                           <span aria-hidden="true">·</span>
-                          <span>{row.longestStreak}d best</span>
+                          <span>
+                            {row.longestStreak}
+                            {row.streakUnit === 'weeks' ? 'w' : 'd'} best
+                          </span>
                         </div>
                       </div>
 

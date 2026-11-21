@@ -4,11 +4,20 @@ export interface Habit {
   color: string;
   /** 7-bit mask: bit 0 = Monday .. bit 6 = Sunday */
   weekdays: number;
+  /** Flexible weekly goal (1..7 times per week, Mon–Sun), or null for fixed weekdays */
+  weeklyTarget: number | null;
   /** Local civil dayIndex when the habit starts */
   startDay: number;
   archivedAt: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export function normalizeWeeklyTarget(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 7) {
+    return value;
+  }
+  return null;
 }
 
 export interface HabitCheckin {
