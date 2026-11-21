@@ -51,3 +51,5 @@ export interface DomainSnapshot {
 export type SessionMode = 'guest' | 'google';
 
 export type ActiveTab = 'today' | 'habits' | 'tasks' | 'history';
+
+export type HistorySubTab = 'calendar' | 'charts';

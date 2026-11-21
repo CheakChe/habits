@@ -1,5 +1,5 @@
 import { For, JSX, Show, createEffect, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot } from '../types/domain';
+import { DomainSnapshot, HistorySubTab } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import {
   DateRangePresetId,
@@ -12,12 +12,15 @@ import { TaskAnalytics } from '../utils/task-analytics';
 import { HabitAppearance } from '../utils/habit-appearance';
 import { CustomSelect, HistoryRangePicker, SelectOption } from './CustomControls';
 import { HabitBadge } from './HabitBadge';
+import { HistoryChartsPanel } from './HistoryChartsPanel';
 import {
   ArchiveIcon,
+  CalendarIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
+  HistoryTabIcon,
   NoteIcon,
   RepeatIcon,
 } from './Icons';
@@ -26,6 +29,8 @@ interface HistoryViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
   timeZone: string;
+  subTab: HistorySubTab;
+  onSelectSubTab: (tab: HistorySubTab) => void;
   rangePreset: DateRangePresetId;
   customStartDay: number;
   customEndDay: number;
@@ -34,27 +39,6 @@ interface HistoryViewProps {
   onChangeTimeZone: (timeZone: string) => void;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
   onSaveNote: (habitId: number, dayIndex: number, text: string) => Promise<void>;
-}
-
-function heatmapSquareClass(tone: DayCellTone): string {
-  switch (tone) {
-    case 'complete':
-      return 'bg-[#39D353]';
-    case 'missed-slight':
-      return 'bg-[#581C24]';
-    case 'missed-moderate':
-      return 'bg-[#881B22]';
-    case 'missed-heavy':
-      return 'bg-[#B91C1C]';
-    case 'missed-all':
-      return 'bg-[#EF4444]';
-    case 'today-open':
-      return 'bg-[#3B181E] border border-[#EF4444]/40';
-    case 'unscheduled':
-    case 'future':
-    default:
-      return 'bg-[#0D1016] border border-white/[0.06]';
-  }
 }
 
 function calendarTileClass(tone: DayCellTone, isSelected: boolean): string {
@@ -96,11 +80,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   const [selectedHabitId, setSelectedHabitId] = createSignal<number | 'all'>('all');
   const [editingNoteHabitId, setEditingNoteHabitId] = createSignal<number | null>(null);
   const [noteDraft, setNoteDraft] = createSignal('');
-  const [hoveredCell, setHoveredCell] = createSignal<{
-    dayIndex: number;
-    done: number;
-    scheduled: number;
-  } | null>(null);
 
   createEffect(() => {
     if (selectedDay() > props.todayDay) {
@@ -247,13 +226,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     )
   );
 
-  const maxBucketCount = createMemo(() =>
-    Math.max(
-      1,
-      ...taskOutcomeBuckets().map((b) => b.doneCount + b.notDoneCount)
-    )
-  );
-
   const selectedDayTasks = createMemo(() =>
     TaskAnalytics.tasksForDay(
       props.snapshot.tasks,
@@ -395,102 +367,114 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       props.snapshot.tasks.every((t) => t.deletedAt !== null)
   );
 
+  const inspectDayInCalendar = (dayIndex: number) => {
+    const target = Math.min(dayIndex, props.todayDay);
+    const local = CivilCalendar.toLocalDate(target);
+    setViewYear(local.year);
+    setViewMonth(local.month);
+    setSelectedDay(target);
+    setEditingNoteHabitId(null);
+    props.onSelectSubTab('calendar');
+  };
+
   return (
-    <div class="space-y-8">
-      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4 border-b border-white/[0.08] pb-6">
-        <div class="space-y-1 min-w-0">
-          <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
-            History &amp; Analytics
-          </h1>
-          <p class="text-sm text-[#8E95A5]">
-            Inspect past days, edit check-ins, and track streaks computed directly from local records.
-          </p>
+    <div class="space-y-6">
+      <div class="flex flex-col gap-4 border-b border-white/[0.08] pb-5">
+        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div class="space-y-1 min-w-0">
+            <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
+              History &amp; Analytics
+            </h1>
+            <p class="text-sm text-[#8E95A5]">
+              {props.subTab === 'calendar'
+                ? 'Inspect past days, edit check-ins, and review daily notes and tasks.'
+                : 'Track habit consistency trends, weekday patterns, and task discipline over time.'}
+            </p>
+          </div>
+
+          {/* Sub-tab Segmented Control: Calendar | Charts */}
+          <div
+            role="tablist"
+            aria-label="History view mode"
+            class="inline-flex items-center p-1 rounded-xl bg-[#14161B] border border-white/[0.08] self-start lg:self-auto shrink-0"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.subTab === 'calendar'}
+              onClick={() => props.onSelectSubTab('calendar')}
+              class={`h-9 px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                props.subTab === 'calendar'
+                  ? 'bg-[#3B82F6] text-white'
+                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+              }`}
+            >
+              <CalendarIcon class="w-3.5 h-3.5" />
+              <span>Calendar</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.subTab === 'charts'}
+              onClick={() => props.onSelectSubTab('charts')}
+              class={`h-9 px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                props.subTab === 'charts'
+                  ? 'bg-[#3B82F6] text-white'
+                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+              }`}
+            >
+              <HistoryTabIcon class="w-3.5 h-3.5" />
+              <span>Charts</span>
+            </button>
+          </div>
         </div>
 
-        <div class="flex items-center gap-3 flex-wrap lg:flex-nowrap shrink-0">
-          <CustomSelect
-            ariaLabel="Filter by habit"
-            value={selectedHabitId() === 'all' ? 'all' : String(selectedHabitId())}
-            options={[
-              {
-                value: 'all',
-                label: `All Habits (${props.snapshot.habits.length})`,
-              },
-              ...props.snapshot.habits.map(
-                (h): SelectOption<string> => ({
-                  value: String(h.id),
-                  label: h.name,
-                  hint: h.archivedAt !== null ? 'Archived' : undefined,
-                  dotColor: h.color,
-                })
-              ),
-            ]}
-            onChange={(val) =>
-              setSelectedHabitId(val === 'all' ? 'all' : Number(val))
-            }
-          />
+        {/* Context Filters Row */}
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-3 flex-wrap">
+            <CustomSelect
+              ariaLabel="Filter by habit"
+              value={selectedHabitId() === 'all' ? 'all' : String(selectedHabitId())}
+              options={[
+                {
+                  value: 'all',
+                  label: `All Habits (${props.snapshot.habits.length})`,
+                },
+                ...props.snapshot.habits.map(
+                  (h): SelectOption<string> => ({
+                    value: String(h.id),
+                    label: h.name,
+                    hint: h.archivedAt !== null ? 'Archived' : undefined,
+                    dotColor: h.color,
+                  })
+                ),
+              ]}
+              onChange={(val) =>
+                setSelectedHabitId(val === 'all' ? 'all' : Number(val))
+              }
+            />
 
-          <HistoryRangePicker
-            preset={props.rangePreset}
-            customStartDay={props.customStartDay}
-            customEndDay={props.customEndDay}
-            resolvedRange={resolvedRange()}
-            todayDay={props.todayDay}
-            timeZone={props.timeZone}
-            onSelectPreset={handleSelectPreset}
-            onSelectCustomRange={handleSelectCustomRange}
-            onChangeTimeZone={props.onChangeTimeZone}
-          />
-        </div>
-      </div>
-
-      {/* 4-Column KPI Strip */}
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">
-            {selectedHabitId() === 'all' ? 'Best Current Streak' : 'Current Streak'}
-          </span>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {analyticsSummary().currentStreak}d
-          </p>
-        </div>
-
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">Longest Streak</span>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {analyticsSummary().longestStreak}d
-          </p>
-        </div>
-
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">Completion Rate</span>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {Math.round(analyticsSummary().completionRate * 100)}%
-          </p>
-          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
-            {analyticsSummary().completedScheduledDays} done ·{' '}
-            {analyticsSummary().missedScheduledDays} missed
-          </span>
-        </div>
-
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">Tasks Done</span>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {taskSummary().doneCount}
-            <Show when={taskSummary().completionRate !== null}>
-              <span class="text-sm font-normal text-[#8E95A5]">
-                {' '}
-                · {Math.round(taskSummary().completionRate! * 100)}%
-              </span>
+            <Show when={props.subTab === 'charts'}>
+              <HistoryRangePicker
+                preset={props.rangePreset}
+                customStartDay={props.customStartDay}
+                customEndDay={props.customEndDay}
+                resolvedRange={resolvedRange()}
+                todayDay={props.todayDay}
+                timeZone={props.timeZone}
+                onSelectPreset={handleSelectPreset}
+                onSelectCustomRange={handleSelectCustomRange}
+                onChangeTimeZone={props.onChangeTimeZone}
+              />
             </Show>
-          </p>
-          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block truncate">
-            {taskSummary().doneCount} done · {taskSummary().notDoneCount} not done
-            <Show when={taskSummary().archivedCount > 0}>
-              {' '}
-              · {taskSummary().archivedCount} arch
-            </Show>
-          </span>
+          </div>
+
+          <Show when={props.subTab === 'calendar'}>
+            <span class="text-xs font-mono tabular-nums text-[#8E95A5]">
+              Best streak: {analyticsSummary().currentStreak}d current ·{' '}
+              {analyticsSummary().longestStreak}d best
+            </span>
+          </Show>
         </div>
       </div>
 
@@ -505,6 +489,31 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </div>
         }
       >
+        <Show
+          when={props.subTab === 'calendar'}
+          fallback={
+            <HistoryChartsPanel
+              habits={props.snapshot.habits}
+              targetHabits={targetHabits()}
+              selectedHabitId={selectedHabitId()}
+              checkins={props.snapshot.checkins}
+              tasks={props.snapshot.tasks}
+              effectiveRangeStart={effectiveRangeStart()}
+              effectiveRangeEnd={effectiveRangeEnd()}
+              rangeLabel={resolvedRange().label}
+              timeZone={props.timeZone}
+              analyticsSummary={analyticsSummary()}
+              taskSummary={taskSummary()}
+              taskOutcomeBuckets={taskOutcomeBuckets()}
+              habitBreakdown={habitBreakdown()}
+              heatmapData={heatmapData()}
+              selectedDay={selectedDay()}
+              onSelectDay={(day) => setSelectedDay(day)}
+              onInspectDayInCalendar={inspectDayInCalendar}
+              onSelectHabitFilter={(id) => setSelectedHabitId(id)}
+            />
+          }
+        >
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
             <div class="flex items-center justify-between">
@@ -872,344 +881,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             </div>
           </section>
         </div>
-
-        {/* Heatmap & Weekly Completed Tasks Chart */}
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-          <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-5">
-            <div class="flex items-start sm:items-center justify-between flex-wrap gap-3">
-              <div>
-                <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                  Consistency Heatmap
-                </h2>
-                <p class="text-xs text-[#8E95A5]">
-                  <span class="font-mono tabular-nums text-[#C8CDD8]">
-                    {heatmapData().totalDone}
-                  </span>{' '}
-                  check-ins ·{' '}
-                  <span class="font-mono tabular-nums">
-                    {DateRangeResolver.formatRangeLabel(
-                      heatmapData().clampedStart,
-                      heatmapData().effectiveEnd
-                    )}
-                  </span>
-                  {heatmapData().isCapped ? ' (last 2 years shown)' : ''}
-                </p>
-              </div>
-            </div>
-
-            {/* Square contribution grid */}
-            <div class="overflow-x-auto pb-1">
-              <div class="inline-flex gap-2 items-start py-1 pl-0.5 pr-2">
-                {/* Weekday axis labels */}
-                <div class="flex flex-col gap-[3px] pt-[18px] text-[10px] leading-[12px] text-[#6B7280] select-none shrink-0">
-                  <span class="h-[12px] flex items-center">Mon</span>
-                  <span class="h-[12px]" aria-hidden="true" />
-                  <span class="h-[12px] flex items-center">Wed</span>
-                  <span class="h-[12px]" aria-hidden="true" />
-                  <span class="h-[12px] flex items-center">Fri</span>
-                  <span class="h-[12px]" aria-hidden="true" />
-                  <span class="h-[12px]" aria-hidden="true" />
-                </div>
-
-                {/* Columns of 7 day squares + month header row */}
-                <div class="flex flex-col gap-1.5">
-                  <div class="flex gap-[3px] h-[12px] text-[10px] leading-[12px] text-[#8E95A5] select-none">
-                    <For each={heatmapData().weeks}>
-                      {(week) => (
-                        <div class="w-[12px] shrink-0 overflow-visible whitespace-nowrap">
-                          {week.monthLabel}
-                        </div>
-                      )}
-                    </For>
-                  </div>
-
-                  <div class="flex gap-[3px]">
-                    <For each={heatmapData().weeks}>
-                      {(week) => (
-                        <div class="flex flex-col gap-[3px] shrink-0">
-                          <For each={week.days}>
-                            {(cell) => (
-                              <Show
-                                when={cell.inRange}
-                                fallback={
-                                  <div class="w-[12px] h-[12px] rounded-[2px] bg-transparent" />
-                                }
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedDay(cell.dayIndex)}
-                                  onMouseEnter={() =>
-                                    setHoveredCell({
-                                      dayIndex: cell.dayIndex,
-                                      done: cell.done,
-                                      scheduled: cell.scheduled,
-                                    })
-                                  }
-                                  onMouseLeave={() => setHoveredCell(null)}
-                                  onFocus={() =>
-                                    setHoveredCell({
-                                      dayIndex: cell.dayIndex,
-                                      done: cell.done,
-                                      scheduled: cell.scheduled,
-                                    })
-                                  }
-                                  onBlur={() => setHoveredCell(null)}
-                                  title={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done}/${cell.scheduled} scheduled`}
-                                  aria-label={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done} of ${cell.scheduled} completed`}
-                                  class={`w-[12px] h-[12px] rounded-[2px] transition-transform duration-100 hover:scale-125 cursor-pointer ${heatmapSquareClass(
-                                    cell.tone
-                                  )} ${
-                                    cell.dayIndex === selectedDay()
-                                      ? 'ring-1 ring-white ring-offset-1 ring-offset-[#14161B]'
-                                      : ''
-                                  }`}
-                                />
-                              </Show>
-                            )}
-                          </For>
-                        </div>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer: hovered day readout + Red-to-Green severity legend */}
-            <div class="flex items-center justify-between flex-wrap gap-2 text-[11px] text-[#8E95A5] pt-1 border-t border-white/[0.06]">
-              <Show
-                when={hoveredCell()}
-                fallback={
-                  <span class="font-mono tabular-nums">
-                    Selected: {CivilCalendar.formatShortDate(selectedDay())}
-                  </span>
-                }
-              >
-                {(cell) => (
-                  <span class="font-mono tabular-nums text-[#F5F7FA]">
-                    {CivilCalendar.formatShortDate(cell().dayIndex)} · {cell().done}/
-                    {cell().scheduled} completed
-                  </span>
-                )}
-              </Show>
-
-              <div class="flex items-center gap-1.5" title="Rest = unscheduled · Red = unclosed severity · Green = 100% done">
-                <span>Rest</span>
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#0D1016] border border-white/[0.06]" />
-                <span class="ml-1">0%</span>
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#EF4444]" />
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#B91C1C]" />
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#881B22]" />
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#581C24]" />
-                <span>Done</span>
-                <span class="w-[11px] h-[11px] rounded-[2px] bg-[#39D353]" />
-              </div>
-            </div>
-          </section>
-
-          <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-5">
-            <div class="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                  Tasks Overview
-                </h2>
-                <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
-                  {DateRangeResolver.formatRangeLabel(
-                    effectiveRangeStart(),
-                    effectiveRangeEnd()
-                  )}
-                </p>
-              </div>
-              <div class="flex items-center gap-3 text-[11px] text-[#8E95A5]">
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="w-2.5 h-2.5 rounded-[2px] bg-[#3B82F6]" />
-                  <span>Done</span>
-                </span>
-                <span class="inline-flex items-center gap-1.5">
-                  <span class="w-2.5 h-2.5 rounded-[2px] bg-[#EF4444]/80" />
-                  <span>Not Done</span>
-                </span>
-              </div>
-            </div>
-
-            <Show
-              when={
-                taskSummary().doneCount > 0 ||
-                taskSummary().notDoneCount > 0 ||
-                taskSummary().archivedCount > 0
-              }
-              fallback={
-                <div class="py-10 text-center">
-                  <p class="text-sm text-[#8E95A5]">
-                    No task outcomes in the selected date range.
-                  </p>
-                </div>
-              }
-            >
-              <div class="flex items-end gap-2 h-40 pt-4">
-                <For each={taskOutcomeBuckets()}>
-                  {(bucket) => {
-                    const total = () => bucket.doneCount + bucket.notDoneCount;
-                    const totalPct = () =>
-                      Math.round((total() / maxBucketCount()) * 100);
-                    const doneShare = () =>
-                      total() === 0 ? 0 : (bucket.doneCount / total()) * 100;
-                    const notDoneShare = () =>
-                      total() === 0 ? 0 : (bucket.notDoneCount / total()) * 100;
-                    return (
-                      <div class="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5">
-                        <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                          {total() > 0 ? total() : ''}
-                        </span>
-                        <div class="w-full flex-1 flex items-end">
-                          <Show
-                            when={total() > 0}
-                            fallback={
-                              <div class="w-full bg-white/[0.05] h-[3px] rounded-t-md" />
-                            }
-                          >
-                            <div
-                              class="w-full rounded-t-md overflow-hidden flex flex-col justify-end transition-all"
-                              style={{ height: `${Math.max(12, totalPct())}%` }}
-                              title={`${bucket.label}: ${bucket.doneCount} done, ${bucket.notDoneCount} not done${
-                                bucket.archivedCount > 0
-                                  ? `, ${bucket.archivedCount} archived`
-                                  : ''
-                              }`}
-                            >
-                              <Show when={bucket.notDoneCount > 0}>
-                                <div
-                                  class="w-full bg-[#EF4444]/80"
-                                  style={{ height: `${notDoneShare()}%` }}
-                                />
-                              </Show>
-                              <Show when={bucket.doneCount > 0}>
-                                <div
-                                  class="w-full bg-[#3B82F6]"
-                                  style={{ height: `${doneShare()}%` }}
-                                />
-                              </Show>
-                            </div>
-                          </Show>
-                        </div>
-                        <span class="text-[10px] font-mono tabular-nums text-[#6B7280] truncate max-w-full">
-                          {bucket.shortLabel}
-                        </span>
-                      </div>
-                    );
-                  }}
-                </For>
-              </div>
-            </Show>
-
-            <div class="grid grid-cols-3 gap-2 pt-3 border-t border-white/[0.06] text-[11px]">
-              <div class="min-w-0">
-                <span class="text-[#6B7280] block">On-Time</span>
-                <span class="font-mono tabular-nums text-[#F5F7FA] truncate block">
-                  {taskSummary().onTimeRate !== null
-                    ? `${Math.round(taskSummary().onTimeRate! * 100)}% (${taskSummary().onTimeCount}/${taskSummary().datedDoneCount})`
-                    : '—'}
-                </span>
-              </div>
-              <div class="min-w-0">
-                <span class="text-[#6B7280] block">Goals</span>
-                <span
-                  class="font-mono tabular-nums text-[#F5F7FA] truncate block"
-                  title={`${taskSummary().goalsDoneCount} done, ${taskSummary().goalsArchivedCount} archived, ${taskSummary().goalsOpenCount} open`}
-                >
-                  {taskSummary().goalsDoneCount}d · {taskSummary().goalsArchivedCount}a ·{' '}
-                  {taskSummary().goalsOpenCount}o
-                </span>
-              </div>
-              <div class="min-w-0">
-                <span class="text-[#6B7280] block">Repeats</span>
-                <span class="font-mono tabular-nums text-[#F5F7FA] truncate block">
-                  {taskSummary().repeatableDoneCount} done
-                </span>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <Show when={selectedHabitId() === 'all' && habitBreakdown().length > 0}>
-          <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-            <div class="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between gap-4">
-              <div>
-                <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                  Habit Breakdown
-                </h2>
-                <p class="text-xs text-[#8E95A5]">
-                  {resolvedRange().label} ·{' '}
-                  <span class="font-mono tabular-nums">
-                    {DateRangeResolver.formatRangeLabel(
-                      effectiveRangeStart(),
-                      effectiveRangeEnd()
-                    )}
-                  </span>
-                </p>
-              </div>
-              <span class="text-xs font-mono tabular-nums text-[#8E95A5]">
-                {habitBreakdown().length} {habitBreakdown().length === 1 ? 'habit' : 'habits'}
-              </span>
-            </div>
-
-            <ul class="divide-y divide-white/[0.06]">
-              <For each={habitBreakdown()}>
-                {(row) => {
-                  const pct = () => Math.round(row.completionRate * 100);
-                  return (
-                    <li>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedHabitId(row.habit.id)}
-                        class="w-full text-left px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                      >
-                        <div class="min-w-0 space-y-1 flex-1">
-                          <div class="flex items-center gap-2.5">
-                            <HabitBadge appearanceRaw={row.habit.color} size="sm" />
-                            <span class="text-sm font-medium text-[#F5F7FA] truncate">
-                              {row.habit.name}
-                            </span>
-                            <Show when={row.habit.archivedAt !== null}>
-                              <span class="text-[11px] text-[#6B7280] shrink-0">
-                                (Archived)
-                              </span>
-                            </Show>
-                          </div>
-                          <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs font-mono tabular-nums text-[#8E95A5]">
-                            <span>
-                              {row.completedDays} done · {row.missedDays} missed
-                            </span>
-                            <span aria-hidden="true">·</span>
-                            <span>{row.currentStreak}d current</span>
-                            <span aria-hidden="true">·</span>
-                            <span>{row.longestStreak}d best</span>
-                          </div>
-                        </div>
-
-                        <div class="flex items-center gap-3 sm:w-52 shrink-0">
-                          <div class="flex-1 h-2 rounded-full bg-[#0A0B0E] border border-white/[0.06] overflow-hidden">
-                            <div
-                              class="h-full rounded-full transition-all"
-                              style={{
-                                width: `${pct()}%`,
-                                'background-color': HabitAppearance.getColor(
-                                  row.habit.color
-                                ),
-                              }}
-                            />
-                          </div>
-                          <span class="w-10 text-right text-sm font-mono tabular-nums font-medium text-[#F5F7FA]">
-                            {pct()}%
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                }}
-              </For>
-            </ul>
-          </section>
         </Show>
       </Show>
     </div>

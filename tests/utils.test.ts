@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SnapshotCodec } from '../src/sync/snapshot-codec';
 import { Habit, HabitCheckin, Task } from '../src/types/domain';
+import { ChartsAnalytics } from '../src/utils/charts-analytics';
 import { CivilCalendar } from '../src/utils/civil-calendar';
 import {
   DATE_RANGE_PRESETS,
@@ -1046,5 +1047,134 @@ test('TaskAnalytics summarizes outcomes (excluding Archived from rate), on-time 
     [5]
   );
 });
+
+test('ChartsAnalytics computes adaptive habit trend buckets and weekday stats for habits and tasks', () => {
+  // 2026-11-02 is Monday (bit 0)
+  const mon1 = CivilCalendar.fromLocalDate(2026, 11, 2);
+  const tue1 = mon1 + 1;
+  const sun2 = mon1 + 13; // 14-day window (2 full weeks)
+
+  // Habit scheduled on Mon (bit 0), Wed (bit 2), Fri (bit 4) starting tue1
+  const weekdays = (1 << 0) | (1 << 2) | (1 << 4);
+  const habits: Habit[] = [
+    {
+      id: 1,
+      name: 'Run',
+      color: '#3B82F6',
+      weekdays,
+      startDay: tue1,
+      archivedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ];
+
+  // Week 1 scheduled days after tue1: Wed (mon1+2, done), Fri (mon1+4, missed) -> 1/2 = 0.5
+  // Week 2 scheduled days: Mon (mon1+7, done), Wed (mon1+9, done), Fri (mon1+11, done) -> 3/3 = 1.0
+  const checkins: HabitCheckin[] = [
+    { habitId: 1, dayIndex: mon1 + 2, done: true, updatedAt: 10 },
+    { habitId: 1, dayIndex: mon1 + 7, done: true, updatedAt: 10 },
+    { habitId: 1, dayIndex: mon1 + 9, done: true, updatedAt: 10 },
+    { habitId: 1, dayIndex: mon1 + 11, done: true, updatedAt: 10 },
+  ];
+
+  // Daily buckets when range <= maxBuckets
+  const daily = ChartsAnalytics.habitTrendBuckets(habits, checkins, mon1, sun2, 14);
+  assert.equal(daily.length, 14);
+  assert.equal(daily[0].rate, null); // mon1 is before habit.startDay
+  assert.equal(daily[1].rate, null); // tue1 is off-schedule
+  assert.equal(daily[2].rate, 1); // Wed1 done
+  assert.equal(daily[4].rate, 0); // Fri1 missed
+
+  // Weekly buckets when maxBuckets = 5 (< 14 days, >= 2 weeks)
+  const weekly = ChartsAnalytics.habitTrendBuckets(habits, checkins, mon1, sun2, 5);
+  assert.equal(weekly.length, 2);
+  assert.equal(weekly[0].doneCount, 1);
+  assert.equal(weekly[0].scheduledCount, 2);
+  assert.equal(weekly[0].rate, 0.5);
+  assert.equal(weekly[1].doneCount, 3);
+  assert.equal(weekly[1].scheduledCount, 3);
+  assert.equal(weekly[1].rate, 1);
+
+  // Monthly buckets for 4-month span with maxBuckets = 6
+  const jan1 = CivilCalendar.fromLocalDate(2026, 1, 1);
+  const apr30 = CivilCalendar.fromLocalDate(2026, 4, 30);
+  const monthly = ChartsAnalytics.habitTrendBuckets(habits, checkins, jan1, apr30, 6);
+  assert.equal(monthly.length, 4);
+
+  // Weekday habit stats across mon1..sun2
+  const wHabits = ChartsAnalytics.weekdayHabitStats(habits, checkins, mon1, sun2);
+  assert.equal(wHabits.length, 7);
+  assert.equal(wHabits[0].scheduledCount, 1); // Mon week2 only
+  assert.equal(wHabits[0].rate, 1);
+  assert.equal(wHabits[1].rate, null); // Tue never scheduled
+  assert.equal(wHabits[2].doneCount, 2); // Both Wed done
+  assert.equal(wHabits[2].rate, 1);
+  assert.equal(wHabits[4].doneCount, 1); // 1 of 2 Fri done
+  assert.equal(wHabits[4].rate, 0.5);
+
+  // Weekday task stats (ignores open, archived, and deleted tasks)
+  const tasks: Task[] = [
+    {
+      id: 1,
+      title: 'Done Mon',
+      note: '',
+      dueDay: mon1,
+      done: true,
+      status: 'done',
+      completedDay: mon1,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 2,
+      title: 'Not done Mon',
+      note: '',
+      dueDay: mon1 + 7,
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 3,
+      title: 'Archived Tue',
+      note: '',
+      dueDay: tue1,
+      done: false,
+      status: 'archived',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: Date.UTC(2026, 10, 3, 12, 0, 0),
+    },
+    {
+      id: 4,
+      title: 'Deleted Mon',
+      note: '',
+      dueDay: mon1,
+      done: true,
+      status: 'done',
+      completedDay: mon1,
+      repeatable: false,
+      deletedAt: 50,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ];
+  const wTasks = ChartsAnalytics.weekdayTaskStats(tasks, mon1, sun2, 'UTC');
+  assert.equal(wTasks[0].doneCount, 1);
+  assert.equal(wTasks[0].notDoneCount, 1);
+  assert.equal(wTasks[0].rate, 0.5);
+  assert.equal(wTasks[1].totalCount, 0);
+  assert.equal(wTasks[1].rate, null);
+});
+
 
 

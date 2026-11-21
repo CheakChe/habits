@@ -13,6 +13,7 @@ import {
   ActiveTab,
   DomainSnapshot,
   Habit,
+  HistorySubTab,
   SessionMode,
   Task,
   TaskStatus,
@@ -135,11 +136,15 @@ export class TrackerStore {
   public readonly historyCustomEndDay: Accessor<number>;
   private readonly setHistoryCustomEndDaySignal: Setter<number>;
 
+  public readonly historySubTab: Accessor<HistorySubTab>;
+  private readonly setHistorySubTabSignal: Setter<HistorySubTab>;
+
   private unsubscribeAuth: (() => void) | null = null;
   private midnightTimer: number | null = null;
   private static readonly TIMEZONE_STORAGE_KEY = 'habits.timezone';
   private static readonly TODAY_GOALS_EXPANDED_KEY = 'habits.todayGoalsExpanded';
   private static readonly HISTORY_RANGE_STORAGE_KEY = 'habits.historyRange';
+  private static readonly HISTORY_SUBTAB_STORAGE_KEY = 'habits.historySubTab';
 
   private static readStoredTimeZone(): string {
     try {
@@ -211,6 +216,21 @@ export class TrackerStore {
     }
   }
 
+  private static readStoredHistorySubTab(): HistorySubTab {
+    try {
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.HISTORY_SUBTAB_STORAGE_KEY)
+          : null;
+      if (saved === 'charts' || saved === 'calendar') {
+        return saved;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'calendar';
+  }
+
   constructor() {
     [this.mode, this.setMode] = createSignal<SessionMode | null>(
       this.session.getRememberedMode()
@@ -264,6 +284,9 @@ export class TrackerStore {
     );
     [this.historyCustomEndDay, this.setHistoryCustomEndDaySignal] = createSignal(
       storedRange.customEndDay
+    );
+    [this.historySubTab, this.setHistorySubTabSignal] = createSignal<HistorySubTab>(
+      TrackerStore.readStoredHistorySubTab()
     );
   }
 
@@ -331,6 +354,17 @@ export class TrackerStore {
     this.setHistoryCustomEndDaySignal(e);
     this.setHistoryRangePresetSignal('custom');
     this.persistHistoryRange('custom', s, e);
+  }
+
+  public setHistorySubTab(nextTab: HistorySubTab): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(TrackerStore.HISTORY_SUBTAB_STORAGE_KEY, nextTab);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setHistorySubTabSignal(nextTab);
   }
 
   public init(): void {

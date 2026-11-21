@@ -248,6 +248,8 @@ export default function App(): JSX.Element {
                   snapshot={store.snapshot()}
                   todayDay={store.todayDay()}
                   timeZone={store.timeZone()}
+                  subTab={store.historySubTab()}
+                  onSelectSubTab={(tab) => store.setHistorySubTab(tab)}
                   rangePreset={store.historyRangePreset()}
                   customStartDay={store.historyCustomStartDay()}
                   customEndDay={store.historyCustomEndDay()}
