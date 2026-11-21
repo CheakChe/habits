@@ -28,6 +28,7 @@ export interface CreateTaskInput {
   title: string;
   note: string;
   dueDay: number | null;
+  repeatable?: boolean;
 }
 
 export interface UpdateTaskPatch {
@@ -36,6 +37,7 @@ export interface UpdateTaskPatch {
   dueDay?: number | null;
   done?: boolean;
   completedDay?: number | null;
+  repeatable?: boolean;
 }
 
 export class HabitDatabase {
@@ -129,6 +131,7 @@ export class HabitDatabase {
               : t.done
                 ? CivilCalendar.fromTimestamp(t.updatedAt)
                 : null,
+          repeatable: Boolean(t.repeatable),
           deletedAt: t.deletedAt ?? null,
         }))
         .sort((a, b) => a.id - b.id),
@@ -285,6 +288,7 @@ export class HabitDatabase {
       dueDay: input.dueDay,
       done: false,
       completedDay: null,
+      repeatable: Boolean(input.repeatable),
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -331,6 +335,10 @@ export class HabitDatabase {
       dueDay: patch.dueDay !== undefined ? patch.dueDay : existing.dueDay,
       done: nextDone,
       completedDay: nextCompletedDay,
+      repeatable:
+        patch.repeatable !== undefined
+          ? patch.repeatable
+          : Boolean(existing.repeatable),
       deletedAt: existing.deletedAt ?? null,
       updatedAt: this.nextTimestamp(existing.updatedAt),
     };
@@ -357,6 +365,7 @@ export class HabitDatabase {
           : existing.done
             ? CivilCalendar.fromTimestamp(existing.updatedAt)
             : null,
+      repeatable: Boolean(existing.repeatable),
       deletedAt: now,
       updatedAt: now,
     };

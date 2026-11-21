@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { SnapshotCodec } from '../src/sync/snapshot-codec';
 import { Habit, HabitCheckin, Task } from '../src/types/domain';
 import { CivilCalendar } from '../src/utils/civil-calendar';
 import {
@@ -7,6 +8,7 @@ import {
   DateRangeResolver,
   DayCellClassifier,
 } from '../src/utils/date-range';
+import { HabitAppearance } from '../src/utils/habit-appearance';
 import { Helpers, NonRetryableError } from '../src/utils/helpers';
 import { StreakCalculator } from '../src/utils/streak-calculator';
 import { TaskAnalytics } from '../src/utils/task-analytics';
@@ -302,6 +304,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       dueDay: today,
       done: true,
       completedDay: CivilCalendar.fromLocalDate(2026, 11, 17),
+      repeatable: false,
       deletedAt: null,
       createdAt: tsThisWeek,
       updatedAt: tsThisWeek,
@@ -313,6 +316,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       dueDay: null,
       done: true,
       completedDay: lastWeekDay,
+      repeatable: false,
       deletedAt: null,
       createdAt: tsLastWeek,
       updatedAt: tsThisWeek, // edited this week, MUST still count in last week!
@@ -324,6 +328,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       dueDay: today,
       done: false,
       completedDay: null,
+      repeatable: false,
       deletedAt: null,
       createdAt: tsThisWeek,
       updatedAt: tsThisWeek,
@@ -335,6 +340,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       dueDay: today,
       done: true,
       completedDay: today,
+      repeatable: false,
       deletedAt: tsThisWeek,
       createdAt: tsThisWeek,
       updatedAt: tsThisWeek,
@@ -346,6 +352,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       dueDay: null,
       done: true,
       completedDay: CivilCalendar.fromLocalDate(2026, 1, 5),
+      repeatable: false,
       deletedAt: null,
       createdAt: tsTooOld,
       updatedAt: tsTooOld,
@@ -426,14 +433,14 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
   );
 
   const tasks: Task[] = [
-    { id: 5, title: 'Future', note: 'Call dentist', dueDay: today + 2, done: false, completedDay: null, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 4, title: 'No date', note: 'Read spec', dueDay: null, done: false, completedDay: null, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 3, title: 'Today B', note: '', dueDay: today, done: false, completedDay: null, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 1, title: 'Today A', note: 'Dentist receipt', dueDay: today, done: false, completedDay: null, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 6, title: 'Overdue newer', note: '', dueDay: today - 1, done: false, completedDay: null, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 2, title: 'Overdue older', note: '', dueDay: today - 5, done: false, completedDay: null, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 7, title: 'Done overdue', note: '', dueDay: today - 3, done: true, completedDay: today - 1, deletedAt: null, createdAt: 1, updatedAt: 10 },
-    { id: 8, title: 'Deleted today', note: 'Dentist', dueDay: today, done: false, completedDay: null, deletedAt: 100, createdAt: 1, updatedAt: 100 },
+    { id: 5, title: 'Future', note: 'Call dentist', dueDay: today + 2, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 4, title: 'No date', note: 'Read spec', dueDay: null, done: false, completedDay: null, repeatable: true, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 3, title: 'Today B', note: '', dueDay: today, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 1, title: 'Today A', note: 'Dentist receipt', dueDay: today, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 6, title: 'Overdue newer', note: '', dueDay: today - 1, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 2, title: 'Overdue older', note: '', dueDay: today - 5, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 7, title: 'Done overdue', note: '', dueDay: today - 3, done: true, completedDay: today - 1, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 10 },
+    { id: 8, title: 'Deleted today', note: 'Dentist', dueDay: today, done: false, completedDay: null, repeatable: false, deletedAt: 100, createdAt: 1, updatedAt: 100 },
   ];
 
   const partition = TodayBoard.getTodayAndOverdueTasks(tasks, today);
@@ -445,6 +452,14 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
     partition.dueToday.map((t) => t.id),
     [1, 3]
   );
+  assert.deepEqual(
+    TodayBoard.getNoDateTasks(tasks).map((t) => t.id),
+    [4]
+  );
+  assert.equal(TodayBoard.suggestNextOccurrenceDueDay(tasks[1], today), null);
+  assert.equal(TodayBoard.suggestNextOccurrenceDueDay(tasks[3], today), today + 1);
+  assert.equal(TodayBoard.suggestNextOccurrenceDueDay(tasks[5], today), today + 1);
+  assert.equal(TodayBoard.suggestNextOccurrenceDueDay(tasks[0], today), today + 3);
 
   // Filter modes + search query across title & notes + deleted exclusion
   assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'all').map((t) => t.id), [2, 6, 1, 3, 5, 4]);
@@ -680,6 +695,7 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
       dueDay: null,
       done: true,
       completedDay: CivilCalendar.fromLocalDate(2026, 1, 15),
+      repeatable: false,
       deletedAt: null,
       createdAt: 1,
       updatedAt: 1,
@@ -691,6 +707,7 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
       dueDay: null,
       done: true,
       completedDay: CivilCalendar.fromLocalDate(2026, 6, 10),
+      repeatable: false,
       deletedAt: null,
       createdAt: 1,
       updatedAt: 1,
@@ -702,6 +719,7 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
       dueDay: null,
       done: true,
       completedDay: CivilCalendar.fromLocalDate(2026, 3, 1),
+      repeatable: false,
       deletedAt: 99,
       createdAt: 1,
       updatedAt: 1,
@@ -727,3 +745,73 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
     2
   );
 });
+
+test('HabitAppearance normalizes hex, encodes icons/emojis, computes contrast, and round-trips through SnapshotCodec', () => {
+  assert.equal(HabitAppearance.normalizeHex(' 3af '), '#33AAFF');
+  assert.equal(HabitAppearance.normalizeHex('#ff5733'), '#FF5733');
+  assert.equal(HabitAppearance.normalizeHex('not-hex'), null);
+
+  assert.equal(HabitAppearance.format('#ff5733', { kind: 'none' }), '#FF5733');
+  assert.equal(
+    HabitAppearance.format('#14b8a6', { kind: 'icon', id: 'dumbbell' }),
+    '#14B8A6|icon:dumbbell'
+  );
+  assert.equal(
+    HabitAppearance.format('#22c55e', { kind: 'emoji', value: '💪' }),
+    '#22C55E|emoji:💪'
+  );
+
+  assert.deepEqual(HabitAppearance.parse('#FF5733'), {
+    color: '#FF5733',
+    badge: { kind: 'none' },
+  });
+  assert.deepEqual(HabitAppearance.parse('#14B8A6|icon:dumbbell'), {
+    color: '#14B8A6',
+    badge: { kind: 'icon', id: 'dumbbell' },
+  });
+  assert.deepEqual(HabitAppearance.parse('#22C55E|emoji:💪'), {
+    color: '#22C55E',
+    badge: { kind: 'emoji', value: '💪' },
+  });
+  assert.deepEqual(HabitAppearance.parse('#3B82F6|icon:unknown_id'), {
+    color: '#3B82F6',
+    badge: { kind: 'none' },
+  });
+
+  assert.equal(HabitAppearance.getContrastTextColor('#FFFFFF'), '#0A0B0E');
+  assert.equal(HabitAppearance.getContrastTextColor('#FACC15'), '#0A0B0E');
+  assert.equal(HabitAppearance.getContrastTextColor('#3B82F6'), '#FFFFFF');
+
+  const day = CivilCalendar.fromLocalDate(2026, 11, 20);
+  const packed = SnapshotCodec.pack({
+    habits: [
+      {
+        id: 1,
+        name: 'Gym',
+        color: '#FF5733|icon:dumbbell',
+        weekdays: 127,
+        startDay: day,
+        archivedAt: null,
+        createdAt: 100,
+        updatedAt: 100,
+      },
+      {
+        id: 2,
+        name: 'Hydrate',
+        color: '#06B6D4|emoji:💧',
+        weekdays: 127,
+        startDay: day,
+        archivedAt: null,
+        createdAt: 100,
+        updatedAt: 100,
+      },
+    ],
+    checkins: [],
+    notes: [],
+    tasks: [],
+  });
+  const unpacked = SnapshotCodec.unpack(packed);
+  assert.equal(unpacked.habits[0].color, '#FF5733|icon:dumbbell');
+  assert.equal(unpacked.habits[1].color, '#06B6D4|emoji:💧');
+});
+

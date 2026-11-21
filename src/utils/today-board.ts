@@ -40,6 +40,17 @@ export class TodayBoard {
     return { overdue, dueToday };
   }
 
+  public static getNoDateTasks(tasks: Task[]): Task[] {
+    return tasks
+      .filter((task) => task.deletedAt === null && !task.done && task.dueDay === null)
+      .sort((a, b) => a.id - b.id);
+  }
+
+  public static suggestNextOccurrenceDueDay(task: Task, todayDay: number): number | null {
+    if (task.dueDay === null) return null;
+    return Math.max(todayDay + 1, task.dueDay + 1);
+  }
+
   public static filterTasks(
     tasks: Task[],
     todayDay: number,

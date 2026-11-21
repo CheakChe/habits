@@ -32,6 +32,7 @@ export interface Task {
   dueDay: number | null;
   done: boolean;
   completedDay: number | null;
+  repeatable: boolean;
   deletedAt: number | null;
   createdAt: number;
   updatedAt: number;

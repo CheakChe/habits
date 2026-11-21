@@ -9,13 +9,20 @@ import {
 } from '../utils/date-range';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { TaskAnalytics } from '../utils/task-analytics';
+import { HabitAppearance } from '../utils/habit-appearance';
 import { CustomSelect, HistoryRangePicker, SelectOption } from './CustomControls';
+import { HabitBadge } from './HabitBadge';
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, NoteIcon } from './Icons';
 
 interface HistoryViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
   timeZone: string;
+  rangePreset: DateRangePresetId;
+  customStartDay: number;
+  customEndDay: number;
+  onSelectRangePreset: (preset: DateRangePresetId) => void;
+  onSelectCustomRange: (startDay: number, endDay: number) => void;
   onChangeTimeZone: (timeZone: string) => void;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
   onSaveNote: (habitId: number, dayIndex: number, text: string) => Promise<void>;
@@ -67,14 +74,18 @@ function calendarTileClass(tone: DayCellTone, isSelected: boolean): string {
 }
 
 export function HistoryView(props: HistoryViewProps): JSX.Element {
-  const initialLocal = CivilCalendar.toLocalDate(props.todayDay);
+  const initialRange = DateRangeResolver.resolve(props.rangePreset, props.todayDay, {
+    customStartDay: props.customStartDay,
+    customEndDay: props.customEndDay,
+    snapshot: props.snapshot,
+    timeZone: props.timeZone,
+  });
+  const initialDay = Math.min(initialRange.endDay, props.todayDay);
+  const initialLocal = CivilCalendar.toLocalDate(initialDay);
   const [viewYear, setViewYear] = createSignal(initialLocal.year);
   const [viewMonth, setViewMonth] = createSignal(initialLocal.month);
-  const [selectedDay, setSelectedDay] = createSignal(props.todayDay);
+  const [selectedDay, setSelectedDay] = createSignal(initialDay);
   const [selectedHabitId, setSelectedHabitId] = createSignal<number | 'all'>('all');
-  const [rangePreset, setRangePreset] = createSignal<DateRangePresetId>('last_30');
-  const [customStartDay, setCustomStartDay] = createSignal(props.todayDay - 29);
-  const [customEndDay, setCustomEndDay] = createSignal(props.todayDay);
   const [editingNoteHabitId, setEditingNoteHabitId] = createSignal<number | null>(null);
   const [noteDraft, setNoteDraft] = createSignal('');
   const [hoveredCell, setHoveredCell] = createSignal<{
@@ -90,9 +101,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   });
 
   const resolvedRange = createMemo(() =>
-    DateRangeResolver.resolve(rangePreset(), props.todayDay, {
-      customStartDay: customStartDay(),
-      customEndDay: customEndDay(),
+    DateRangeResolver.resolve(props.rangePreset, props.todayDay, {
+      customStartDay: props.customStartDay,
+      customEndDay: props.customEndDay,
       snapshot: props.snapshot,
       timeZone: props.timeZone,
     })
@@ -115,7 +126,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   };
 
   const handleSelectPreset = (nextPreset: DateRangePresetId) => {
-    setRangePreset(nextPreset);
+    props.onSelectRangePreset(nextPreset);
     if (nextPreset !== 'custom') {
       const next = DateRangeResolver.resolve(nextPreset, props.todayDay, {
         snapshot: props.snapshot,
@@ -128,9 +139,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   const handleSelectCustomRange = (startDay: number, endDay: number) => {
     const s = Math.min(startDay, endDay);
     const e = Math.min(Math.max(startDay, endDay), props.todayDay);
-    setCustomStartDay(s);
-    setCustomEndDay(e);
-    setRangePreset('custom');
+    props.onSelectCustomRange(s, e);
     syncCalendarToRangeEnd(e);
   };
 
@@ -398,9 +407,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           />
 
           <HistoryRangePicker
-            preset={rangePreset()}
-            customStartDay={customStartDay()}
-            customEndDay={customEndDay()}
+            preset={props.rangePreset}
+            customStartDay={props.customStartDay}
+            customEndDay={props.customEndDay}
             resolvedRange={resolvedRange()}
             todayDay={props.todayDay}
             timeZone={props.timeZone}
@@ -620,18 +629,30 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                             aria-label={`Toggle ${habit.name} for ${CivilCalendar.formatShortDate(selectedDay())}`}
                             class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
                               isDone()
-                                ? 'text-white border-transparent'
+                                ? 'border-transparent'
                                 : 'bg-[#0A0B0E] border-white/[0.12] text-transparent hover:border-white/30'
                             }`}
-                            style={isDone() ? { 'background-color': habit.color } : undefined}
+                            style={
+                              isDone()
+                                ? {
+                                    'background-color': HabitAppearance.getColor(habit.color),
+                                    color: HabitAppearance.getContrastTextColor(
+                                      HabitAppearance.getColor(habit.color)
+                                    ),
+                                  }
+                                : undefined
+                            }
                           >
                             <CheckIcon class="w-4 h-4" />
                           </button>
 
                           <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium text-[#F5F7FA] truncate">
-                              {habit.name}
-                            </p>
+                            <div class="flex items-center gap-2">
+                              <HabitBadge appearanceRaw={habit.color} size="xs" />
+                              <p class="text-sm font-medium text-[#F5F7FA] truncate">
+                                {habit.name}
+                              </p>
+                            </div>
                             <p class="text-xs text-[#8E95A5] truncate">
                               {isScheduled() ? 'Scheduled' : 'Off-schedule day'}
                               {noteText() && !isEditingNote() ? ` · ${noteText()}` : ''}
@@ -928,11 +949,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                       >
                         <div class="min-w-0 space-y-1 flex-1">
                           <div class="flex items-center gap-2.5">
-                            <span
-                              class="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ 'background-color': row.habit.color }}
-                              aria-hidden="true"
-                            />
+                            <HabitBadge appearanceRaw={row.habit.color} size="sm" />
                             <span class="text-sm font-medium text-[#F5F7FA] truncate">
                               {row.habit.name}
                             </span>
@@ -959,7 +976,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                               class="h-full rounded-full transition-all"
                               style={{
                                 width: `${pct()}%`,
-                                'background-color': row.habit.color,
+                                'background-color': HabitAppearance.getColor(
+                                  row.habit.color
+                                ),
                               }}
                             />
                           </div>

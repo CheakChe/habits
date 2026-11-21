@@ -2,6 +2,7 @@ import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot, Habit } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { StreakCalculator } from '../utils/streak-calculator';
+import { HabitBadge } from './HabitBadge';
 import { ArchiveIcon, EditIcon, PlusIcon, RestoreIcon } from './Icons';
 
 interface HabitsViewProps {
@@ -142,11 +143,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                   >
                     <div class="space-y-2 min-w-0">
                       <div class="flex items-center gap-3">
-                        <span
-                          class="w-3 h-3 rounded-full shrink-0"
-                          style={{ 'background-color': habit.color }}
-                          aria-hidden="true"
-                        />
+                        <HabitBadge appearanceRaw={habit.color} size="md" />
                         <h2 class="text-base font-medium text-[#F5F7FA] truncate">
                           {habit.name}
                         </h2>

@@ -7,19 +7,29 @@ import {
 } from '../sync/drive-sync-service';
 import { Habit, SessionMode, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
-import { DatePicker } from './CustomControls';
 import {
+  HABIT_EMOJIS,
+  HABIT_ICONS,
+  HabitAppearance,
+  HabitBadge as HabitBadgeType,
+} from '../utils/habit-appearance';
+import { DatePicker } from './CustomControls';
+import { HabitBadge, HabitIconSvg } from './HabitBadge';
+import {
+  CheckIcon,
   CloseIcon,
   CloudSyncIcon,
   DownloadIcon,
   DriveIcon,
   HistoryClockIcon,
+  RepeatIcon,
   RestoreIcon,
   SwitchAccountIcon,
   UploadIcon,
 } from './Icons';
 import { PWAInstallButton } from './PwaControls';
 import { ALL_WEEKDAYS_MASK, DEFAULT_HABIT_COLOR, HABIT_COLORS } from './constants';
+import { TaskDraftPrefill, TaskModalMode } from './tracker-store';
 
 interface HabitModalProps {
   open: boolean;
@@ -36,7 +46,10 @@ interface HabitModalProps {
 
 export function HabitModal(props: HabitModalProps): JSX.Element {
   const [name, setName] = createSignal('');
-  const [color, setColor] = createSignal(DEFAULT_HABIT_COLOR);
+  const [accentColor, setAccentColor] = createSignal(DEFAULT_HABIT_COLOR);
+  const [hexInput, setHexInput] = createSignal(DEFAULT_HABIT_COLOR);
+  const [badge, setBadge] = createSignal<HabitBadgeType>({ kind: 'none' });
+  const [badgeTab, setBadgeTab] = createSignal<'none' | 'icon' | 'emoji'>('none');
   const [weekdays, setWeekdays] = createSignal(ALL_WEEKDAYS_MASK);
   const [startDay, setStartDay] = createSignal<number>(props.todayDay);
   const [error, setError] = createSignal<string | null>(null);
@@ -46,18 +59,53 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
     if (!props.open) return;
     const habit = props.editingHabit;
     if (habit) {
+      const parsed = HabitAppearance.parse(habit.color);
       setName(habit.name);
-      setColor(habit.color);
+      setAccentColor(parsed.color);
+      setHexInput(parsed.color);
+      setBadge(parsed.badge);
+      setBadgeTab(parsed.badge.kind);
       setWeekdays(habit.weekdays);
       setStartDay(habit.startDay);
     } else {
       setName('');
-      setColor(DEFAULT_HABIT_COLOR);
+      setAccentColor(DEFAULT_HABIT_COLOR);
+      setHexInput(DEFAULT_HABIT_COLOR);
+      setBadge({ kind: 'none' });
+      setBadgeTab('none');
       setWeekdays(ALL_WEEKDAYS_MASK);
       setStartDay(props.todayDay);
     }
     setError(null);
   });
+
+  const applyColor = (hex: string) => {
+    const normalized = HabitAppearance.normalizeHex(hex);
+    if (!normalized) return;
+    setAccentColor(normalized);
+    setHexInput(normalized);
+  };
+
+  const handleHexInput = (raw: string) => {
+    setHexInput(raw);
+    const normalized = HabitAppearance.normalizeHex(raw);
+    if (normalized) {
+      setAccentColor(normalized);
+    }
+  };
+
+  const handleHexBlur = () => {
+    const normalized = HabitAppearance.normalizeHex(hexInput());
+    if (normalized) {
+      setAccentColor(normalized);
+      setHexInput(normalized);
+    } else {
+      setHexInput(accentColor());
+    }
+  };
+
+  const isHexInputValid = () => HabitAppearance.normalizeHex(hexInput()) !== null;
+  const composedAppearance = () => HabitAppearance.format(accentColor(), badge());
 
   const toggleWeekday = (bit: number) => {
     setWeekdays((prev) => prev ^ (1 << bit));
@@ -70,6 +118,11 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setError('Enter a habit name.');
       return;
     }
+    const normalizedHex = HabitAppearance.normalizeHex(hexInput());
+    if (!normalizedHex) {
+      setError('Enter a valid hex color (e.g. #3B82F6).');
+      return;
+    }
     if ((weekdays() & 0x7f) === 0) {
       setError('Select at least one scheduled day.');
       return;
@@ -79,7 +132,7 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
     try {
       await props.onSave({
         name: trimmed,
-        color: color(),
+        color: HabitAppearance.format(normalizedHex, badge()),
         weekdays: weekdays() & 0x7f,
         startDay: startDay(),
       });
@@ -99,7 +152,7 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
         aria-modal="true"
         aria-labelledby="habit-modal-title"
       >
-        <div class="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+        <div class="w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
           <div class="flex items-center justify-between">
             <h2 id="habit-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
               {props.editingHabit ? 'Edit Habit' : 'New Habit'}
@@ -138,20 +191,42 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
               />
             </div>
 
-            <div class="space-y-2">
-              <span class="block text-xs font-medium text-[#9AA1B1]">Accent color</span>
-              <div class="flex items-center gap-2.5 flex-wrap">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between gap-2">
+                <span class="block text-xs font-medium text-[#9AA1B1]">
+                  Color &amp; Icon
+                </span>
+                <div class="flex items-center gap-2 text-xs text-[#C8CDD8] min-w-0">
+                  <HabitBadge appearanceRaw={composedAppearance()} size="sm" />
+                  <span class="truncate max-w-[140px]">
+                    {name().trim() || 'Preview'}
+                  </span>
+                  <span
+                    class="w-5 h-5 rounded-md inline-flex items-center justify-center shrink-0"
+                    style={{
+                      'background-color': accentColor(),
+                      color: HabitAppearance.getContrastTextColor(accentColor()),
+                    }}
+                    aria-hidden="true"
+                  >
+                    <CheckIcon class="w-3 h-3" />
+                  </span>
+                </div>
+              </div>
+
+              {/* Preset swatches + native color picker + hex input */}
+              <div class="flex items-center gap-2 flex-wrap">
                 <For each={HABIT_COLORS}>
                   {(preset) => {
                     const selected = () =>
-                      color().toLowerCase() === preset.hex.toLowerCase();
+                      accentColor().toLowerCase() === preset.hex.toLowerCase();
                     return (
                       <button
                         type="button"
-                        onClick={() => setColor(preset.hex)}
+                        onClick={() => applyColor(preset.hex)}
                         aria-label={preset.label}
                         aria-pressed={selected()}
-                        class={`w-8 h-8 rounded-full transition-transform cursor-pointer flex items-center justify-center ${
+                        class={`w-7 h-7 rounded-full transition-transform cursor-pointer flex items-center justify-center shrink-0 ${
                           selected()
                             ? 'ring-2 ring-white ring-offset-2 ring-offset-[#14161B] scale-105'
                             : 'opacity-80 hover:opacity-100'
@@ -161,6 +236,151 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                     );
                   }}
                 </For>
+
+                <label
+                  title="Pick custom color"
+                  class="relative w-7 h-7 rounded-full cursor-pointer shrink-0 ring-1 ring-white/25 hover:ring-white/60 transition-all flex items-center justify-center overflow-hidden"
+                  style={{
+                    background:
+                      'conic-gradient(from 0deg, #EF4444, #F59E0B, #22C55E, #14B8A6, #3B82F6, #A855F7, #F43F5E, #EF4444)',
+                  }}
+                >
+                  <input
+                    type="color"
+                    aria-label="Custom color picker"
+                    value={accentColor()}
+                    onInput={(e) => applyColor(e.currentTarget.value)}
+                    class="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                  />
+                  <span
+                    class="w-3.5 h-3.5 rounded-full border border-black/40 pointer-events-none"
+                    style={{ 'background-color': accentColor() }}
+                  />
+                </label>
+
+                <input
+                  type="text"
+                  value={hexInput()}
+                  onInput={(e) => handleHexInput(e.currentTarget.value)}
+                  onBlur={handleHexBlur}
+                  maxlength={7}
+                  spellcheck={false}
+                  aria-label="Hex color code"
+                  placeholder="#3B82F6"
+                  class={`ml-auto w-24 h-8 rounded-lg bg-[#0A0B0E] border px-2.5 text-xs font-mono uppercase text-[#F5F7FA] focus:outline-none ${
+                    isHexInputValid()
+                      ? 'border-white/[0.1] focus:border-[#3B82F6]'
+                      : 'border-[#EF4444]/60 focus:border-[#EF4444]'
+                  }`}
+                />
+              </div>
+
+              {/* Badge mode: Dot / Built-in Icons / Emoji */}
+              <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-2.5 space-y-2.5">
+                <div class="grid grid-cols-3 gap-1 p-0.5 rounded-xl bg-[#14161B]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBadgeTab('none');
+                      setBadge({ kind: 'none' });
+                    }}
+                    class={`h-7 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      badgeTab() === 'none'
+                        ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                        : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    Color Dot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBadgeTab('icon');
+                      if (badge().kind !== 'icon') {
+                        setBadge({ kind: 'icon', id: HABIT_ICONS[0].id });
+                      }
+                    }}
+                    class={`h-7 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      badgeTab() === 'icon'
+                        ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                        : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    Icons
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBadgeTab('emoji');
+                      if (badge().kind !== 'emoji') {
+                        setBadge({ kind: 'emoji', value: HABIT_EMOJIS[0] });
+                      }
+                    }}
+                    class={`h-7 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      badgeTab() === 'emoji'
+                        ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                        : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    Emoji
+                  </button>
+                </div>
+
+                <Show when={badgeTab() === 'icon'}>
+                  <div class="grid grid-cols-8 gap-1.5">
+                    <For each={HABIT_ICONS}>
+                      {(opt) => {
+                        const selected = () =>
+                          badge().kind === 'icon' &&
+                          (badge() as { kind: 'icon'; id: string }).id === opt.id;
+                        return (
+                          <button
+                            type="button"
+                            title={opt.label}
+                            aria-label={`Icon ${opt.label}`}
+                            aria-pressed={selected()}
+                            onClick={() => setBadge({ kind: 'icon', id: opt.id })}
+                            class={`h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
+                              selected()
+                                ? 'bg-[#1C1F26] border-[#3B82F6]'
+                                : 'bg-[#14161B] border-white/[0.06] text-[#9AA1B1] hover:text-[#F5F7FA] hover:border-white/20'
+                            }`}
+                            style={selected() ? { color: accentColor() } : undefined}
+                          >
+                            <HabitIconSvg id={opt.id} class="w-4 h-4" />
+                          </button>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </Show>
+
+                <Show when={badgeTab() === 'emoji'}>
+                  <div class="grid grid-cols-6 sm:grid-cols-9 gap-1.5">
+                    <For each={HABIT_EMOJIS}>
+                      {(em) => {
+                        const selected = () =>
+                          badge().kind === 'emoji' &&
+                          (badge() as { kind: 'emoji'; value: string }).value === em;
+                        return (
+                          <button
+                            type="button"
+                            aria-label={`Emoji ${em}`}
+                            aria-pressed={selected()}
+                            onClick={() => setBadge({ kind: 'emoji', value: em })}
+                            class={`h-9 rounded-lg flex items-center justify-center text-base border transition-colors cursor-pointer ${
+                              selected()
+                                ? 'bg-[#1C1F26] border-[#3B82F6]'
+                                : 'bg-[#14161B] border-white/[0.06] hover:border-white/20'
+                            }`}
+                          >
+                            {em}
+                          </button>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </Show>
               </div>
             </div>
 
@@ -229,30 +449,45 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
 
 interface TaskModalProps {
   open: boolean;
+  mode: TaskModalMode;
   editingTask: Task | null;
+  prefill: TaskDraftPrefill | null;
   todayDay: number;
   onClose: () => void;
-  onSave: (data: { title: string; note: string; dueDay: number | null }) => Promise<void>;
+  onSave: (data: {
+    title: string;
+    note: string;
+    dueDay: number | null;
+    repeatable: boolean;
+  }) => Promise<void>;
 }
 
 export function TaskModal(props: TaskModalProps): JSX.Element {
   const [title, setTitle] = createSignal('');
   const [note, setNote] = createSignal('');
   const [dueDay, setDueDay] = createSignal<number | null>(props.todayDay);
+  const [repeatable, setRepeatable] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
 
   createEffect(() => {
     if (!props.open) return;
-    const task = props.editingTask;
+    const task = props.mode === 'edit' ? props.editingTask : null;
     if (task) {
       setTitle(task.title);
       setNote(task.note);
       setDueDay(task.dueDay);
+      setRepeatable(task.repeatable);
+    } else if (props.prefill) {
+      setTitle(props.prefill.title);
+      setNote(props.prefill.note);
+      setDueDay(props.prefill.dueDay);
+      setRepeatable(props.prefill.repeatable);
     } else {
       setTitle('');
       setNote('');
       setDueDay(props.todayDay);
+      setRepeatable(false);
     }
     setError(null);
   });
@@ -267,7 +502,12 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
     setSaving(true);
     setError(null);
     try {
-      await props.onSave({ title: trimmed, note: note().trim(), dueDay: dueDay() });
+      await props.onSave({
+        title: trimmed,
+        note: note().trim(),
+        dueDay: dueDay(),
+        repeatable: repeatable(),
+      });
       props.onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save task.');
@@ -287,7 +527,11 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
         <div class="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
           <div class="flex items-center justify-between">
             <h2 id="task-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
-              {props.editingTask ? 'Edit Task' : 'New Task'}
+              {props.mode === 'edit'
+                ? 'Edit Task'
+                : props.mode === 'next'
+                  ? 'Schedule Next Occurrence'
+                  : 'New Task'}
             </h2>
             <button
               type="button"
@@ -298,6 +542,15 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
               <CloseIcon class="w-4 h-4" />
             </button>
           </div>
+
+          <Show when={props.mode === 'next'}>
+            <div class="rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/25 px-3.5 py-2.5 text-xs text-[#93C5FD] flex items-center gap-2">
+              <RepeatIcon class="w-4 h-4 shrink-0" />
+              <span>
+                Completed! Pre-filled the next occurrence below — pick a new date or skip.
+              </span>
+            </div>
+          </Show>
 
           <form onSubmit={(e) => void handleSubmit(e)} class="space-y-4">
             <Show when={error()}>
@@ -379,20 +632,44 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
               />
             </div>
 
+            <label class="flex items-start gap-3 rounded-xl bg-[#0A0B0E] border border-white/[0.08] px-3.5 py-3 cursor-pointer hover:border-white/[0.15] transition-colors">
+              <input
+                type="checkbox"
+                checked={repeatable()}
+                onChange={(e) => setRepeatable(e.currentTarget.checked)}
+                class="mt-0.5 w-4 h-4 rounded accent-[#3B82F6] cursor-pointer"
+              />
+              <div class="min-w-0 flex-1 space-y-0.5">
+                <div class="flex items-center gap-1.5 text-xs font-medium text-[#F5F7FA]">
+                  <RepeatIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
+                  <span>Repeatable task</span>
+                </div>
+                <p class="text-[11px] text-[#8E95A5]">
+                  Open a pre-filled next occurrence when you complete this task.
+                </p>
+              </div>
+            </label>
+
             <div class="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => props.onClose()}
                 class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
               >
-                Cancel
+                {props.mode === 'next' ? 'Skip' : 'Cancel'}
               </button>
               <button
                 type="submit"
                 disabled={saving()}
                 class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
               >
-                {saving() ? 'Saving...' : props.editingTask ? 'Save Changes' : 'Create Task'}
+                {saving()
+                  ? 'Saving...'
+                  : props.mode === 'edit'
+                    ? 'Save Changes'
+                    : props.mode === 'next'
+                      ? 'Create Next Task'
+                      : 'Create Task'}
               </button>
             </div>
           </form>

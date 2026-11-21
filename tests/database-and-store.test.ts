@@ -265,6 +265,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
         dueDay: store.todayDay(),
         done: false,
         completedDay: null,
+        repeatable: false,
         deletedAt: null,
         createdAt: 900,
         updatedAt: 900,
@@ -443,5 +444,98 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
   } finally {
     store.dispose();
     env.restore();
+  }
+});
+
+test('TrackerStore handles repeatable tasks, dateless goal scheduling, and UI state persistence', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const store = new TrackerStore();
+  try {
+    store.init();
+    store.selectGuest();
+    await new Promise((r) => setTimeout(r, 15));
+
+    // 1. Persisted Today Goals collapse state
+    assert.equal(store.todayGoalsExpanded(), true);
+    store.toggleTodayGoalsExpanded();
+    assert.equal(store.todayGoalsExpanded(), false);
+    assert.equal(env.storageMap.get('habits.todayGoalsExpanded'), 'false');
+
+    // 2. Persisted History Date Range (preset & custom)
+    assert.equal(store.historyRangePreset(), 'last_30');
+    store.setHistoryRangePreset('prev_month');
+    assert.equal(store.historyRangePreset(), 'prev_month');
+    const customStart = store.todayDay() - 10;
+    const customEnd = store.todayDay() - 2;
+    store.setHistoryCustomRange(customStart, customEnd);
+    assert.equal(store.historyRangePreset(), 'custom');
+    assert.equal(store.historyCustomStartDay(), customStart);
+    assert.equal(store.historyCustomEndDay(), customEnd);
+
+    // Re-instantiating TrackerStore reads persisted states back from localStorage
+    const store2 = new TrackerStore();
+    try {
+      assert.equal(store2.todayGoalsExpanded(), false);
+      assert.equal(store2.historyRangePreset(), 'custom');
+      assert.equal(store2.historyCustomStartDay(), customStart);
+      assert.equal(store2.historyCustomEndDay(), customEnd);
+    } finally {
+      store2.dispose();
+    }
+
+    // 3. Dateless goal + 1-click Schedule for Today
+    store.openCreateTask({ dueDay: null });
+    assert.equal(store.taskModalMode(), 'create');
+    assert.equal(store.taskDraftPrefill()?.dueDay, null);
+    await store.saveTask({
+      title: 'Clean garage',
+      note: 'Sort tools',
+      dueDay: null,
+      repeatable: true,
+    });
+    store.closeTaskModal();
+
+    const goal = store.snapshot().tasks[0];
+    assert.equal(goal.dueDay, null);
+    assert.equal(goal.repeatable, true);
+
+    await store.scheduleTaskForDay(goal, store.todayDay());
+    const scheduledGoal = store.snapshot().tasks[0];
+    assert.equal(scheduledGoal.dueDay, store.todayDay());
+
+    // 4. Completing repeatable task opens pre-filled Schedule Next Occurrence modal
+    await store.toggleTaskDone(scheduledGoal);
+    assert.equal(store.snapshot().tasks[0].done, true);
+    assert.equal(store.taskModalOpen(), true);
+    assert.equal(store.taskModalMode(), 'next');
+    assert.deepEqual(store.taskDraftPrefill(), {
+      title: 'Clean garage',
+      note: 'Sort tools',
+      dueDay: store.todayDay() + 1,
+      repeatable: true,
+    });
+
+    // Saving next occurrence creates a second open repeatable task
+    await store.saveTask({
+      title: 'Clean garage',
+      note: 'Sort tools',
+      dueDay: null,
+      repeatable: true,
+    });
+    store.closeTaskModal();
+    assert.equal(store.snapshot().tasks.length, 2);
+    assert.equal(store.snapshot().tasks[1].done, false);
+    assert.equal(store.snapshot().tasks[1].dueDay, null);
+    assert.equal(store.snapshot().tasks[1].repeatable, true);
+
+    // Completing a dateless repeatable task suggests dueDay: null
+    await store.toggleTaskDone(store.snapshot().tasks[1]);
+    assert.equal(store.taskModalMode(), 'next');
+    assert.equal(store.taskDraftPrefill()?.dueDay, null);
+    store.closeTaskModal();
+  } finally {
+    store.dispose();
   }
 });

@@ -212,10 +212,13 @@ export default function App(): JSX.Element {
                 <TodayView
                   snapshot={store.snapshot()}
                   todayDay={store.todayDay()}
+                  goalsExpanded={store.todayGoalsExpanded()}
+                  onToggleGoalsExpanded={() => store.toggleTodayGoalsExpanded()}
                   onToggleCheckin={(hId, d, next) => store.toggleCheckin(hId, d, next)}
                   onSaveNote={(hId, d, txt) => store.saveNote(hId, d, txt)}
                   onToggleTask={(t) => store.toggleTaskDone(t)}
                   onQuickAddTask={(title, due) => store.quickAddTask(title, due)}
+                  onScheduleTaskToday={(t) => store.scheduleTaskForDay(t, store.todayDay())}
                   onOpenNewHabit={() => store.openCreateHabit()}
                   onOpenEditTask={(t) => store.openEditTask(t)}
                 />
@@ -233,9 +236,10 @@ export default function App(): JSX.Element {
                 <TasksView
                   snapshot={store.snapshot()}
                   todayDay={store.todayDay()}
-                  onCreateTask={() => store.openCreateTask()}
+                  onCreateTask={(opts) => store.openCreateTask(opts)}
                   onEditTask={(t) => store.openEditTask(t)}
                   onToggleTask={(t) => store.toggleTaskDone(t)}
+                  onScheduleTaskToday={(t) => store.scheduleTaskForDay(t, store.todayDay())}
                   onDeleteTask={(id) => store.deleteTask(id)}
                 />
               </Match>
@@ -244,6 +248,11 @@ export default function App(): JSX.Element {
                   snapshot={store.snapshot()}
                   todayDay={store.todayDay()}
                   timeZone={store.timeZone()}
+                  rangePreset={store.historyRangePreset()}
+                  customStartDay={store.historyCustomStartDay()}
+                  customEndDay={store.historyCustomEndDay()}
+                  onSelectRangePreset={(p) => store.setHistoryRangePreset(p)}
+                  onSelectCustomRange={(s, e) => store.setHistoryCustomRange(s, e)}
                   onChangeTimeZone={(tz) => store.setTimeZone(tz)}
                   onToggleCheckin={(hId, d, next) => store.toggleCheckin(hId, d, next)}
                   onSaveNote={(hId, d, txt) => store.saveNote(hId, d, txt)}
@@ -310,7 +319,9 @@ export default function App(): JSX.Element {
         />
         <TaskModal
           open={store.taskModalOpen()}
+          mode={store.taskModalMode()}
           editingTask={store.editingTask()}
+          prefill={store.taskDraftPrefill()}
           todayDay={store.todayDay()}
           onClose={() => store.closeTaskModal()}
           onSave={(data) => store.saveTask(data)}

@@ -6,7 +6,7 @@ import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 3;
+const FORMAT_VERSION = 4;
 
 export class SnapshotCodec {
   public static pack(snapshot: DomainSnapshot): Uint8Array {
@@ -138,6 +138,7 @@ export class SnapshotCodec {
       } else {
         body.writeUint8(0);
       }
+      body.writeUint8(task.repeatable ? 1 : 0);
       body.writeFloat64(task.createdAt);
       body.writeFloat64(task.updatedAt);
     }
@@ -171,7 +172,12 @@ export class SnapshotCodec {
       }
     }
     const version = reader.readUint8();
-    if (version !== 1 && version !== 2 && version !== FORMAT_VERSION) {
+    if (
+      version !== 1 &&
+      version !== 2 &&
+      version !== 3 &&
+      version !== FORMAT_VERSION
+    ) {
       throw new Error(`Unsupported snapshot version: ${version}`);
     }
 
@@ -291,6 +297,14 @@ export class SnapshotCodec {
         }
         explicitCompletedDay = hasCompleted === 1 ? reader.readVarInt() : null;
       }
+      let repeatable = false;
+      if (version >= 4) {
+        const repByte = reader.readUint8();
+        if (repByte !== 0 && repByte !== 1) {
+          throw new Error('Invalid task repeatable flag in snapshot');
+        }
+        repeatable = repByte === 1;
+      }
       const createdAt = reader.readFloat64();
       const updatedAt = reader.readFloat64();
       const completedDay = hasExplicitCompletedDay
@@ -305,6 +319,7 @@ export class SnapshotCodec {
         dueDay,
         done: doneByte === 1,
         completedDay,
+        repeatable,
         deletedAt,
         createdAt,
         updatedAt,

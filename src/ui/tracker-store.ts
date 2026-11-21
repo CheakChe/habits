@@ -17,6 +17,17 @@ import {
   Task,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { DATE_RANGE_PRESETS, DateRangePresetId } from '../utils/date-range';
+import { TodayBoard } from '../utils/today-board';
+
+export type TaskModalMode = 'create' | 'edit' | 'next';
+
+export interface TaskDraftPrefill {
+  title: string;
+  note: string;
+  dueDay: number | null;
+  repeatable: boolean;
+}
 
 const EMPTY_SNAPSHOT: DomainSnapshot = {
   habits: [],
@@ -69,6 +80,12 @@ export class TrackerStore {
   public readonly taskModalOpen: Accessor<boolean>;
   private readonly setTaskModalOpen: Setter<boolean>;
 
+  public readonly taskModalMode: Accessor<TaskModalMode>;
+  private readonly setTaskModalMode: Setter<TaskModalMode>;
+
+  public readonly taskDraftPrefill: Accessor<TaskDraftPrefill | null>;
+  private readonly setTaskDraftPrefill: Setter<TaskDraftPrefill | null>;
+
   public readonly editingTask: Accessor<Task | null>;
   private readonly setEditingTask: Setter<Task | null>;
 
@@ -105,9 +122,23 @@ export class TrackerStore {
   public readonly timeZone: Accessor<string>;
   private readonly setTimeZoneSignal: Setter<string>;
 
+  public readonly todayGoalsExpanded: Accessor<boolean>;
+  private readonly setTodayGoalsExpandedSignal: Setter<boolean>;
+
+  public readonly historyRangePreset: Accessor<DateRangePresetId>;
+  private readonly setHistoryRangePresetSignal: Setter<DateRangePresetId>;
+
+  public readonly historyCustomStartDay: Accessor<number>;
+  private readonly setHistoryCustomStartDaySignal: Setter<number>;
+
+  public readonly historyCustomEndDay: Accessor<number>;
+  private readonly setHistoryCustomEndDaySignal: Setter<number>;
+
   private unsubscribeAuth: (() => void) | null = null;
   private midnightTimer: number | null = null;
   private static readonly TIMEZONE_STORAGE_KEY = 'habits.timezone';
+  private static readonly TODAY_GOALS_EXPANDED_KEY = 'habits.todayGoalsExpanded';
+  private static readonly HISTORY_RANGE_STORAGE_KEY = 'habits.historyRange';
 
   private static readStoredTimeZone(): string {
     try {
@@ -122,6 +153,61 @@ export class TrackerStore {
       // ignore storage errors
     }
     return 'UTC';
+  }
+
+  private static readStoredTodayGoalsExpanded(): boolean {
+    try {
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.TODAY_GOALS_EXPANDED_KEY)
+          : null;
+      if (saved === 'false') return false;
+      if (saved === 'true') return true;
+    } catch {
+      // ignore storage errors
+    }
+    return true;
+  }
+
+  private static readStoredHistoryRange(defaultTodayDay: number): {
+    preset: DateRangePresetId;
+    customStartDay: number;
+    customEndDay: number;
+  } {
+    const fallback = {
+      preset: 'last_30' as DateRangePresetId,
+      customStartDay: defaultTodayDay - 29,
+      customEndDay: defaultTodayDay,
+    };
+    try {
+      const raw =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.HISTORY_RANGE_STORAGE_KEY)
+          : null;
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw) as {
+        preset?: unknown;
+        customStartDay?: unknown;
+        customEndDay?: unknown;
+      };
+      const isValidPreset = DATE_RANGE_PRESETS.some((p) => p.id === parsed.preset);
+      const preset = isValidPreset
+        ? (parsed.preset as DateRangePresetId)
+        : fallback.preset;
+      const customStartDay = Number.isInteger(parsed.customStartDay)
+        ? (parsed.customStartDay as number)
+        : fallback.customStartDay;
+      const customEndDay = Number.isInteger(parsed.customEndDay)
+        ? (parsed.customEndDay as number)
+        : fallback.customEndDay;
+      return {
+        preset,
+        customStartDay: Math.min(customStartDay, customEndDay),
+        customEndDay: Math.max(customStartDay, customEndDay),
+      };
+    } catch {
+      return fallback;
+    }
   }
 
   constructor() {
@@ -147,6 +233,9 @@ export class TrackerStore {
     [this.habitModalOpen, this.setHabitModalOpen] = createSignal(false);
     [this.editingHabit, this.setEditingHabit] = createSignal<Habit | null>(null);
     [this.taskModalOpen, this.setTaskModalOpen] = createSignal(false);
+    [this.taskModalMode, this.setTaskModalMode] = createSignal<TaskModalMode>('create');
+    [this.taskDraftPrefill, this.setTaskDraftPrefill] =
+      createSignal<TaskDraftPrefill | null>(null);
     [this.editingTask, this.setEditingTask] = createSignal<Task | null>(null);
     [this.accountModalOpen, this.setAccountModalOpen] = createSignal(false);
     [this.revisionsModalOpen, this.setRevisionsModalOpen] = createSignal(false);
@@ -160,8 +249,20 @@ export class TrackerStore {
     [this.restoringRevision, this.setRestoringRevision] = createSignal(false);
     const initialTz = TrackerStore.readStoredTimeZone();
     [this.timeZone, this.setTimeZoneSignal] = createSignal(initialTz);
-    [this.todayDay, this.setTodayDay] = createSignal(
-      CivilCalendar.todayDayIndex(new Date(), initialTz)
+    const initialTodayDay = CivilCalendar.todayDayIndex(new Date(), initialTz);
+    [this.todayDay, this.setTodayDay] = createSignal(initialTodayDay);
+    [this.todayGoalsExpanded, this.setTodayGoalsExpandedSignal] = createSignal(
+      TrackerStore.readStoredTodayGoalsExpanded()
+    );
+    const storedRange = TrackerStore.readStoredHistoryRange(initialTodayDay);
+    [this.historyRangePreset, this.setHistoryRangePresetSignal] = createSignal(
+      storedRange.preset
+    );
+    [this.historyCustomStartDay, this.setHistoryCustomStartDaySignal] = createSignal(
+      storedRange.customStartDay
+    );
+    [this.historyCustomEndDay, this.setHistoryCustomEndDaySignal] = createSignal(
+      storedRange.customEndDay
     );
   }
 
@@ -176,6 +277,59 @@ export class TrackerStore {
     }
     this.setTimeZoneSignal(normalized);
     this.setTodayDay(CivilCalendar.todayDayIndex(new Date(), normalized));
+  }
+
+  public toggleTodayGoalsExpanded(): void {
+    this.setTodayGoalsExpanded(!this.todayGoalsExpanded());
+  }
+
+  public setTodayGoalsExpanded(expanded: boolean): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(
+          TrackerStore.TODAY_GOALS_EXPANDED_KEY,
+          expanded ? 'true' : 'false'
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setTodayGoalsExpandedSignal(expanded);
+  }
+
+  private persistHistoryRange(
+    preset: DateRangePresetId,
+    customStartDay: number,
+    customEndDay: number
+  ): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(
+          TrackerStore.HISTORY_RANGE_STORAGE_KEY,
+          JSON.stringify({ preset, customStartDay, customEndDay })
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  public setHistoryRangePreset(nextPreset: DateRangePresetId): void {
+    this.setHistoryRangePresetSignal(nextPreset);
+    this.persistHistoryRange(
+      nextPreset,
+      this.historyCustomStartDay(),
+      this.historyCustomEndDay()
+    );
+  }
+
+  public setHistoryCustomRange(startDay: number, endDay: number): void {
+    const s = Math.min(startDay, endDay);
+    const e = Math.min(Math.max(startDay, endDay), this.todayDay());
+    this.setHistoryCustomStartDaySignal(s);
+    this.setHistoryCustomEndDaySignal(e);
+    this.setHistoryRangePresetSignal('custom');
+    this.persistHistoryRange('custom', s, e);
   }
 
   public init(): void {
@@ -312,26 +466,37 @@ export class TrackerStore {
     await this.reloadFromDb();
   }
 
-  public openCreateTask(): void {
+  public openCreateTask(options?: { dueDay?: number | null }): void {
     this.setEditingTask(null);
+    this.setTaskModalMode('create');
+    this.setTaskDraftPrefill({
+      title: '',
+      note: '',
+      dueDay: options?.dueDay !== undefined ? options.dueDay : this.todayDay(),
+      repeatable: false,
+    });
     this.setTaskModalOpen(true);
   }
 
   public openEditTask(task: Task): void {
     this.setEditingTask(task);
+    this.setTaskModalMode('edit');
+    this.setTaskDraftPrefill(null);
     this.setTaskModalOpen(true);
   }
 
   public closeTaskModal(): void {
     this.setTaskModalOpen(false);
+    this.setTaskDraftPrefill(null);
   }
 
   public async saveTask(data: {
     title: string;
     note: string;
     dueDay: number | null;
+    repeatable?: boolean;
   }): Promise<void> {
-    const target = this.editingTask();
+    const target = this.taskModalMode() === 'edit' ? this.editingTask() : null;
     if (target) {
       await this.db.updateTask(target.id, data);
     } else {
@@ -340,8 +505,17 @@ export class TrackerStore {
     await this.reloadFromDb();
   }
 
-  public async quickAddTask(title: string, dueDay: number | null): Promise<void> {
-    await this.db.createTask({ title, note: '', dueDay });
+  public async quickAddTask(
+    title: string,
+    dueDay: number | null,
+    repeatable: boolean = false
+  ): Promise<void> {
+    await this.db.createTask({ title, note: '', dueDay, repeatable });
+    await this.reloadFromDb();
+  }
+
+  public async scheduleTaskForDay(task: Task, dueDay: number | null): Promise<void> {
+    await this.db.updateTask(task.id, { dueDay });
     await this.reloadFromDb();
   }
 
@@ -352,6 +526,18 @@ export class TrackerStore {
       completedDay: nextDone ? this.todayDay() : null,
     });
     await this.reloadFromDb();
+
+    if (nextDone && task.repeatable) {
+      this.setEditingTask(null);
+      this.setTaskModalMode('next');
+      this.setTaskDraftPrefill({
+        title: task.title,
+        note: task.note,
+        dueDay: TodayBoard.suggestNextOccurrenceDueDay(task, this.todayDay()),
+        repeatable: true,
+      });
+      this.setTaskModalOpen(true);
+    }
   }
 
   public async deleteTask(taskId: number): Promise<void> {

@@ -6,6 +6,7 @@ import {
   DateRangeResolver,
   ResolvedDateRange,
 } from '../utils/date-range';
+import { HabitBadge } from './HabitBadge';
 import {
   CalendarIcon,
   CheckIcon,
@@ -81,13 +82,7 @@ export function CustomSelect<T extends string | number>(
       >
         <span class="flex items-center gap-2 min-w-0">
           <Show when={selectedOption()?.dotColor}>
-            {(dot) => (
-              <span
-                class="w-2 h-2 rounded-full shrink-0"
-                style={{ 'background-color': dot() }}
-                aria-hidden="true"
-              />
-            )}
+            {(dot) => <HabitBadge appearanceRaw={dot()} size="xs" />}
           </Show>
           <span class="truncate">{selectedOption()?.label ?? ''}</span>
         </span>
@@ -123,13 +118,7 @@ export function CustomSelect<T extends string | number>(
                 >
                   <span class="flex items-center gap-2.5 min-w-0">
                     <Show when={option.dotColor}>
-                      {(dot) => (
-                        <span
-                          class="w-2 h-2 rounded-full shrink-0"
-                          style={{ 'background-color': dot() }}
-                          aria-hidden="true"
-                        />
-                      )}
+                      {(dot) => <HabitBadge appearanceRaw={dot()} size="xs" />}
                     </Show>
                     <span class="truncate font-medium">{option.label}</span>
                     <Show when={option.hint}>
@@ -405,6 +394,21 @@ interface HistoryRangePickerProps {
   onChangeTimeZone: (timeZone: string) => void;
 }
 
+const MONTH_SHORT_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
 export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element {
   const [open, setOpen] = createSignal(false);
   const initialDate = CivilCalendar.toLocalDate(
@@ -413,7 +417,9 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
   const [viewYear, setViewYear] = createSignal(initialDate.year);
   const [viewMonth, setViewMonth] = createSignal(initialDate.month);
   const [draftStartDay, setDraftStartDay] = createSignal<number | null>(null);
+  const [editingEdge, setEditingEdge] = createSignal<'start' | 'end' | null>(null);
   const [hoverDay, setHoverDay] = createSignal<number | null>(null);
+  const [ymPickerOpen, setYmPickerOpen] = createSignal(false);
   const [tzExpanded, setTzExpanded] = createSignal(false);
   const [tzQuery, setTzQuery] = createSignal('');
   const [clockNow, setClockNow] = createSignal(new Date());
@@ -437,7 +443,9 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     setViewYear(target.year);
     setViewMonth(target.month);
     setDraftStartDay(null);
+    setEditingEdge(null);
     setHoverDay(null);
+    setYmPickerOpen(false);
     setClockNow(new Date());
 
     if (containerRef) {
@@ -458,12 +466,19 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
       if (containerRef && !containerRef.contains(e.target as Node)) {
         setOpen(false);
         setTzExpanded(false);
+        setYmPickerOpen(false);
+        setEditingEdge(null);
       }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (draftStartDay() !== null) {
+        if (ymPickerOpen()) {
+          setYmPickerOpen(false);
+        } else if (editingEdge() !== null) {
+          setEditingEdge(null);
+          setHoverDay(null);
+        } else if (draftStartDay() !== null) {
           setDraftStartDay(null);
           setHoverDay(null);
         } else {
@@ -504,6 +519,17 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     }
   };
 
+  const baseRange = createMemo(() => ({
+    startDay:
+      props.preset === 'custom'
+        ? Math.min(props.customStartDay, props.todayDay)
+        : props.resolvedRange.startDay,
+    endDay:
+      props.preset === 'custom'
+        ? Math.min(props.customEndDay, props.todayDay)
+        : Math.min(props.resolvedRange.endDay, props.todayDay),
+  }));
+
   const activeVisualRange = createMemo(() => {
     const draft = draftStartDay();
     if (draft !== null) {
@@ -513,10 +539,22 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
         endDay: Math.max(draft, hover),
       };
     }
-    return {
-      startDay: props.resolvedRange.startDay,
-      endDay: Math.min(props.resolvedRange.endDay, props.todayDay),
-    };
+    const base = baseRange();
+    const edge = editingEdge();
+    const hover = hoverDay();
+    if (edge === 'start' && hover !== null) {
+      return {
+        startDay: Math.min(hover, base.endDay),
+        endDay: Math.max(hover, base.endDay),
+      };
+    }
+    if (edge === 'end' && hover !== null) {
+      return {
+        startDay: Math.min(base.startDay, hover),
+        endDay: Math.max(base.startDay, hover),
+      };
+    }
+    return base;
   });
 
   const tzChipLabel = createMemo(() => {
@@ -527,7 +565,50 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     return tail.replace(/_/g, ' ');
   });
 
+  const todayLocal = createMemo(() => CivilCalendar.toLocalDate(props.todayDay));
+  const selectableYears = createMemo(() => {
+    const maxYear = todayLocal().year;
+    const minYear = Math.min(viewYear(), maxYear - 7);
+    const years: number[] = [];
+    for (let y = minYear; y <= maxYear; y++) {
+      years.push(y);
+    }
+    return years;
+  });
+
+  const focusEdge = (edge: 'start' | 'end') => {
+    setDraftStartDay(null);
+    setHoverDay(null);
+    setYmPickerOpen(false);
+    if (editingEdge() === edge) {
+      setEditingEdge(null);
+      return;
+    }
+    setEditingEdge(edge);
+    const base = baseRange();
+    const targetDay = edge === 'start' ? base.startDay : base.endDay;
+    const target = CivilCalendar.toLocalDate(targetDay);
+    setViewYear(target.year);
+    setViewMonth(target.month);
+  };
+
   const handleDayClick = (dayIndex: number) => {
+    const edge = editingEdge();
+    if (edge === 'start') {
+      const end = baseRange().endDay;
+      props.onSelectCustomRange(Math.min(dayIndex, end), Math.max(dayIndex, end));
+      setEditingEdge(null);
+      setHoverDay(null);
+      return;
+    }
+    if (edge === 'end') {
+      const start = baseRange().startDay;
+      props.onSelectCustomRange(Math.min(start, dayIndex), Math.max(start, dayIndex));
+      setEditingEdge(null);
+      setHoverDay(null);
+      return;
+    }
+
     const draft = draftStartDay();
     if (draft === null) {
       setDraftStartDay(dayIndex);
@@ -541,26 +622,6 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     props.onSelectCustomRange(start, end);
     setOpen(false);
     setTzExpanded(false);
-  };
-
-  const handleInputDateChange = (edge: 'start' | 'end', raw: string) => {
-    const parsed = CivilCalendar.fromInputDateValue(raw);
-    if (parsed === null) return;
-    const clamped = Math.min(parsed, props.todayDay);
-    const currentStart =
-      props.preset === 'custom'
-        ? props.customStartDay
-        : props.resolvedRange.startDay;
-    const currentEnd =
-      props.preset === 'custom'
-        ? Math.min(props.customEndDay, props.todayDay)
-        : Math.min(props.resolvedRange.endDay, props.todayDay);
-    const nextStart = edge === 'start' ? clamped : currentStart;
-    const nextEnd = edge === 'end' ? clamped : currentEnd;
-    props.onSelectCustomRange(
-      Math.min(nextStart, nextEnd),
-      Math.max(nextStart, nextEnd)
-    );
   };
 
   return (
@@ -623,7 +684,9 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                       type="button"
                       onClick={() => {
                         setDraftStartDay(null);
+                        setEditingEdge(null);
                         setHoverDay(null);
+                        setYmPickerOpen(false);
                         props.onSelectPreset(option.id);
                         if (option.id !== 'custom') {
                           setOpen(false);
@@ -649,50 +712,101 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
             {/* Custom range calendar + Timezone */}
             <div class="sm:col-span-7 p-4 space-y-4">
               <div class="grid grid-cols-2 gap-2">
-                <label class="space-y-1">
+                <div class="space-y-1">
                   <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
                     From
                   </span>
-                  <input
-                    type="date"
-                    value={CivilCalendar.toInputDateValue(activeVisualRange().startDay)}
-                    max={CivilCalendar.toInputDateValue(props.todayDay)}
-                    onChange={(e) => handleInputDateChange('start', e.currentTarget.value)}
-                    class="w-full h-8 rounded-lg bg-[#0A0B0E] border border-white/[0.08] px-2.5 text-xs font-mono tabular-nums text-[#F5F7FA] focus:outline-none focus:border-[#3B82F6]"
-                  />
-                </label>
-                <label class="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => focusEdge('start')}
+                    aria-pressed={editingEdge() === 'start'}
+                    class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
+                      editingEdge() === 'start'
+                        ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
+                        : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
+                    }`}
+                  >
+                    <CalendarIcon
+                      class={`w-3.5 h-3.5 shrink-0 ${
+                        editingEdge() === 'start' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
+                      }`}
+                    />
+                    <span class="text-xs font-mono tabular-nums truncate">
+                      {CivilCalendar.formatShortDateWithYear(
+                        activeVisualRange().startDay
+                      )}
+                    </span>
+                  </button>
+                </div>
+
+                <div class="space-y-1">
                   <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
                     To
                   </span>
-                  <input
-                    type="date"
-                    value={CivilCalendar.toInputDateValue(activeVisualRange().endDay)}
-                    max={CivilCalendar.toInputDateValue(props.todayDay)}
-                    onChange={(e) => handleInputDateChange('end', e.currentTarget.value)}
-                    class="w-full h-8 rounded-lg bg-[#0A0B0E] border border-white/[0.08] px-2.5 text-xs font-mono tabular-nums text-[#F5F7FA] focus:outline-none focus:border-[#3B82F6]"
-                  />
-                </label>
+                  <button
+                    type="button"
+                    onClick={() => focusEdge('end')}
+                    aria-pressed={editingEdge() === 'end'}
+                    class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
+                      editingEdge() === 'end'
+                        ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
+                        : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
+                    }`}
+                  >
+                    <CalendarIcon
+                      class={`w-3.5 h-3.5 shrink-0 ${
+                        editingEdge() === 'end' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
+                      }`}
+                    />
+                    <span class="text-xs font-mono tabular-nums truncate">
+                      {CivilCalendar.formatShortDateWithYear(
+                        activeVisualRange().endDay
+                      )}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               <div class="space-y-2.5">
-                <div class="flex items-center justify-between">
-                  <span class="font-display text-sm font-semibold text-[#F5F7FA]">
-                    {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
-                  </span>
+                <div class="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setYmPickerOpen((v) => !v)}
+                    aria-expanded={ymPickerOpen()}
+                    class="inline-flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-lg font-display text-sm font-semibold text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  >
+                    <span>{CivilCalendar.formatMonthYear(viewYear(), viewMonth())}</span>
+                    <ChevronDownIcon
+                      class={`w-3.5 h-3.5 text-[#8E95A5] transition-transform duration-150 ${
+                        ymPickerOpen() ? 'rotate-180 text-[#60A5FA]' : ''
+                      }`}
+                    />
+                  </button>
                   <div class="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={goPrevMonth}
-                      aria-label="Previous month"
+                      onClick={() => {
+                        if (ymPickerOpen()) {
+                          setViewYear((y) => y - 1);
+                        } else {
+                          goPrevMonth();
+                        }
+                      }}
+                      aria-label={ymPickerOpen() ? 'Previous year' : 'Previous month'}
                       class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
                     >
                       <ChevronLeftIcon class="w-4 h-4" />
                     </button>
                     <button
                       type="button"
-                      onClick={goNextMonth}
-                      aria-label="Next month"
+                      onClick={() => {
+                        if (ymPickerOpen()) {
+                          setViewYear((y) => Math.min(todayLocal().year, y + 1));
+                        } else {
+                          goNextMonth();
+                        }
+                      }}
+                      aria-label={ymPickerOpen() ? 'Next year' : 'Next month'}
                       class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
                     >
                       <ChevronRightIcon class="w-4 h-4" />
@@ -700,65 +814,132 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                   </div>
                 </div>
 
-                <div class="grid grid-cols-7 gap-1 text-center">
-                  <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                    {(bit) => (
-                      <div class="text-[10px] font-medium text-[#6B7280] py-0.5">
-                        {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
+                <Show
+                  when={!ymPickerOpen()}
+                  fallback={
+                    <div class="rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-2.5 space-y-2.5">
+                      <div class="flex items-center gap-1 overflow-x-auto pb-0.5">
+                        <For each={selectableYears()}>
+                          {(yr) => (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setViewYear(yr);
+                                if (yr === todayLocal().year && viewMonth() > todayLocal().month) {
+                                  setViewMonth(todayLocal().month);
+                                }
+                              }}
+                              class={`px-2 py-1 rounded-md text-xs font-mono tabular-nums transition-colors cursor-pointer shrink-0 ${
+                                viewYear() === yr
+                                  ? 'bg-[#3B82F6] text-white font-semibold'
+                                  : 'text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06]'
+                              }`}
+                            >
+                              {yr}
+                            </button>
+                          )}
+                        </For>
                       </div>
-                    )}
-                  </For>
 
-                  <For each={Array.from({ length: monthGrid().leadingEmpty })}>
-                    {() => <div />}
-                  </For>
-
-                  <For each={monthGrid().days}>
-                    {(dayIndex) => {
-                      const local = CivilCalendar.toLocalDate(dayIndex);
-                      const isFuture = () => dayIndex > props.todayDay;
-                      const isEdge = () =>
-                        dayIndex === activeVisualRange().startDay ||
-                        dayIndex === activeVisualRange().endDay;
-                      const isInRange = () =>
-                        dayIndex > activeVisualRange().startDay &&
-                        dayIndex < activeVisualRange().endDay;
-                      const isToday = () => dayIndex === props.todayDay;
-
-                      return (
-                        <button
-                          type="button"
-                          disabled={isFuture()}
-                          onClick={() => handleDayClick(dayIndex)}
-                          onMouseEnter={() => {
-                            if (draftStartDay() !== null && !isFuture()) {
-                              setHoverDay(dayIndex);
-                            }
+                      <div class="grid grid-cols-4 gap-1.5">
+                        <For each={MONTH_SHORT_NAMES}>
+                          {(mLabel, idx) => {
+                            const monthNum = idx() + 1;
+                            const isFutureMonth = () =>
+                              viewYear() > todayLocal().year ||
+                              (viewYear() === todayLocal().year &&
+                                monthNum > todayLocal().month);
+                            const isActiveMonth = () => viewMonth() === monthNum;
+                            return (
+                              <button
+                                type="button"
+                                disabled={isFutureMonth()}
+                                onClick={() => {
+                                  setViewMonth(monthNum);
+                                  setYmPickerOpen(false);
+                                }}
+                                class={`h-8 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
+                                  isActiveMonth()
+                                    ? 'bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/40'
+                                    : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                                }`}
+                              >
+                                {mLabel}
+                              </button>
+                            );
                           }}
-                          class={`h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
-                            isEdge()
-                              ? 'bg-[#3B82F6] text-white font-semibold'
-                              : isInRange()
-                                ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
-                                : isToday()
-                                  ? 'ring-1 ring-[#60A5FA]/60 text-[#60A5FA] hover:bg-[#3B82F6]/15'
-                                  : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
-                          }`}
-                        >
-                          {local.day}
-                        </button>
-                      );
-                    }}
-                  </For>
-                </div>
+                        </For>
+                      </div>
+                    </div>
+                  }
+                >
+                  <div class="grid grid-cols-7 gap-1 text-center">
+                    <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                      {(bit) => (
+                        <div class="text-[10px] font-medium text-[#6B7280] py-0.5">
+                          {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
+                        </div>
+                      )}
+                    </For>
+
+                    <For each={Array.from({ length: monthGrid().leadingEmpty })}>
+                      {() => <div />}
+                    </For>
+
+                    <For each={monthGrid().days}>
+                      {(dayIndex) => {
+                        const local = CivilCalendar.toLocalDate(dayIndex);
+                        const isFuture = () => dayIndex > props.todayDay;
+                        const isEdge = () =>
+                          dayIndex === activeVisualRange().startDay ||
+                          dayIndex === activeVisualRange().endDay;
+                        const isInRange = () =>
+                          dayIndex > activeVisualRange().startDay &&
+                          dayIndex < activeVisualRange().endDay;
+                        const isToday = () => dayIndex === props.todayDay;
+
+                        return (
+                          <button
+                            type="button"
+                            disabled={isFuture()}
+                            onClick={() => handleDayClick(dayIndex)}
+                            onMouseEnter={() => {
+                              if (
+                                (draftStartDay() !== null || editingEdge() !== null) &&
+                                !isFuture()
+                              ) {
+                                setHoverDay(dayIndex);
+                              }
+                            }}
+                            class={`h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
+                              isEdge()
+                                ? 'bg-[#3B82F6] text-white font-semibold'
+                                : isInRange()
+                                  ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
+                                  : isToday()
+                                    ? 'ring-1 ring-[#60A5FA]/60 text-[#60A5FA] hover:bg-[#3B82F6]/15'
+                                    : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
+                            }`}
+                          >
+                            {local.day}
+                          </button>
+                        );
+                      }}
+                    </For>
+                  </div>
+                </Show>
 
                 <p class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                  {draftStartDay() !== null
-                    ? `Start: ${CivilCalendar.formatShortDateWithYear(draftStartDay()!)} — pick end date`
-                    : `Range: ${DateRangeResolver.formatRangeLabel(
-                        activeVisualRange().startDay,
-                        activeVisualRange().endDay
-                      )}`}
+                  {editingEdge() === 'start'
+                    ? 'Picking start date (From) — click any day'
+                    : editingEdge() === 'end'
+                      ? 'Picking end date (To) — click any day'
+                      : draftStartDay() !== null
+                        ? `Start: ${CivilCalendar.formatShortDateWithYear(draftStartDay()!)} — pick end date`
+                        : `Range: ${DateRangeResolver.formatRangeLabel(
+                            activeVisualRange().startDay,
+                            activeVisualRange().endDay
+                          )}`}
                 </p>
               </div>
 

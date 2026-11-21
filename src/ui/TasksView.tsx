@@ -9,6 +9,7 @@ import {
   CloseIcon,
   EditIcon,
   PlusIcon,
+  RepeatIcon,
   SearchIcon,
   TrashIcon,
 } from './Icons';
@@ -16,9 +17,10 @@ import {
 interface TasksViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
-  onCreateTask: () => void;
+  onCreateTask: (options?: { dueDay?: number | null }) => void;
   onEditTask: (task: Task) => void;
   onToggleTask: (task: Task) => Promise<void>;
+  onScheduleTaskToday: (task: Task) => Promise<void>;
   onDeleteTask: (taskId: number) => Promise<void>;
 }
 
@@ -60,9 +62,17 @@ export function TasksView(props: TasksViewProps): JSX.Element {
       ).length
   );
 
+  const noDateCount = createMemo(
+    () => visibleTasks().filter((t) => !t.done && t.dueDay === null).length
+  );
+
   const doneCount = createMemo(
     () => visibleTasks().length - openCount()
   );
+
+  const handleOpenCreate = () => {
+    props.onCreateTask(filter() === 'nodate' ? { dueDay: null } : undefined);
+  };
 
   return (
     <div class="space-y-6">
@@ -86,7 +96,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
 
         <button
           type="button"
-          onClick={() => props.onCreateTask()}
+          onClick={handleOpenCreate}
           class="h-10 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
         >
           <PlusIcon class="w-4 h-4" />
@@ -151,6 +161,11 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                     {overdueCount()}
                   </span>
                 </Show>
+                <Show when={tab.id === 'nodate' && noDateCount() > 0}>
+                  <span class="ml-1.5 font-mono tabular-nums text-[#8E95A5]">
+                    {noDateCount()}
+                  </span>
+                </Show>
               </button>
             )}
           </For>
@@ -184,7 +199,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
             >
               <button
                 type="button"
-                onClick={() => props.onCreateTask()}
+                onClick={handleOpenCreate}
                 class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer"
               >
                 Create Task
@@ -248,6 +263,13 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                               Overdue · {CivilCalendar.formatShortDate(task.dueDay!)}
                             </span>
                           </Show>
+                          <Show when={task.repeatable}>
+                            <span aria-hidden="true" class="text-[#5B6270]">·</span>
+                            <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                              <RepeatIcon class="w-3 h-3" />
+                              Repeats
+                            </span>
+                          </Show>
                           <Show when={task.note}>
                             <span aria-hidden="true" class="text-[#5B6270]">·</span>
                             <span class="text-[#9AA1B1] truncate max-w-md">
@@ -259,6 +281,16 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                     </div>
 
                     <div class="flex items-center gap-1 shrink-0">
+                      <Show when={!task.done && task.dueDay === null}>
+                        <button
+                          type="button"
+                          onClick={() => void props.onScheduleTaskToday(task)}
+                          title="Schedule for today"
+                          class="h-8 px-2.5 mr-1 rounded-lg bg-[#0A0B0E] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#9AA1B1] hover:text-[#60A5FA] transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          Today
+                        </button>
+                      </Show>
                       <button
                         type="button"
                         onClick={() => props.onEditTask(task)}
