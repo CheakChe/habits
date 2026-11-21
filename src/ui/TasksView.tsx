@@ -5,6 +5,7 @@ import { TaskFilterMode, TaskSortMode, TodayBoard } from '../utils/today-board';
 import { CustomSelect } from './CustomControls';
 import {
   AlertIcon,
+  ArchiveIcon,
   CheckIcon,
   CloseIcon,
   EditIcon,
@@ -30,6 +31,8 @@ const FILTER_TABS: { id: TaskFilterMode; label: string }[] = [
   { id: 'overdue', label: 'Overdue' },
   { id: 'nodate', label: 'No Date' },
   { id: 'completed', label: 'Completed' },
+  { id: 'not_done', label: 'Not Done' },
+  { id: 'archived', label: 'Archived' },
 ];
 
 export function TasksView(props: TasksViewProps): JSX.Element {
@@ -52,27 +55,44 @@ export function TasksView(props: TasksViewProps): JSX.Element {
   );
 
   const openCount = createMemo(
-    () => visibleTasks().filter((t) => !t.done).length
+    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'open').length
   );
 
   const overdueCount = createMemo(
     () =>
       visibleTasks().filter(
-        (t) => !t.done && t.dueDay !== null && t.dueDay < props.todayDay
+        (t) =>
+          TodayBoard.getStatus(t) === 'open' &&
+          t.dueDay !== null &&
+          t.dueDay < props.todayDay
       ).length
   );
 
   const noDateCount = createMemo(
-    () => visibleTasks().filter((t) => !t.done && t.dueDay === null).length
+    () =>
+      visibleTasks().filter(
+        (t) => TodayBoard.getStatus(t) === 'open' && t.dueDay === null
+      ).length
   );
 
   const doneCount = createMemo(
-    () => visibleTasks().length - openCount()
+    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'done').length
+  );
+
+  const notDoneCount = createMemo(
+    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'not_done').length
+  );
+
+  const archivedCount = createMemo(
+    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'archived').length
   );
 
   const handleOpenCreate = () => {
     props.onCreateTask(filter() === 'nodate' ? { dueDay: null } : undefined);
   };
+
+  const isClosedFilter = () =>
+    filter() === 'completed' || filter() === 'not_done' || filter() === 'archived';
 
   return (
     <div class="space-y-6">
@@ -91,6 +111,16 @@ export function TasksView(props: TasksViewProps): JSX.Element {
             </Show>
             <span aria-hidden="true"> · </span>
             <span class="font-mono tabular-nums">{doneCount()}</span> completed
+            <Show when={notDoneCount() > 0}>
+              <span aria-hidden="true"> · </span>
+              <span class="font-mono tabular-nums text-[#FCA5A5]">
+                {notDoneCount()} not done
+              </span>
+            </Show>
+            <Show when={archivedCount() > 0}>
+              <span aria-hidden="true"> · </span>
+              <span class="font-mono tabular-nums">{archivedCount()} archived</span>
+            </Show>
           </p>
         </div>
 
@@ -105,7 +135,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
       </div>
 
       {/* Search, Sort & Status Filters */}
-      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
         <div class="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1">
           <div class="relative flex-1 max-w-md">
             <SearchIcon class="w-4 h-4 text-[#6B7280] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -166,6 +196,16 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                     {noDateCount()}
                   </span>
                 </Show>
+                <Show when={tab.id === 'not_done' && notDoneCount() > 0}>
+                  <span class="ml-1.5 font-mono tabular-nums text-[#FCA5A5]">
+                    {notDoneCount()}
+                  </span>
+                </Show>
+                <Show when={tab.id === 'archived' && archivedCount() > 0}>
+                  <span class="ml-1.5 font-mono tabular-nums text-[#8E95A5]">
+                    {archivedCount()}
+                  </span>
+                </Show>
               </button>
             )}
           </For>
@@ -181,10 +221,14 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                 ? 'No tasks match your search.'
                 : filter() === 'completed'
                   ? 'No completed tasks yet.'
-                  : 'No tasks match this filter.'}
+                  : filter() === 'not_done'
+                    ? 'No tasks marked as Not Done.'
+                    : filter() === 'archived'
+                      ? 'No archived tasks.'
+                      : 'No tasks match this filter.'}
             </p>
             <Show
-              when={searchQuery().trim().length === 0 && filter() !== 'completed'}
+              when={searchQuery().trim().length === 0 && !isClosedFilter()}
               fallback={
                 <Show when={searchQuery().trim().length > 0}>
                   <button
@@ -212,45 +256,98 @@ export function TasksView(props: TasksViewProps): JSX.Element {
           <ul class="divide-y divide-white/[0.06]">
             <For each={filtered()}>
               {(task) => {
+                const status = () => TodayBoard.getStatus(task);
                 const isOverdue = () =>
-                  !task.done && task.dueDay !== null && task.dueDay < props.todayDay;
+                  status() === 'open' && task.dueDay !== null && task.dueDay < props.todayDay;
 
                 return (
                   <li class="px-5 py-3.5 flex items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors">
                     <div class="flex items-start gap-3.5 min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => void props.onToggleTask(task)}
-                        aria-pressed={task.done}
-                        aria-label={`Mark ${task.title} as ${task.done ? 'open' : 'completed'}`}
-                        class={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
-                          task.done
-                            ? 'bg-[#22C55E] border-transparent text-white'
-                            : isOverdue()
-                              ? 'bg-[#0A0B0E] border-[#EF4444]/40 hover:border-[#EF4444] text-transparent'
-                              : 'bg-[#0A0B0E] border-white/[0.12] hover:border-white/30 text-transparent'
-                        }`}
+                      <Show
+                        when={status() === 'open' || status() === 'done'}
+                        fallback={
+                          <div
+                            title={
+                              status() === 'not_done'
+                                ? 'Not Done — change status in Edit'
+                                : 'Archived — change status in Edit'
+                            }
+                            aria-label={
+                              status() === 'not_done'
+                                ? 'Status: Not Done'
+                                : 'Status: Archived'
+                            }
+                            class={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+                              status() === 'not_done'
+                                ? 'bg-[#EF4444]/10 border-[#EF4444]/30 text-[#FCA5A5]'
+                                : 'bg-[#1C1F26] border-white/[0.08] text-[#8E95A5]'
+                            }`}
+                          >
+                            <Show
+                              when={status() === 'not_done'}
+                              fallback={<ArchiveIcon class="w-4 h-4" />}
+                            >
+                              <CloseIcon class="w-4 h-4" />
+                            </Show>
+                          </div>
+                        }
                       >
-                        <CheckIcon class="w-4 h-4" />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => void props.onToggleTask(task)}
+                          aria-pressed={status() === 'done'}
+                          aria-label={`Mark ${task.title} as ${
+                            status() === 'done' ? 'open' : 'completed'
+                          }`}
+                          class={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
+                            status() === 'done'
+                              ? 'bg-[#22C55E] border-transparent text-white'
+                              : isOverdue()
+                                ? 'bg-[#0A0B0E] border-[#EF4444]/40 hover:border-[#EF4444] text-transparent'
+                                : 'bg-[#0A0B0E] border-white/[0.12] hover:border-white/30 text-transparent'
+                          }`}
+                        >
+                          <CheckIcon class="w-4 h-4" />
+                        </button>
+                      </Show>
 
                       <div class="min-w-0 flex-1 py-0.5">
                         <p
                           class={`text-sm font-medium truncate ${
-                            task.done
+                            status() === 'done'
                               ? 'text-[#8E95A5] line-through'
-                              : 'text-[#F5F7FA]'
+                              : status() === 'not_done'
+                                ? 'text-[#C8CDD8]'
+                                : status() === 'archived'
+                                  ? 'text-[#8E95A5]'
+                                  : 'text-[#F5F7FA]'
                           }`}
                         >
                           {task.title}
                         </p>
                         <div class="flex flex-wrap items-center gap-2 mt-0.5 text-xs">
+                          <Show when={status() === 'not_done'}>
+                            <span class="text-[#FCA5A5] font-medium">Not Done</span>
+                            <Show when={task.dueDay !== null}>
+                              <span aria-hidden="true" class="text-[#5B6270]">·</span>
+                            </Show>
+                          </Show>
+                          <Show when={status() === 'archived'}>
+                            <span class="text-[#8E95A5] font-medium">Archived</span>
+                            <Show when={task.dueDay !== null}>
+                              <span aria-hidden="true" class="text-[#5B6270]">·</span>
+                            </Show>
+                          </Show>
                           <Show
                             when={isOverdue() && task.dueDay !== null}
                             fallback={
                               <Show
                                 when={task.dueDay !== null}
-                                fallback={<span class="text-[#6B7280]">No due date</span>}
+                                fallback={
+                                  <Show when={status() === 'open' || status() === 'done'}>
+                                    <span class="text-[#6B7280]">No due date</span>
+                                  </Show>
+                                }
                               >
                                 <span class="text-[#8E95A5] font-mono tabular-nums">
                                   Due {CivilCalendar.formatShortDate(task.dueDay!)}
@@ -281,7 +378,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                     </div>
 
                     <div class="flex items-center gap-1 shrink-0">
-                      <Show when={!task.done && task.dueDay === null}>
+                      <Show when={status() === 'open' && task.dueDay === null}>
                         <button
                           type="button"
                           onClick={() => void props.onScheduleTaskToday(task)}

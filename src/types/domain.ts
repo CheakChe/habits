@@ -25,12 +25,15 @@ export interface HabitNote {
   updatedAt: number;
 }
 
+export type TaskStatus = 'open' | 'done' | 'not_done' | 'archived';
+
 export interface Task {
   id: number;
   title: string;
   note: string;
   dueDay: number | null;
   done: boolean;
+  status: TaskStatus;
   completedDay: number | null;
   repeatable: boolean;
   deletedAt: number | null;

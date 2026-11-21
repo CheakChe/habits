@@ -4,6 +4,7 @@ import {
   HabitCheckin,
   HabitNote,
   Task,
+  TaskStatus,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 
@@ -36,8 +37,21 @@ export interface UpdateTaskPatch {
   note?: string;
   dueDay?: number | null;
   done?: boolean;
+  status?: TaskStatus;
   completedDay?: number | null;
   repeatable?: boolean;
+}
+
+function normalizeTaskStatus(task: Pick<Task, 'done'> & { status?: TaskStatus }): TaskStatus {
+  if (
+    task.status === 'open' ||
+    task.status === 'done' ||
+    task.status === 'not_done' ||
+    task.status === 'archived'
+  ) {
+    return task.status;
+  }
+  return task.done ? 'done' : 'open';
 }
 
 export class HabitDatabase {
@@ -123,17 +137,25 @@ export class HabitDatabase {
       checkins: checkins.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       notes: notes.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       tasks: tasks
-        .map((t) => ({
-          ...t,
-          completedDay:
-            t.completedDay !== undefined
-              ? t.completedDay
-              : t.done
-                ? CivilCalendar.fromTimestamp(t.updatedAt)
-                : null,
-          repeatable: Boolean(t.repeatable),
-          deletedAt: t.deletedAt ?? null,
-        }))
+        .map((t) => {
+          const status = normalizeTaskStatus(t);
+          const done = status === 'done';
+          return {
+            ...t,
+            done,
+            status,
+            completedDay:
+              t.completedDay !== undefined
+                ? done
+                  ? t.completedDay
+                  : null
+                : done
+                  ? CivilCalendar.fromTimestamp(t.updatedAt)
+                  : null,
+            repeatable: Boolean(t.repeatable),
+            deletedAt: t.deletedAt ?? null,
+          };
+        })
         .sort((a, b) => a.id - b.id),
     };
   }
@@ -287,6 +309,7 @@ export class HabitDatabase {
       note: input.note.trim(),
       dueDay: input.dueDay,
       done: false,
+      status: 'open',
       completedDay: null,
       repeatable: Boolean(input.repeatable),
       deletedAt: null,
@@ -306,24 +329,31 @@ export class HabitDatabase {
     if (!existing) {
       throw new Error(`Task ${id} not found`);
     }
+    const existingStatus = normalizeTaskStatus(existing);
     const existingCompletedDay =
       existing.completedDay !== undefined
         ? existing.completedDay
-        : existing.done
+        : existingStatus === 'done'
           ? CivilCalendar.fromTimestamp(existing.updatedAt)
           : null;
-    const nextDone = patch.done !== undefined ? patch.done : existing.done;
-    let nextCompletedDay: number | null;
-    if (patch.completedDay !== undefined) {
-      nextCompletedDay = nextDone ? patch.completedDay : null;
+
+    let nextStatus: TaskStatus;
+    if (patch.status !== undefined) {
+      nextStatus = patch.status;
     } else if (patch.done !== undefined) {
-      if (patch.done && !existing.done) {
-        nextCompletedDay = CivilCalendar.todayDayIndex();
-      } else if (!patch.done) {
-        nextCompletedDay = null;
-      } else {
-        nextCompletedDay = existingCompletedDay;
-      }
+      nextStatus = patch.done ? 'done' : 'open';
+    } else {
+      nextStatus = existingStatus;
+    }
+
+    const nextDone = nextStatus === 'done';
+    let nextCompletedDay: number | null;
+    if (!nextDone) {
+      nextCompletedDay = null;
+    } else if (patch.completedDay !== undefined) {
+      nextCompletedDay = patch.completedDay;
+    } else if (existingStatus !== 'done') {
+      nextCompletedDay = CivilCalendar.todayDayIndex();
     } else {
       nextCompletedDay = existingCompletedDay;
     }
@@ -334,6 +364,7 @@ export class HabitDatabase {
       note: patch.note !== undefined ? patch.note.trim() : existing.note,
       dueDay: patch.dueDay !== undefined ? patch.dueDay : existing.dueDay,
       done: nextDone,
+      status: nextStatus,
       completedDay: nextCompletedDay,
       repeatable:
         patch.repeatable !== undefined

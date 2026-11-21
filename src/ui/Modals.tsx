@@ -5,8 +5,9 @@ import {
   MAX_REVISIONS_TO_KEEP,
   SyncPreparationResult,
 } from '../sync/drive-sync-service';
-import { Habit, SessionMode, Task } from '../types/domain';
+import { Habit, SessionMode, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { TodayBoard } from '../utils/today-board';
 import {
   HABIT_EMOJIS,
   HABIT_ICONS,
@@ -16,6 +17,7 @@ import {
 import { DatePicker } from './CustomControls';
 import { HabitBadge, HabitIconSvg } from './HabitBadge';
 import {
+  ArchiveIcon,
   CheckIcon,
   CloseIcon,
   CloudSyncIcon,
@@ -459,14 +461,43 @@ interface TaskModalProps {
     note: string;
     dueDay: number | null;
     repeatable: boolean;
+    status?: TaskStatus;
   }) => Promise<void>;
 }
+
+const TASK_STATUS_OPTIONS: {
+  value: TaskStatus;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: 'open',
+    label: 'Open',
+    hint: 'Active task — visible in Open, Today, or Overdue.',
+  },
+  {
+    value: 'done',
+    label: 'Done',
+    hint: 'Completed — counted in History & Completed Tasks.',
+  },
+  {
+    value: 'not_done',
+    label: 'Not Done',
+    hint: 'Needed to be done, but was missed or could not be completed.',
+  },
+  {
+    value: 'archived',
+    label: 'Archived',
+    hint: 'No longer relevant or meaningful — hidden without counting as missed.',
+  },
+];
 
 export function TaskModal(props: TaskModalProps): JSX.Element {
   const [title, setTitle] = createSignal('');
   const [note, setNote] = createSignal('');
   const [dueDay, setDueDay] = createSignal<number | null>(props.todayDay);
   const [repeatable, setRepeatable] = createSignal(false);
+  const [status, setStatus] = createSignal<TaskStatus>('open');
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
 
@@ -478,16 +509,19 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
       setNote(task.note);
       setDueDay(task.dueDay);
       setRepeatable(task.repeatable);
+      setStatus(TodayBoard.getStatus(task));
     } else if (props.prefill) {
       setTitle(props.prefill.title);
       setNote(props.prefill.note);
       setDueDay(props.prefill.dueDay);
       setRepeatable(props.prefill.repeatable);
+      setStatus('open');
     } else {
       setTitle('');
       setNote('');
       setDueDay(props.todayDay);
       setRepeatable(false);
+      setStatus('open');
     }
     setError(null);
   });
@@ -507,6 +541,7 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
         note: note().trim(),
         dueDay: dueDay(),
         repeatable: repeatable(),
+        status: props.mode === 'edit' ? status() : 'open',
       });
       props.onClose();
     } catch (err) {
@@ -524,7 +559,7 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
         aria-modal="true"
         aria-labelledby="task-modal-title"
       >
-        <div class="w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+        <div class="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
           <div class="flex items-center justify-between">
             <h2 id="task-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
               {props.mode === 'edit'
@@ -649,6 +684,57 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
                 </p>
               </div>
             </label>
+
+            <Show when={props.mode === 'edit'}>
+              <div class="space-y-2">
+                <span class="block text-xs font-medium text-[#9AA1B1]">Status</span>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <For each={TASK_STATUS_OPTIONS}>
+                    {(opt) => {
+                      const active = () => status() === opt.value;
+                      const activeClass = () => {
+                        if (!active()) {
+                          return 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA] hover:border-white/20';
+                        }
+                        switch (opt.value) {
+                          case 'done':
+                            return 'bg-[#22C55E]/15 border-[#22C55E]/50 text-[#86EFAC]';
+                          case 'not_done':
+                            return 'bg-[#EF4444]/15 border-[#EF4444]/50 text-[#FCA5A5]';
+                          case 'archived':
+                            return 'bg-[#1C1F26] border-white/25 text-[#F5F7FA]';
+                          case 'open':
+                          default:
+                            return 'bg-[#3B82F6]/15 border-[#3B82F6]/60 text-[#93C5FD]';
+                        }
+                      };
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => setStatus(opt.value)}
+                          aria-pressed={active()}
+                          class={`h-9 px-2.5 rounded-xl border text-xs font-medium inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${activeClass()}`}
+                        >
+                          <Show when={opt.value === 'done'}>
+                            <CheckIcon class="w-3.5 h-3.5 shrink-0" />
+                          </Show>
+                          <Show when={opt.value === 'not_done'}>
+                            <CloseIcon class="w-3.5 h-3.5 shrink-0" />
+                          </Show>
+                          <Show when={opt.value === 'archived'}>
+                            <ArchiveIcon class="w-3.5 h-3.5 shrink-0" />
+                          </Show>
+                          <span class="truncate">{opt.label}</span>
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+                <p class="text-[11px] text-[#8E95A5]">
+                  {TASK_STATUS_OPTIONS.find((o) => o.value === status())?.hint}
+                </p>
+              </div>
+            </Show>
 
             <div class="flex items-center justify-end gap-3 pt-2">
               <button

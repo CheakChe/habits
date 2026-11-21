@@ -303,6 +303,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       note: '',
       dueDay: today,
       done: true,
+      status: 'done',
       completedDay: CivilCalendar.fromLocalDate(2026, 11, 17),
       repeatable: false,
       deletedAt: null,
@@ -315,6 +316,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       note: 'Updated note later',
       dueDay: null,
       done: true,
+      status: 'done',
       completedDay: lastWeekDay,
       repeatable: false,
       deletedAt: null,
@@ -327,6 +329,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       note: '',
       dueDay: today,
       done: false,
+      status: 'open',
       completedDay: null,
       repeatable: false,
       deletedAt: null,
@@ -339,6 +342,7 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       note: '',
       dueDay: today,
       done: true,
+      status: 'done',
       completedDay: today,
       repeatable: false,
       deletedAt: tsThisWeek,
@@ -351,11 +355,38 @@ test('TaskAnalytics aggregates weekly completed tasks accurately and handles emp
       note: '',
       dueDay: null,
       done: true,
+      status: 'done',
       completedDay: CivilCalendar.fromLocalDate(2026, 1, 5),
       repeatable: false,
       deletedAt: null,
       createdAt: tsTooOld,
       updatedAt: tsTooOld,
+    },
+    {
+      id: 6,
+      title: 'Not done task',
+      note: '',
+      dueDay: today,
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsThisWeek,
+      updatedAt: tsThisWeek,
+    },
+    {
+      id: 7,
+      title: 'Archived goal',
+      note: '',
+      dueDay: null,
+      done: false,
+      status: 'archived',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsThisWeek,
+      updatedAt: tsThisWeek,
     },
   ];
 
@@ -433,14 +464,16 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
   );
 
   const tasks: Task[] = [
-    { id: 5, title: 'Future', note: 'Call dentist', dueDay: today + 2, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 4, title: 'No date', note: 'Read spec', dueDay: null, done: false, completedDay: null, repeatable: true, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 3, title: 'Today B', note: '', dueDay: today, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 1, title: 'Today A', note: 'Dentist receipt', dueDay: today, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 6, title: 'Overdue newer', note: '', dueDay: today - 1, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 2, title: 'Overdue older', note: '', dueDay: today - 5, done: false, completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 7, title: 'Done overdue', note: '', dueDay: today - 3, done: true, completedDay: today - 1, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 10 },
-    { id: 8, title: 'Deleted today', note: 'Dentist', dueDay: today, done: false, completedDay: null, repeatable: false, deletedAt: 100, createdAt: 1, updatedAt: 100 },
+    { id: 5, title: 'Future', note: 'Call dentist', dueDay: today + 2, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 4, title: 'No date', note: 'Read spec', dueDay: null, done: false, status: 'open', completedDay: null, repeatable: true, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 3, title: 'Today B', note: '', dueDay: today, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 1, title: 'Today A', note: 'Dentist receipt', dueDay: today, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 6, title: 'Overdue newer', note: '', dueDay: today - 1, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 2, title: 'Overdue older', note: '', dueDay: today - 5, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
+    { id: 7, title: 'Done overdue', note: '', dueDay: today - 3, done: true, status: 'done', completedDay: today - 1, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 10 },
+    { id: 8, title: 'Deleted today', note: 'Dentist', dueDay: today, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: 100, createdAt: 1, updatedAt: 100 },
+    { id: 9, title: 'Missed deadline', note: 'Too late', dueDay: today - 2, done: false, status: 'not_done', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 20 },
+    { id: 10, title: 'Archived goal', note: 'Not relevant', dueDay: null, done: false, status: 'archived', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 30 },
   ];
 
   const partition = TodayBoard.getTodayAndOverdueTasks(tasks, today);
@@ -467,6 +500,8 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
   assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'overdue').map((t) => t.id), [2, 6]);
   assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'nodate').map((t) => t.id), [4]);
   assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'completed').map((t) => t.id), [7]);
+  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'not_done').map((t) => t.id), [9]);
+  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'archived').map((t) => t.id), [10]);
   assert.deepEqual(
     TodayBoard.filterTasks(tasks, today, 'all', '  DENTIST  ').map((t) => t.id),
     [1, 5]
@@ -694,6 +729,7 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
       note: '',
       dueDay: null,
       done: true,
+      status: 'done',
       completedDay: CivilCalendar.fromLocalDate(2026, 1, 15),
       repeatable: false,
       deletedAt: null,
@@ -706,6 +742,7 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
       note: '',
       dueDay: null,
       done: true,
+      status: 'done',
       completedDay: CivilCalendar.fromLocalDate(2026, 6, 10),
       repeatable: false,
       deletedAt: null,
@@ -718,9 +755,36 @@ test('TaskAnalytics range helpers count and bucket tasks across weekly, monthly,
       note: '',
       dueDay: null,
       done: true,
+      status: 'done',
       completedDay: CivilCalendar.fromLocalDate(2026, 3, 1),
       repeatable: false,
       deletedAt: 99,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 4,
+      title: 'Not done task',
+      note: '',
+      dueDay: CivilCalendar.fromLocalDate(2026, 3, 10),
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 5,
+      title: 'Archived goal',
+      note: '',
+      dueDay: null,
+      done: false,
+      status: 'archived',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
       createdAt: 1,
       updatedAt: 1,
     },
@@ -814,4 +878,173 @@ test('HabitAppearance normalizes hex, encodes icons/emojis, computes contrast, a
   assert.equal(unpacked.habits[0].color, '#FF5733|icon:dumbbell');
   assert.equal(unpacked.habits[1].color, '#06B6D4|emoji:💧');
 });
+
+test('TaskAnalytics summarizes outcomes (excluding Archived from rate), on-time pace, goals, repeatable tasks, and per-day tasks', () => {
+  const day1 = CivilCalendar.fromLocalDate(2026, 11, 10);
+  const day2 = CivilCalendar.fromLocalDate(2026, 11, 12);
+  const day3 = CivilCalendar.fromLocalDate(2026, 11, 15);
+  const tsDay2 = Date.UTC(2026, 10, 12, 12, 0, 0);
+  const tsDay3 = Date.UTC(2026, 10, 15, 12, 0, 0);
+
+  const tasks: Task[] = [
+    // Done on time (completedDay <= dueDay), repeatable
+    {
+      id: 1,
+      title: 'Pay rent',
+      note: '',
+      dueDay: day2,
+      done: true,
+      status: 'done',
+      completedDay: day1,
+      repeatable: true,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay2,
+    },
+    // Done late (completedDay > dueDay)
+    {
+      id: 2,
+      title: 'Submit report',
+      note: 'Late',
+      dueDay: day1,
+      done: true,
+      status: 'done',
+      completedDay: day2,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay2,
+    },
+    // Done dateless goal, repeatable
+    {
+      id: 3,
+      title: 'Read book',
+      note: '',
+      dueDay: null,
+      done: true,
+      status: 'done',
+      completedDay: day2,
+      repeatable: true,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay2,
+    },
+    // Not Done (dated day2) -> reduces completionRate
+    {
+      id: 4,
+      title: 'Attend live call',
+      note: 'Missed',
+      dueDay: day2,
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay3,
+    },
+    // Archived dateless goal (day3) -> MUST NOT penalize completionRate
+    {
+      id: 5,
+      title: 'Old side goal',
+      note: 'Irrelevant',
+      dueDay: null,
+      done: false,
+      status: 'archived',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay3,
+    },
+    // Open dateless goal
+    {
+      id: 6,
+      title: 'Learn piano',
+      note: '',
+      dueDay: null,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay2,
+    },
+    // Open dated task on day2
+    {
+      id: 7,
+      title: 'Open due day2',
+      note: '',
+      dueDay: day2,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: tsDay2,
+      updatedAt: tsDay2,
+    },
+    // Deleted task -> ignored everywhere
+    {
+      id: 8,
+      title: 'Deleted',
+      note: '',
+      dueDay: day2,
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: tsDay3,
+      createdAt: tsDay2,
+      updatedAt: tsDay3,
+    },
+  ];
+
+  const summary = TaskAnalytics.summarizeRange(tasks, day1, day3, 'UTC');
+  assert.equal(summary.doneCount, 3);
+  assert.equal(summary.notDoneCount, 1);
+  assert.equal(summary.archivedCount, 1);
+  assert.equal(summary.completionRate, 3 / 4); // Archived excluded from denominator
+  assert.equal(summary.datedDoneCount, 2);
+  assert.equal(summary.onTimeCount, 1);
+  assert.equal(summary.lateCount, 1);
+  assert.equal(summary.onTimeRate, 0.5);
+  assert.equal(summary.goalsDoneCount, 1);
+  assert.equal(summary.goalsNotDoneCount, 0);
+  assert.equal(summary.goalsArchivedCount, 1);
+  assert.equal(summary.goalsOpenCount, 1);
+  assert.equal(summary.repeatableDoneCount, 2);
+
+  const buckets = TaskAnalytics.rangeOutcomeBuckets(tasks, day1, day3, 12, 'UTC');
+  assert.equal(buckets.length, 1);
+  assert.equal(buckets[0].doneCount, 3);
+  assert.equal(buckets[0].notDoneCount, 1);
+  assert.equal(buckets[0].archivedCount, 1);
+
+  const day2Breakdown = TaskAnalytics.tasksForDay(tasks, day2, 'UTC');
+  assert.deepEqual(
+    day2Breakdown.done.map((t) => t.id),
+    [2, 3]
+  );
+  assert.deepEqual(
+    day2Breakdown.notDone.map((t) => t.id),
+    [4]
+  );
+  assert.deepEqual(
+    day2Breakdown.archived.map((t) => t.id),
+    []
+  );
+  assert.deepEqual(
+    day2Breakdown.dueOpen.map((t) => t.id),
+    [7]
+  );
+
+  const day3Breakdown = TaskAnalytics.tasksForDay(tasks, day3, 'UTC');
+  assert.deepEqual(
+    day3Breakdown.archived.map((t) => t.id),
+    [5]
+  );
+});
+
 

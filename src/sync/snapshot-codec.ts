@@ -1,4 +1,11 @@
-import { DomainSnapshot, Habit, HabitCheckin, HabitNote, Task } from '../types/domain';
+import {
+  DomainSnapshot,
+  Habit,
+  HabitCheckin,
+  HabitNote,
+  Task,
+  TaskStatus,
+} from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { IdTable } from './id-table';
 import { SnapshotBytes } from './snapshot-bytes';
@@ -6,7 +13,36 @@ import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 4;
+const FORMAT_VERSION = 5;
+
+function encodeTaskStatus(task: Task): number {
+  const status = task.status ?? (task.done ? 'done' : 'open');
+  switch (status) {
+    case 'open':
+      return 0;
+    case 'done':
+      return 1;
+    case 'not_done':
+      return 2;
+    case 'archived':
+      return 3;
+  }
+}
+
+function decodeTaskStatus(byte: number): TaskStatus {
+  switch (byte) {
+    case 0:
+      return 'open';
+    case 1:
+      return 'done';
+    case 2:
+      return 'not_done';
+    case 3:
+      return 'archived';
+    default:
+      throw new Error(`Invalid task status byte in snapshot: ${byte}`);
+  }
+}
 
 export class SnapshotCodec {
   public static pack(snapshot: DomainSnapshot): Uint8Array {
@@ -139,6 +175,7 @@ export class SnapshotCodec {
         body.writeUint8(0);
       }
       body.writeUint8(task.repeatable ? 1 : 0);
+      body.writeUint8(encodeTaskStatus(task));
       body.writeFloat64(task.createdAt);
       body.writeFloat64(task.updatedAt);
     }
@@ -176,6 +213,7 @@ export class SnapshotCodec {
       version !== 1 &&
       version !== 2 &&
       version !== 3 &&
+      version !== 4 &&
       version !== FORMAT_VERSION
     ) {
       throw new Error(`Unsupported snapshot version: ${version}`);
@@ -305,19 +343,25 @@ export class SnapshotCodec {
         }
         repeatable = repByte === 1;
       }
+      let status: TaskStatus = doneByte === 1 ? 'done' : 'open';
+      if (version >= 5) {
+        status = decodeTaskStatus(reader.readUint8());
+      }
       const createdAt = reader.readFloat64();
       const updatedAt = reader.readFloat64();
-      const completedDay = hasExplicitCompletedDay
-        ? explicitCompletedDay
-        : doneByte === 1
-          ? CivilCalendar.fromTimestamp(updatedAt)
-          : null;
+      const done = status === 'done';
+      const completedDay = !done
+        ? null
+        : hasExplicitCompletedDay
+          ? explicitCompletedDay
+          : CivilCalendar.fromTimestamp(updatedAt);
       tasks.push({
         id,
         title,
         note,
         dueDay,
-        done: doneByte === 1,
+        done,
+        status,
         completedDay,
         repeatable,
         deletedAt,

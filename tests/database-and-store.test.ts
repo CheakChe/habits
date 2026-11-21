@@ -140,9 +140,22 @@ test('HabitDatabase manages habits, checkins, notes, tasks, monotonic timestamps
 
   // Re-opening clears completedDay, completing again sets today
   const t1Reopened = await db.updateTask(t1.id, { done: false });
+  assert.equal(t1Reopened.status, 'open');
   assert.equal(t1Reopened.completedDay, null);
   const t1DoneAgain = await db.updateTask(t1.id, { done: true });
+  assert.equal(t1DoneAgain.status, 'done');
   assert.notEqual(t1DoneAgain.completedDay, null);
+
+  // Transitioning to not_done and archived keeps done=false & completedDay=null
+  const t1NotDone = await db.updateTask(t1.id, { status: 'not_done' });
+  assert.equal(t1NotDone.status, 'not_done');
+  assert.equal(t1NotDone.done, false);
+  assert.equal(t1NotDone.completedDay, null);
+
+  const t1Archived = await db.updateTask(t1.id, { status: 'archived' });
+  assert.equal(t1Archived.status, 'archived');
+  assert.equal(t1Archived.done, false);
+  assert.equal(t1Archived.completedDay, null);
 
   await db.deleteTask(t1.id);
   await db.deleteTask(999); // missing id is a safe no-op
@@ -264,6 +277,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
         note: 'From backup',
         dueDay: store.todayDay(),
         done: false,
+        status: 'open',
         completedDay: null,
         repeatable: false,
         deletedAt: null,
@@ -535,6 +549,34 @@ test('TrackerStore handles repeatable tasks, dateless goal scheduling, and UI st
     assert.equal(store.taskModalMode(), 'next');
     assert.equal(store.taskDraftPrefill()?.dueDay, null);
     store.closeTaskModal();
+
+    // 5. Updating task status to not_done and archived through edit flow
+    const secondTask = store.snapshot().tasks[1];
+    store.openEditTask(secondTask);
+    await store.saveTask({
+      title: secondTask.title,
+      note: 'Did not make it',
+      dueDay: secondTask.dueDay,
+      repeatable: secondTask.repeatable,
+      status: 'not_done',
+    });
+    store.closeTaskModal();
+    assert.equal(store.snapshot().tasks[1].status, 'not_done');
+    assert.equal(store.snapshot().tasks[1].done, false);
+    assert.equal(store.snapshot().tasks[1].completedDay, null);
+
+    store.openEditTask(store.snapshot().tasks[1]);
+    await store.saveTask({
+      title: secondTask.title,
+      note: 'No longer needed',
+      dueDay: null,
+      repeatable: false,
+      status: 'archived',
+    });
+    store.closeTaskModal();
+    assert.equal(store.snapshot().tasks[1].status, 'archived');
+    assert.equal(store.snapshot().tasks[1].done, false);
+    assert.equal(store.snapshot().tasks[1].completedDay, null);
   } finally {
     store.dispose();
   }

@@ -1,7 +1,14 @@
-import { Habit, Task } from '../types/domain';
+import { Habit, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
 
-export type TaskFilterMode = 'all' | 'today' | 'overdue' | 'nodate' | 'completed';
+export type TaskFilterMode =
+  | 'all'
+  | 'today'
+  | 'overdue'
+  | 'nodate'
+  | 'completed'
+  | 'not_done'
+  | 'archived';
 export type TaskSortMode = 'default' | 'due_asc' | 'due_desc' | 'newest' | 'title';
 
 export interface TodayTasksPartition {
@@ -10,6 +17,18 @@ export interface TodayTasksPartition {
 }
 
 export class TodayBoard {
+  public static getStatus(task: Task): TaskStatus {
+    if (
+      task.status === 'open' ||
+      task.status === 'done' ||
+      task.status === 'not_done' ||
+      task.status === 'archived'
+    ) {
+      return task.status;
+    }
+    return task.done ? 'done' : 'open';
+  }
+
   public static getScheduledHabits(habits: Habit[], dayIndex: number): Habit[] {
     return habits
       .filter(
@@ -26,7 +45,13 @@ export class TodayBoard {
     const dueToday: Task[] = [];
 
     for (const task of tasks) {
-      if (task.deletedAt !== null || task.done || task.dueDay === null) continue;
+      if (
+        task.deletedAt !== null ||
+        TodayBoard.getStatus(task) !== 'open' ||
+        task.dueDay === null
+      ) {
+        continue;
+      }
       if (task.dueDay < todayDay) {
         overdue.push(task);
       } else if (task.dueDay === todayDay) {
@@ -42,7 +67,12 @@ export class TodayBoard {
 
   public static getNoDateTasks(tasks: Task[]): Task[] {
     return tasks
-      .filter((task) => task.deletedAt === null && !task.done && task.dueDay === null)
+      .filter(
+        (task) =>
+          task.deletedAt === null &&
+          TodayBoard.getStatus(task) === 'open' &&
+          task.dueDay === null
+      )
       .sort((a, b) => a.id - b.id);
   }
 
@@ -63,17 +93,22 @@ export class TodayBoard {
     return tasks
       .filter((task) => {
         if (task.deletedAt !== null) return false;
+        const status = TodayBoard.getStatus(task);
 
         if (filter === 'completed') {
-          if (!task.done) return false;
+          if (status !== 'done') return false;
+        } else if (filter === 'not_done') {
+          if (status !== 'not_done') return false;
+        } else if (filter === 'archived') {
+          if (status !== 'archived') return false;
         } else if (filter === 'today') {
-          if (task.done || task.dueDay !== todayDay) return false;
+          if (status !== 'open' || task.dueDay !== todayDay) return false;
         } else if (filter === 'overdue') {
-          if (task.done || task.dueDay === null || task.dueDay >= todayDay) return false;
+          if (status !== 'open' || task.dueDay === null || task.dueDay >= todayDay) return false;
         } else if (filter === 'nodate') {
-          if (task.done || task.dueDay !== null) return false;
+          if (status !== 'open' || task.dueDay !== null) return false;
         } else {
-          if (task.done) return false;
+          if (status !== 'open') return false;
         }
 
         if (q.length > 0) {
@@ -113,6 +148,9 @@ export class TodayBoard {
           const dayDiff = (b.completedDay ?? 0) - (a.completedDay ?? 0);
           if (dayDiff !== 0) return dayDiff;
           return b.updatedAt - a.updatedAt;
+        }
+        if (filter === 'not_done' || filter === 'archived') {
+          return b.updatedAt - a.updatedAt || b.id - a.id;
         }
         if (a.dueDay === null && b.dueDay !== null) return 1;
         if (a.dueDay !== null && b.dueDay === null) return -1;

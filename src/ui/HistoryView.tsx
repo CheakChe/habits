@@ -12,7 +12,15 @@ import { TaskAnalytics } from '../utils/task-analytics';
 import { HabitAppearance } from '../utils/habit-appearance';
 import { CustomSelect, HistoryRangePicker, SelectOption } from './CustomControls';
 import { HabitBadge } from './HabitBadge';
-import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, NoteIcon } from './Icons';
+import {
+  ArchiveIcon,
+  CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  NoteIcon,
+  RepeatIcon,
+} from './Icons';
 
 interface HistoryViewProps {
   snapshot: DomainSnapshot;
@@ -220,8 +228,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     )
   );
 
-  const totalTasksInRange = createMemo(() =>
-    TaskAnalytics.countCompletedInRange(
+  const taskSummary = createMemo(() =>
+    TaskAnalytics.summarizeRange(
       props.snapshot.tasks,
       effectiveRangeStart(),
       effectiveRangeEnd(),
@@ -229,8 +237,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     )
   );
 
-  const taskBuckets = createMemo(() =>
-    TaskAnalytics.rangeCompletedBuckets(
+  const taskOutcomeBuckets = createMemo(() =>
+    TaskAnalytics.rangeOutcomeBuckets(
       props.snapshot.tasks,
       effectiveRangeStart(),
       effectiveRangeEnd(),
@@ -240,8 +248,24 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   );
 
   const maxBucketCount = createMemo(() =>
-    Math.max(1, ...taskBuckets().map((b) => b.count))
+    Math.max(
+      1,
+      ...taskOutcomeBuckets().map((b) => b.doneCount + b.notDoneCount)
+    )
   );
+
+  const selectedDayTasks = createMemo(() =>
+    TaskAnalytics.tasksForDay(
+      props.snapshot.tasks,
+      selectedDay(),
+      props.timeZone
+    )
+  );
+
+  const selectedDayTasksCount = createMemo(() => {
+    const d = selectedDayTasks();
+    return d.done.length + d.notDone.length + d.archived.length + d.dueOpen.length;
+  });
 
   const heatmapData = createMemo(() => {
     const effectiveEnd = effectiveRangeEnd();
@@ -452,10 +476,20 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
           <span class="text-xs text-[#8E95A5]">Tasks Done</span>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
-            {totalTasksInRange()}
+            {taskSummary().doneCount}
+            <Show when={taskSummary().completionRate !== null}>
+              <span class="text-sm font-normal text-[#8E95A5]">
+                {' '}
+                · {Math.round(taskSummary().completionRate! * 100)}%
+              </span>
+            </Show>
           </p>
-          <span class="text-[11px] text-[#8E95A5] block truncate">
-            {resolvedRange().label}
+          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block truncate">
+            {taskSummary().doneCount} done · {taskSummary().notDoneCount} not done
+            <Show when={taskSummary().archivedCount > 0}>
+              {' '}
+              · {taskSummary().archivedCount} arch
+            </Show>
           </span>
         </div>
       </div>
@@ -717,6 +751,125 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                 </For>
               </ul>
             </Show>
+
+            <div class="border-t border-white/[0.06]">
+              <div class="px-6 py-3 border-b border-white/[0.06] flex items-center justify-between gap-2">
+                <span class="text-xs font-medium text-[#9AA1B1]">Tasks</span>
+                <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                  {selectedDayTasksCount() === 0
+                    ? 'None on this day'
+                    : `${selectedDayTasks().done.length} done${
+                        selectedDayTasks().notDone.length > 0
+                          ? ` · ${selectedDayTasks().notDone.length} not done`
+                          : ''
+                      }${
+                        selectedDayTasks().archived.length > 0
+                          ? ` · ${selectedDayTasks().archived.length} arch`
+                          : ''
+                      }${
+                        selectedDayTasks().dueOpen.length > 0
+                          ? ` · ${selectedDayTasks().dueOpen.length} due`
+                          : ''
+                      }`}
+                </span>
+              </div>
+
+              <Show when={selectedDayTasksCount() > 0}>
+                <ul class="divide-y divide-white/[0.06]">
+                  <For each={selectedDayTasks().done}>
+                    {(task) => {
+                      const doneDay = () =>
+                        task.completedDay ??
+                        CivilCalendar.fromTimestamp(task.updatedAt, props.timeZone);
+                      const timingHint = () => {
+                        if (task.dueDay === null) return 'Goal';
+                        return doneDay() <= task.dueDay ? 'On time' : 'Late';
+                      };
+                      return (
+                        <li class="px-5 py-2.5 flex items-center gap-3">
+                          <span class="w-6 h-6 rounded-lg bg-[#22C55E]/20 border border-[#22C55E]/40 text-[#86EFAC] flex items-center justify-center shrink-0">
+                            <CheckIcon class="w-3.5 h-3.5" />
+                          </span>
+                          <div class="min-w-0 flex-1">
+                            <p class="text-xs font-medium text-[#9AA1B1] line-through truncate">
+                              {task.title}
+                            </p>
+                            <p class="text-[11px] text-[#6B7280] truncate">
+                              Done · {timingHint()}
+                              {task.repeatable ? ' · Repeats' : ''}
+                              {task.note ? ` · ${task.note}` : ''}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    }}
+                  </For>
+
+                  <For each={selectedDayTasks().notDone}>
+                    {(task) => (
+                      <li class="px-5 py-2.5 flex items-center gap-3">
+                        <span class="w-6 h-6 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#FCA5A5] flex items-center justify-center shrink-0">
+                          <CloseIcon class="w-3.5 h-3.5" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                          <p class="text-xs font-medium text-[#C8CDD8] truncate">
+                            {task.title}
+                          </p>
+                          <p class="text-[11px] text-[#FCA5A5]/80 truncate">
+                            Not Done
+                            {task.note ? ` · ${task.note}` : ''}
+                          </p>
+                        </div>
+                      </li>
+                    )}
+                  </For>
+
+                  <For each={selectedDayTasks().archived}>
+                    {(task) => (
+                      <li class="px-5 py-2.5 flex items-center gap-3">
+                        <span class="w-6 h-6 rounded-lg bg-[#1C1F26] border border-white/[0.08] text-[#8E95A5] flex items-center justify-center shrink-0">
+                          <ArchiveIcon class="w-3.5 h-3.5" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                          <p class="text-xs font-medium text-[#8E95A5] truncate">
+                            {task.title}
+                          </p>
+                          <p class="text-[11px] text-[#6B7280] truncate">
+                            Archived
+                            {task.note ? ` · ${task.note}` : ''}
+                          </p>
+                        </div>
+                      </li>
+                    )}
+                  </For>
+
+                  <For each={selectedDayTasks().dueOpen}>
+                    {(task) => (
+                      <li class="px-5 py-2.5 flex items-center gap-3">
+                        <span class="w-6 h-6 rounded-lg bg-[#0A0B0E] border border-white/[0.15] flex items-center justify-center shrink-0">
+                          <span class="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                          <p class="text-xs font-medium text-[#F5F7FA] truncate">
+                            {task.title}
+                          </p>
+                          <div class="text-[11px] text-[#8E95A5] flex items-center gap-1 min-w-0">
+                            <span class="shrink-0">Open · Due</span>
+                            <Show when={task.repeatable}>
+                              <span aria-hidden="true" class="shrink-0">·</span>
+                              <RepeatIcon class="w-3 h-3 text-[#60A5FA] shrink-0" />
+                            </Show>
+                            <Show when={task.note}>
+                              <span class="truncate">· {task.note}</span>
+                            </Show>
+                          </div>
+                        </div>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </Show>
+            </div>
           </section>
         </div>
 
@@ -855,52 +1008,89 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </section>
 
           <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-5">
-            <div>
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Completed Tasks
-              </h2>
-              <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
-                {DateRangeResolver.formatRangeLabel(
-                  effectiveRangeStart(),
-                  effectiveRangeEnd()
-                )}
-              </p>
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
+                  Tasks Overview
+                </h2>
+                <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
+                  {DateRangeResolver.formatRangeLabel(
+                    effectiveRangeStart(),
+                    effectiveRangeEnd()
+                  )}
+                </p>
+              </div>
+              <div class="flex items-center gap-3 text-[11px] text-[#8E95A5]">
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="w-2.5 h-2.5 rounded-[2px] bg-[#3B82F6]" />
+                  <span>Done</span>
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <span class="w-2.5 h-2.5 rounded-[2px] bg-[#EF4444]/80" />
+                  <span>Not Done</span>
+                </span>
+              </div>
             </div>
 
             <Show
-              when={totalTasksInRange() > 0}
+              when={
+                taskSummary().doneCount > 0 ||
+                taskSummary().notDoneCount > 0 ||
+                taskSummary().archivedCount > 0
+              }
               fallback={
                 <div class="py-10 text-center">
                   <p class="text-sm text-[#8E95A5]">
-                    No completed tasks in the selected date range.
+                    No task outcomes in the selected date range.
                   </p>
                 </div>
               }
             >
               <div class="flex items-end gap-2 h-40 pt-4">
-                <For each={taskBuckets()}>
+                <For each={taskOutcomeBuckets()}>
                   {(bucket) => {
-                    const heightPct = () =>
-                      Math.round((bucket.count / maxBucketCount()) * 100);
+                    const total = () => bucket.doneCount + bucket.notDoneCount;
+                    const totalPct = () =>
+                      Math.round((total() / maxBucketCount()) * 100);
+                    const doneShare = () =>
+                      total() === 0 ? 0 : (bucket.doneCount / total()) * 100;
+                    const notDoneShare = () =>
+                      total() === 0 ? 0 : (bucket.notDoneCount / total()) * 100;
                     return (
                       <div class="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5">
                         <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                          {bucket.count > 0 ? bucket.count : ''}
+                          {total() > 0 ? total() : ''}
                         </span>
                         <div class="w-full flex-1 flex items-end">
-                          <div
-                            class={`w-full rounded-t-md transition-all ${
-                              bucket.count > 0
-                                ? 'bg-[#3B82F6]'
-                                : 'bg-white/[0.05] h-[3px]'
-                            }`}
-                            style={
-                              bucket.count > 0
-                                ? { height: `${Math.max(12, heightPct())}%` }
-                                : undefined
+                          <Show
+                            when={total() > 0}
+                            fallback={
+                              <div class="w-full bg-white/[0.05] h-[3px] rounded-t-md" />
                             }
-                            title={`${bucket.label}: ${bucket.count} tasks`}
-                          />
+                          >
+                            <div
+                              class="w-full rounded-t-md overflow-hidden flex flex-col justify-end transition-all"
+                              style={{ height: `${Math.max(12, totalPct())}%` }}
+                              title={`${bucket.label}: ${bucket.doneCount} done, ${bucket.notDoneCount} not done${
+                                bucket.archivedCount > 0
+                                  ? `, ${bucket.archivedCount} archived`
+                                  : ''
+                              }`}
+                            >
+                              <Show when={bucket.notDoneCount > 0}>
+                                <div
+                                  class="w-full bg-[#EF4444]/80"
+                                  style={{ height: `${notDoneShare()}%` }}
+                                />
+                              </Show>
+                              <Show when={bucket.doneCount > 0}>
+                                <div
+                                  class="w-full bg-[#3B82F6]"
+                                  style={{ height: `${doneShare()}%` }}
+                                />
+                              </Show>
+                            </div>
+                          </Show>
                         </div>
                         <span class="text-[10px] font-mono tabular-nums text-[#6B7280] truncate max-w-full">
                           {bucket.shortLabel}
@@ -911,6 +1101,33 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                 </For>
               </div>
             </Show>
+
+            <div class="grid grid-cols-3 gap-2 pt-3 border-t border-white/[0.06] text-[11px]">
+              <div class="min-w-0">
+                <span class="text-[#6B7280] block">On-Time</span>
+                <span class="font-mono tabular-nums text-[#F5F7FA] truncate block">
+                  {taskSummary().onTimeRate !== null
+                    ? `${Math.round(taskSummary().onTimeRate! * 100)}% (${taskSummary().onTimeCount}/${taskSummary().datedDoneCount})`
+                    : '—'}
+                </span>
+              </div>
+              <div class="min-w-0">
+                <span class="text-[#6B7280] block">Goals</span>
+                <span
+                  class="font-mono tabular-nums text-[#F5F7FA] truncate block"
+                  title={`${taskSummary().goalsDoneCount} done, ${taskSummary().goalsArchivedCount} archived, ${taskSummary().goalsOpenCount} open`}
+                >
+                  {taskSummary().goalsDoneCount}d · {taskSummary().goalsArchivedCount}a ·{' '}
+                  {taskSummary().goalsOpenCount}o
+                </span>
+              </div>
+              <div class="min-w-0">
+                <span class="text-[#6B7280] block">Repeats</span>
+                <span class="font-mono tabular-nums text-[#F5F7FA] truncate block">
+                  {taskSummary().repeatableDoneCount} done
+                </span>
+              </div>
+            </div>
           </section>
         </div>
 

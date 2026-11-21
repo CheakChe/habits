@@ -15,6 +15,7 @@ import {
   Habit,
   SessionMode,
   Task,
+  TaskStatus,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DATE_RANGE_PRESETS, DateRangePresetId } from '../utils/date-range';
@@ -495,10 +496,25 @@ export class TrackerStore {
     note: string;
     dueDay: number | null;
     repeatable?: boolean;
+    status?: TaskStatus;
   }): Promise<void> {
     const target = this.taskModalMode() === 'edit' ? this.editingTask() : null;
     if (target) {
-      await this.db.updateTask(target.id, data);
+      const nextStatus = data.status ?? TodayBoard.getStatus(target);
+      const prevStatus = TodayBoard.getStatus(target);
+      await this.db.updateTask(target.id, {
+        title: data.title,
+        note: data.note,
+        dueDay: data.dueDay,
+        repeatable: data.repeatable,
+        status: nextStatus,
+        completedDay:
+          nextStatus === 'done'
+            ? prevStatus !== 'done'
+              ? this.todayDay()
+              : target.completedDay
+            : null,
+      });
     } else {
       await this.db.createTask(data);
     }
@@ -520,8 +536,9 @@ export class TrackerStore {
   }
 
   public async toggleTaskDone(task: Task): Promise<void> {
-    const nextDone = !task.done;
+    const nextDone = TodayBoard.getStatus(task) !== 'done';
     await this.db.updateTask(task.id, {
+      status: nextDone ? 'done' : 'open',
       done: nextDone,
       completedDay: nextDone ? this.todayDay() : null,
     });
