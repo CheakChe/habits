@@ -25,6 +25,7 @@ import {
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DATE_RANGE_PRESETS, DateRangePresetId } from '../utils/date-range';
 import {
+  BadgePermissionState,
   DEFAULT_REMINDER_PREFERENCES,
   ReminderPlanner,
   ReminderPreferences,
@@ -170,6 +171,9 @@ export class TrackerStore {
   public readonly reminderPrefs: Accessor<ReminderPreferences>;
   private readonly setReminderPrefsSignal: Setter<ReminderPreferences>;
 
+  public readonly badgePermission: Accessor<BadgePermissionState>;
+  private readonly setBadgePermission: Setter<BadgePermissionState>;
+
   public readonly remindersModalOpen: Accessor<boolean>;
   private readonly setRemindersModalOpen: Setter<boolean>;
 
@@ -188,6 +192,7 @@ export class TrackerStore {
   private unsubscribeAuth: (() => void) | null = null;
   private midnightTimer: number | null = null;
   private tokenExpiryTimer: number | null = null;
+  private visibilityListener: (() => void) | null = null;
   private static readonly TIMEZONE_STORAGE_KEY = 'habits.timezone';
   private static readonly TODAY_GOALS_EXPANDED_KEY = 'habits.todayGoalsExpanded';
   private static readonly HISTORY_RANGE_STORAGE_KEY = 'habits.historyRange';
@@ -424,6 +429,9 @@ export class TrackerStore {
     [this.reminderPrefs, this.setReminderPrefsSignal] = createSignal<ReminderPreferences>(
       TrackerStore.readStoredReminderPrefs()
     );
+    [this.badgePermission, this.setBadgePermission] = createSignal<BadgePermissionState>(
+      ReminderPlanner.getNotificationPermission()
+    );
     [this.remindersModalOpen, this.setRemindersModalOpen] = createSignal(false);
     [this.calendarBusy, this.setCalendarBusy] = createSignal(false);
     [this.calendarError, this.setCalendarError] = createSignal<string | null>(null);
@@ -485,6 +493,21 @@ export class TrackerStore {
     };
     this.persistReminderPrefs(next);
     this.refreshAppBadge();
+    if (enabled && ReminderPlanner.getNotificationPermission() === 'default') {
+      void this.requestBadgePermissionAndRefresh();
+    }
+  }
+
+  public async requestBadgePermissionAndRefresh(): Promise<void> {
+    const perm = await ReminderPlanner.requestBadgePermission();
+    this.setBadgePermission(perm);
+    if (perm === 'granted' && !this.reminderPrefs().badgeEnabled) {
+      this.persistReminderPrefs({
+        ...this.reminderPrefs(),
+        badgeEnabled: true,
+      });
+    }
+    this.refreshAppBadge();
   }
 
   public setCalendarEnabled(enabled: boolean): void {
@@ -522,6 +545,7 @@ export class TrackerStore {
     this.setCalendarError(null);
     this.setPendingCalendarPlan(null);
     this.setConfirmDeleteCalendarOpen(false);
+    this.setBadgePermission(ReminderPlanner.getNotificationPermission());
     this.setRemindersModalOpen(true);
   }
 
@@ -689,6 +713,20 @@ export class TrackerStore {
         this.refreshAppBadge();
       }
     }, 30_000);
+
+    if (typeof document !== 'undefined') {
+      this.visibilityListener = () => {
+        if (document.visibilityState === 'visible') {
+          const current = CivilCalendar.todayDayIndex(new Date(), this.timeZone());
+          if (current !== this.todayDay()) {
+            this.setTodayDay(current);
+          }
+          this.setBadgePermission(ReminderPlanner.getNotificationPermission());
+          this.refreshAppBadge();
+        }
+      };
+      document.addEventListener('visibilitychange', this.visibilityListener);
+    }
   }
 
   private clearTokenExpiryTimer(): void {
@@ -728,6 +766,10 @@ export class TrackerStore {
     if (this.midnightTimer !== null) {
       window.clearInterval(this.midnightTimer);
       this.midnightTimer = null;
+    }
+    if (this.visibilityListener && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityListener);
+      this.visibilityListener = null;
     }
     this.clearTokenExpiryTimer();
   }

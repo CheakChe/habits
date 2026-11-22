@@ -375,6 +375,7 @@ export default function App(): JSX.Element {
           hasGoogleToken={store.hasGoogleToken()}
           googleEmail={store.googleEmail()}
           prefs={store.reminderPrefs()}
+          badgePermission={store.badgePermission()}
           pendingToday={store.getTodayPendingSummary()}
           trackerTimeZone={store.timeZone()}
           calendarSyncNeeded={store.isCalendarSyncNeeded()}
@@ -384,6 +385,7 @@ export default function App(): JSX.Element {
           confirmDeleteOpen={store.confirmDeleteCalendarOpen()}
           onClose={() => store.closeRemindersModal()}
           onToggleBadge={(enabled) => store.setBadgeEnabled(enabled)}
+          onRequestBadgePermission={() => store.requestBadgePermissionAndRefresh()}
           onToggleCalendar={(enabled) => store.setCalendarEnabled(enabled)}
           onChangeTime={(t) => store.setReminderTime(t)}
           onChangeHorizon={(d) => store.setReminderHorizonDays(d)}

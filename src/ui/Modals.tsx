@@ -9,6 +9,7 @@ import {
 import { Habit, SessionMode, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import {
+  BadgePermissionState,
   ReminderPlanner,
   ReminderPreferences,
   TodayPendingSummary,
@@ -1457,6 +1458,7 @@ interface RemindersModalProps {
   hasGoogleToken: boolean;
   googleEmail: string | null;
   prefs: ReminderPreferences;
+  badgePermission: BadgePermissionState;
   pendingToday: TodayPendingSummary;
   trackerTimeZone: string;
   calendarSyncNeeded: boolean;
@@ -1466,6 +1468,7 @@ interface RemindersModalProps {
   confirmDeleteOpen: boolean;
   onClose: () => void;
   onToggleBadge: (enabled: boolean) => void;
+  onRequestBadgePermission: () => Promise<void>;
   onToggleCalendar: (enabled: boolean) => void;
   onChangeTime: (time: string) => void;
   onChangeHorizon: (days: number) => void;
@@ -1485,6 +1488,7 @@ const HORIZON_OPTIONS = [
 
 export function RemindersModal(props: RemindersModalProps): JSX.Element {
   const badgeSupported = ReminderPlanner.isAppBadgeSupported();
+  const isStandalone = ReminderPlanner.isStandalonePwa();
   const resolvedTz = () => ReminderPlanner.resolveCalendarTimeZone(props.trackerTimeZone);
 
   return (
@@ -1566,9 +1570,38 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                 </span>
               </div>
 
-              <Show when={!badgeSupported}>
-                <p class="text-[11px] text-[#6B7280]">
-                  Your current browser view does not expose App Badging; install Habits as a standalone PWA on Android, iOS 16.4+, Windows, or macOS to see the icon counter.
+              <Show when={badgeSupported && props.badgePermission === 'default'}>
+                <div class="rounded-xl bg-[#14161B] border border-[#3B82F6]/30 p-3 flex flex-wrap items-center justify-between gap-2.5">
+                  <p class="text-[11px] text-[#C8CDD8] min-w-0 flex-1">
+                    On iPhone (iOS 16.4+), icon badges stay hidden until Notifications/Badges are allowed for this Home Screen app.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void props.onRequestBadgePermission()}
+                    class="h-8 px-3 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white transition-colors cursor-pointer shrink-0"
+                  >
+                    Allow Badge Permission
+                  </button>
+                </div>
+              </Show>
+
+              <Show when={badgeSupported && props.badgePermission === 'granted'}>
+                <p class="text-[11px] text-[#60A5FA]">
+                  System badge permission granted. Icon count updates automatically on open &amp; edits.
+                </p>
+              </Show>
+
+              <Show when={badgeSupported && props.badgePermission === 'denied'}>
+                <p class="text-[11px] text-[#FCA5A5]">
+                  Notifications/Badges are blocked in system settings. Enable them in iPhone Settings → Notifications → Habits (or browser site settings) to display the icon counter.
+                </p>
+              </Show>
+
+              <Show when={!badgeSupported || !isStandalone}>
+                <p class="text-[11px] text-[#8E95A5]">
+                  {!badgeSupported
+                    ? 'This browser view does not expose App Badging. On iPhone/iOS 16.4+, tap Share → Add to Home Screen in Safari and launch Habits from the Home Screen icon.'
+                    : 'Tip for iPhone/mobile: to see the counter on your Home Screen icon, make sure you added Habits via Share → Add to Home Screen and launched it from that icon.'}
                 </p>
               </Show>
             </section>

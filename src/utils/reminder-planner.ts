@@ -2,6 +2,8 @@ import { DomainSnapshot, Habit, Task } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
 import { TodayBoard } from './today-board';
 
+export type BadgePermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
+
 export interface ReminderPreferences {
   badgeEnabled: boolean;
   calendarEnabled: boolean;
@@ -315,6 +317,46 @@ export class ReminderPlanner {
     return 'setAppBadge' in navigator || 'clearAppBadge' in navigator;
   }
 
+  public static isStandalonePwa(): boolean {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return false;
+    }
+    const iosStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const displayStandalone =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(display-mode: standalone)').matches;
+    return iosStandalone || displayStandalone;
+  }
+
+  public static getNotificationPermission(): BadgePermissionState {
+    if (typeof Notification === 'undefined') {
+      return 'unsupported';
+    }
+    const perm = Notification.permission;
+    if (perm === 'granted' || perm === 'denied' || perm === 'default') {
+      return perm;
+    }
+    return 'unsupported';
+  }
+
+  public static async requestBadgePermission(): Promise<BadgePermissionState> {
+    if (
+      typeof Notification === 'undefined' ||
+      typeof Notification.requestPermission !== 'function'
+    ) {
+      return 'unsupported';
+    }
+    try {
+      const result = await Notification.requestPermission();
+      if (result === 'granted' || result === 'denied' || result === 'default') {
+        return result;
+      }
+    } catch {
+      // Ignore permission request errors in restricted contexts
+    }
+    return ReminderPlanner.getNotificationPermission();
+  }
+
   public static async syncAppBadge(count: number | null): Promise<boolean> {
     if (typeof navigator === 'undefined') return false;
     const nav = navigator as Navigator & {
@@ -336,7 +378,7 @@ export class ReminderPlanner {
         return true;
       }
     } catch {
-      // Ignore permission / unsupported context (e.g. cross-origin iframe) errors
+      // Ignore permission / unsupported context (e.g. cross-origin iframe or iOS ungranted Notifications)
     }
     return false;
   }

@@ -340,6 +340,44 @@ test('ReminderPlanner syncAppBadge sets positive counts, clears on zero/null, an
   assert.equal(await ReminderPlanner.syncAppBadge(3), false);
 });
 
+test('ReminderPlanner inspects and requests Notification permission for iOS App Badging safely', async (t) => {
+  const originalNotification = globalThis.Notification;
+  t.after(() => {
+    if (originalNotification === undefined) {
+      delete (globalThis as { Notification?: unknown }).Notification;
+    } else {
+      Object.defineProperty(globalThis, 'Notification', {
+        value: originalNotification,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  delete (globalThis as { Notification?: unknown }).Notification;
+  assert.equal(ReminderPlanner.getNotificationPermission(), 'unsupported');
+  assert.equal(await ReminderPlanner.requestBadgePermission(), 'unsupported');
+
+  let currentPerm: NotificationPermission = 'default';
+  Object.defineProperty(globalThis, 'Notification', {
+    value: {
+      get permission() {
+        return currentPerm;
+      },
+      requestPermission: async () => {
+        currentPerm = 'granted';
+        return currentPerm;
+      },
+    },
+    configurable: true,
+    writable: true,
+  });
+
+  assert.equal(ReminderPlanner.getNotificationPermission(), 'default');
+  assert.equal(await ReminderPlanner.requestBadgePermission(), 'granted');
+  assert.equal(ReminderPlanner.getNotificationPermission(), 'granted');
+});
+
 test('CalendarReminderService enforces google auth and prepares/applies initial calendar creation + event cleanup', async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {
