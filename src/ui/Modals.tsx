@@ -1179,6 +1179,16 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
               <SwitchAccountIcon class="w-4 h-4 text-[#8E95A5]" />
               <span>Switch Account or Mode</span>
             </button>
+            <div class="pt-1 text-center">
+              <a
+                href="./privacy.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xs text-[#8E95A5] hover:text-[#F5F7FA] hover:underline"
+              >
+                Privacy Policy
+              </a>
+            </div>
           </div>
         </div>
       </div>

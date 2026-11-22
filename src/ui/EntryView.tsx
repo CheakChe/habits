@@ -129,9 +129,19 @@ export function EntryView(props: EntryViewProps): JSX.Element {
         </div>
       </main>
 
-      <footer class="max-w-5xl w-full mx-auto text-xs text-[#6B7280] flex items-center justify-between">
+      <footer class="max-w-5xl w-full mx-auto text-xs text-[#6B7280] flex flex-wrap items-center justify-between gap-3">
         <span>Habits</span>
-        <span>Offline-capable IndexedDB persistence</span>
+        <div class="flex items-center gap-4">
+          <span>Offline-capable IndexedDB persistence</span>
+          <a
+            href="./privacy.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-[#9AA1B1] hover:text-[#F5F7FA] underline-offset-4 hover:underline"
+          >
+            Privacy Policy
+          </a>
+        </div>
       </footer>
     </div>
   );
