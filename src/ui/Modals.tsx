@@ -1786,6 +1786,11 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                         <Show when={plan().willUpdateCalendarTz}>
                           <li>Update calendar timezone to {plan().timeZone}</li>
                         </Show>
+                        <Show when={plan().duplicateCalendarIds.length > 0}>
+                          <li>
+                            Remove {plan().duplicateCalendarIds.length} duplicate &quot;Habits Reminders&quot; calendar(s)
+                          </li>
+                        </Show>
                         <Show when={plan().toCreate.length > 0}>
                           <li>Add {plan().toCreate.length} upcoming reminder event(s)</li>
                         </Show>

@@ -1049,6 +1049,12 @@ export class TrackerStore {
       }
 
       if (result.status === 'up-to-date') {
+        void this.calendarSync.publishCalendarIdIfMissing(
+          this.mode(),
+          this.session.getAccessToken(),
+          this.reminderPrefs().calendarId,
+          this.timeZone()
+        );
         this.setSyncBanner({
           kind: 'success',
           text: result.localChanged
@@ -1086,6 +1092,12 @@ export class TrackerStore {
         this.mode(),
         this.session.getAccessToken(),
         pending
+      );
+      void this.calendarSync.publishCalendarIdIfMissing(
+        this.mode(),
+        this.session.getAccessToken(),
+        this.reminderPrefs().calendarId,
+        this.timeZone()
       );
       this.setPendingSync(null);
       this.setSyncBanner({
@@ -1283,11 +1295,18 @@ export class TrackerStore {
       const hasMutations =
         plan.willCreateCalendar ||
         plan.willUpdateCalendarTz ||
+        plan.duplicateCalendarIds.length > 0 ||
         plan.toCreate.length > 0 ||
         plan.toUpdate.length > 0 ||
         plan.toDelete.length > 0;
 
       if (!hasMutations && plan.calendarId) {
+        void this.calendarSync.publishCalendarIdIfMissing(
+          this.mode(),
+          this.session.getAccessToken(),
+          plan.calendarId,
+          this.timeZone()
+        );
         this.persistReminderPrefs({
           ...prefs,
           calendarId: plan.calendarId,
@@ -1348,9 +1367,13 @@ export class TrackerStore {
         lastSyncedAt: Date.now(),
       });
       this.setPendingCalendarPlan(null);
+      const dupText =
+        result.duplicatesRemoved > 0
+          ? `, ${result.duplicatesRemoved} duplicate calendar${result.duplicatesRemoved === 1 ? '' : 's'} removed`
+          : '';
       this.setSyncBanner({
         kind: 'success',
-        text: `Google Calendar updated (${result.created} added, ${result.updated} updated, ${result.deleted} cleared).`,
+        text: `Google Calendar updated (${result.created} added, ${result.updated} updated, ${result.deleted} cleared${dupText}).`,
       });
     } catch (err) {
       const msg =

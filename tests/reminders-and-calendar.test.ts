@@ -411,20 +411,6 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
     (err: unknown) => err instanceof NonRetryableError && /expired/i.test(err.message)
   );
 
-  // Plan with missing calendarId triggers willCreateCalendar = true and no fetch needed yet
-  const initialPlan = await service.prepareSyncPlan(
-    'google',
-    'tok-1',
-    snap,
-    MONDAY_DAY,
-    prefs,
-    'UTC'
-  );
-  assert.equal(initialPlan.willCreateCalendar, true);
-  assert.equal(initialPlan.toCreate.length, 2);
-  assert.equal(initialPlan.toDelete.length, 0);
-
-  // Applying initial plan creates secondary calendar then creates 2 popup events
   const calls: Array<{ method: string; url: string; body?: Record<string, unknown> }> = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -435,6 +421,15 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
         : undefined;
     calls.push({ method, url, body });
 
+    if (method === 'GET' && url.includes('/drive/v3/files')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (method === 'POST' && url.includes('/upload/drive/v3/files')) {
+      return new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 });
+    }
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
     if (method === 'POST' && url.endsWith('/calendars')) {
       return new Response(JSON.stringify({ id: 'cal-created-1', timeZone: 'UTC' }), {
         status: 200,
@@ -446,16 +441,32 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
     throw new Error(`Unexpected fetch: ${method} ${url}`);
   }) as typeof fetch;
 
+  // Plan with missing calendarId & empty calendarList triggers willCreateCalendar = true
+  const initialPlan = await service.prepareSyncPlan(
+    'google',
+    'tok-1',
+    snap,
+    MONDAY_DAY,
+    prefs,
+    'UTC'
+  );
+  assert.equal(initialPlan.willCreateCalendar, true);
+  assert.equal(initialPlan.duplicateCalendarIds.length, 0);
+  assert.equal(initialPlan.toCreate.length, 2);
+  assert.equal(initialPlan.toDelete.length, 0);
+
+  // Applying initial plan creates secondary calendar then creates 2 popup events
   const applied = await service.applySyncPlan('google', 'tok-1', initialPlan);
   assert.equal(applied.calendarId, 'cal-created-1');
   assert.equal(applied.created, 2);
   assert.equal(applied.updated, 0);
   assert.equal(applied.deleted, 0);
+  assert.equal(applied.duplicatesRemoved, 0);
 
-  assert.equal(calls[0].method, 'POST');
-  assert.equal(calls[0].body?.summary, 'Habits Reminders');
-  assert.equal(calls[1].body?.transparency, 'transparent');
-  assert.deepEqual(calls[1].body?.reminders, {
+  const postCalls = calls.filter((c) => c.method === 'POST');
+  assert.equal(postCalls[0].body?.summary, 'Habits Reminders');
+  assert.equal(postCalls[1].body?.transparency, 'transparent');
+  assert.deepEqual(postCalls[1].body?.reminders, {
     useDefault: false,
     overrides: [{ method: 'popup', minutes: 0 }],
   });
@@ -500,6 +511,20 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
     const method = init?.method ?? 'GET';
     requests.push({ method, url });
 
+    if (method === 'GET' && url.includes('/drive/v3/files')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (method === 'POST' && url.includes('/upload/drive/v3/files')) {
+      return new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 });
+    }
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      return new Response(
+        JSON.stringify({
+          items: [{ id: 'cal-xyz', summary: 'Habits Reminders', timeZone: 'UTC' }],
+        }),
+        { status: 200 }
+      );
+    }
     if (method === 'GET' && url.endsWith('/calendars/cal-xyz')) {
       return new Response(JSON.stringify({ id: 'cal-xyz', timeZone: 'UTC' }), { status: 200 });
     }
@@ -572,6 +597,7 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
   assert.equal(applied.deleted, 2);
   assert.equal(applied.updated, 1);
   assert.equal(applied.created, 0);
+  assert.equal(applied.duplicatesRemoved, 0);
 
   await service.deleteReminderCalendar('google', 'tok-2', 'cal-xyz');
   assert.ok(requests.some((r) => r.method === 'DELETE' && r.url.endsWith('/calendars/cal-xyz')));
@@ -586,5 +612,182 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
     () => service.prepareSyncPlan('google', 'tok-bad', snap, TUESDAY_DAY, prefs, 'UTC'),
     (err: unknown) => err instanceof NonRetryableError && /expired/i.test(err.message)
   );
-  assert.equal(attempts, 1);
+  // 401 unauthorized maps immediately to NonRetryableError without retrying (1 call per parallel preflight request)
+  assert.equal(attempts, 2);
+});
+
+test('CalendarReminderService reuses existing secondary calendar on a second device and removes duplicates', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const snap = makeSnapshot({
+    habits: [
+      {
+        id: 1,
+        name: 'Stretch',
+        color: '#3B82F6',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: MONDAY_DAY,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+  });
+
+  // Case 1: calendarList accessible and returns 2 calendars while local device has calendarId = null
+  const prefs = makePrefs({
+    calendarEnabled: true,
+    calendarId: null,
+    horizonDays: 1,
+    reminderTime: '20:00',
+  });
+
+  const deletedCalendarUrls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/drive/v3/files')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (method === 'POST' && url.includes('/upload/drive/v3/files')) {
+      return new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 });
+    }
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            { id: 'cal-b-dup', summary: 'Habits Reminders', timeZone: 'UTC' },
+            { id: 'cal-a-primary', summary: 'Habits Reminders', timeZone: 'UTC' },
+            { id: 'personal', summary: 'Personal', timeZone: 'UTC' },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.includes('/calendars/cal-a-primary/events')) {
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
+    if (method === 'POST' && url.includes('/calendars/cal-a-primary/events')) {
+      return new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 });
+    }
+    if (method === 'DELETE' && url.endsWith('/calendars/cal-b-dup')) {
+      deletedCalendarUrls.push(url);
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+  const plan = await service.prepareSyncPlan('google', 'tok-device-2', snap, TUESDAY_DAY, prefs, 'UTC');
+
+  assert.equal(plan.willCreateCalendar, false);
+  assert.equal(plan.calendarId, 'cal-a-primary');
+  assert.deepEqual(plan.duplicateCalendarIds, ['cal-b-dup']);
+  assert.equal(plan.toCreate.length, 1);
+
+  const applied = await service.applySyncPlan('google', 'tok-device-2', plan);
+  assert.equal(applied.calendarId, 'cal-a-primary');
+  assert.equal(applied.created, 1);
+  assert.equal(applied.duplicatesRemoved, 1);
+  assert.equal(deletedCalendarUrls.length, 1);
+});
+
+test('CalendarReminderService discovers calendarId via Drive appDataFolder when calendarList returns 403 and removes device duplicate', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const snap = makeSnapshot({
+    habits: [
+      {
+        id: 1,
+        name: 'Meditate',
+        color: '#3B82F6',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: MONDAY_DAY,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+  });
+
+  // Phone previously created cal-phone locally, while PC published cal-pc to Drive appDataFolder
+  const phonePrefs = makePrefs({
+    calendarEnabled: true,
+    calendarId: 'cal-phone',
+    horizonDays: 1,
+    reminderTime: '20:00',
+  });
+
+  let savedMetaBody = '';
+  const deletedCalendars: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      // Realistic behavior under calendar.app.created scope alone
+      return new Response('Forbidden', { status: 403 });
+    }
+    if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
+      return new Response(
+        JSON.stringify({ files: [{ id: 'meta-file-1', modifiedTime: '2026-11-22T00:00:00Z' }] }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.endsWith('/drive/v3/files/meta-file-1?alt=media')) {
+      return new Response(JSON.stringify({ calendarId: 'cal-pc', timeZone: 'UTC' }), {
+        status: 200,
+      });
+    }
+    if (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-file-1')) {
+      savedMetaBody = typeof init?.body === 'string' ? init.body : '';
+      return new Response(JSON.stringify({ id: 'meta-file-1' }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-pc')) {
+      return new Response(JSON.stringify({ id: 'cal-pc', timeZone: 'UTC' }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-phone')) {
+      return new Response(JSON.stringify({ id: 'cal-phone', timeZone: 'UTC' }), { status: 200 });
+    }
+    if (method === 'GET' && url.includes('/calendars/cal-pc/events')) {
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
+    if (method === 'POST' && url.includes('/calendars/cal-pc/events')) {
+      return new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 });
+    }
+    if (method === 'DELETE' && url.endsWith('/calendars/cal-phone')) {
+      deletedCalendars.push('cal-phone');
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+  const plan = await service.prepareSyncPlan(
+    'google',
+    'tok-phone',
+    snap,
+    TUESDAY_DAY,
+    phonePrefs,
+    'UTC'
+  );
+
+  assert.equal(plan.willCreateCalendar, false);
+  assert.equal(plan.calendarId, 'cal-pc');
+  assert.deepEqual(plan.duplicateCalendarIds, ['cal-phone']);
+
+  const applied = await service.applySyncPlan('google', 'tok-phone', plan);
+  assert.equal(applied.calendarId, 'cal-pc');
+  assert.equal(applied.duplicatesRemoved, 1);
+  assert.deepEqual(deletedCalendars, ['cal-phone']);
+  assert.match(savedMetaBody, /"calendarId":"cal-pc"/);
 });

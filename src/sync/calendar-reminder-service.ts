@@ -7,6 +7,9 @@ import {
 } from '../utils/reminder-planner';
 
 const CALENDAR_API_BASE = 'https://www.googleapis.com/calendar/v3';
+const DRIVE_FILES_URL = 'https://www.googleapis.com/drive/v3/files';
+const DRIVE_UPLOAD_URL = 'https://www.googleapis.com/upload/drive/v3/files';
+const REMOTE_REMINDER_META_FILENAME = 'habits-reminders.json';
 const SECONDARY_CALENDAR_SUMMARY = 'Habits Reminders';
 const SECONDARY_CALENDAR_DESCRIPTION =
   'Smart daily reminders managed by Habits tracker. Completed days are cleared automatically.';
@@ -23,6 +26,7 @@ export interface CalendarSyncPlan {
   calendarId: string | null;
   willCreateCalendar: boolean;
   willUpdateCalendarTz: boolean;
+  duplicateCalendarIds: string[];
   timeZone: string;
   todayDay: number;
   todayCleared: boolean;
@@ -40,6 +44,7 @@ export interface CalendarSyncApplyResult {
   created: number;
   updated: number;
   deleted: number;
+  duplicatesRemoved: number;
   targetSignature: string;
 }
 
@@ -76,7 +81,15 @@ function mapHttpError(status: number, bodyText: string, action: string): Error {
 
 interface GoogleCalendarResource {
   id?: string;
+  summary?: string;
+  description?: string;
   timeZone?: string;
+  deleted?: boolean;
+}
+
+interface GoogleCalendarListResponse {
+  items?: GoogleCalendarResource[];
+  nextPageToken?: string;
 }
 
 interface GoogleEventListResponse {
@@ -89,6 +102,24 @@ interface GoogleEventListResponse {
       private?: Record<string, string>;
     };
   }>;
+}
+
+interface DriveMetaFileEntry {
+  id: string;
+  modifiedTime?: string;
+}
+
+interface RemoteReminderMeta {
+  calendarId: string | null;
+  timeZone?: string | null;
+  knownCalendarIds?: string[];
+  updatedAt?: number;
+}
+
+interface RemoteReminderMetaState {
+  fileId: string | null;
+  duplicateFileIds: string[];
+  meta: RemoteReminderMeta | null;
 }
 
 export class CalendarReminderService {
@@ -125,6 +156,233 @@ export class CalendarReminderService {
       throw mapHttpError(res.status, await res.text(), 'checking reminders calendar');
     }
     return (await res.json()) as GoogleCalendarResource;
+  }
+
+  private async findRemoteMetaFiles(token: string): Promise<DriveMetaFileEntry[]> {
+    const query = encodeURIComponent(
+      `name='${REMOTE_REMINDER_META_FILENAME}' and trashed=false`
+    );
+    const url = `${DRIVE_FILES_URL}?spaces=appDataFolder&q=${query}&fields=files(id,modifiedTime)&pageSize=20`;
+
+    return Helpers.withRetry(async () => {
+      const response = await fetch(url, {
+        headers: this.authHeaders(token),
+      });
+      if (response.status === 401) {
+        throw mapHttpError(401, await response.text(), 'reading synced reminder config');
+      }
+      if (response.status === 403 || response.status === 404) {
+        return [];
+      }
+      if (!response.ok) {
+        throw mapHttpError(response.status, await response.text(), 'reading synced reminder config');
+      }
+      const data = (await response.json()) as { files?: DriveMetaFileEntry[] };
+      return [...(data.files ?? [])].sort((a, b) => {
+        const ta = a.modifiedTime ? Date.parse(a.modifiedTime) : 0;
+        const tb = b.modifiedTime ? Date.parse(b.modifiedTime) : 0;
+        if (tb !== ta) return tb - ta;
+        return a.id.localeCompare(b.id);
+      });
+    });
+  }
+
+  private async readRemoteReminderMeta(token: string): Promise<RemoteReminderMetaState> {
+    const files = await this.findRemoteMetaFiles(token);
+    if (files.length === 0) {
+      return { fileId: null, duplicateFileIds: [], meta: null };
+    }
+
+    const primaryFileId = files[0].id;
+    const duplicateFileIds = files.slice(1).map((f) => f.id);
+    const url = `${DRIVE_FILES_URL}/${encodeURIComponent(primaryFileId)}?alt=media`;
+
+    const meta = await Helpers.withRetry(async () => {
+      const response = await fetch(url, {
+        headers: this.authHeaders(token),
+      });
+      if (response.status === 401) {
+        throw mapHttpError(401, await response.text(), 'downloading synced reminder config');
+      }
+      if (response.status === 403 || response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw mapHttpError(
+          response.status,
+          await response.text(),
+          'downloading synced reminder config'
+        );
+      }
+      const rawText = await response.text();
+      try {
+        const parsed = JSON.parse(rawText) as Record<string, unknown>;
+        const calendarId =
+          typeof parsed.calendarId === 'string' && parsed.calendarId.trim().length > 0
+            ? parsed.calendarId.trim()
+            : null;
+        const knownCalendarIds = Array.isArray(parsed.knownCalendarIds)
+          ? parsed.knownCalendarIds.filter(
+              (id): id is string => typeof id === 'string' && id.trim().length > 0
+            )
+          : undefined;
+        return {
+          calendarId,
+          timeZone: typeof parsed.timeZone === 'string' ? parsed.timeZone : null,
+          knownCalendarIds,
+          updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : undefined,
+        } satisfies RemoteReminderMeta;
+      } catch {
+        return null;
+      }
+    });
+
+    return {
+      fileId: primaryFileId,
+      duplicateFileIds,
+      meta,
+    };
+  }
+
+  private async writeRemoteReminderMetaBestEffort(
+    token: string,
+    meta: RemoteReminderMeta,
+    existingState?: RemoteReminderMetaState
+  ): Promise<void> {
+    try {
+      const state = existingState ?? (await this.readRemoteReminderMeta(token));
+      const boundary = `habits_rem_meta_${Date.now().toString(36)}`;
+      const fileMetadata = state.fileId
+        ? { name: REMOTE_REMINDER_META_FILENAME, mimeType: 'application/json' }
+        : {
+            name: REMOTE_REMINDER_META_FILENAME,
+            parents: ['appDataFolder'],
+            mimeType: 'application/json',
+          };
+      const payload = JSON.stringify(meta);
+      const multipartBody =
+        `--${boundary}\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${JSON.stringify(fileMetadata)}\r\n` +
+        `--${boundary}\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${payload}\r\n` +
+        `--${boundary}--`;
+
+      const url = state.fileId
+        ? `${DRIVE_UPLOAD_URL}/${encodeURIComponent(state.fileId)}?uploadType=multipart`
+        : `${DRIVE_UPLOAD_URL}?uploadType=multipart`;
+      const method = state.fileId ? 'PATCH' : 'POST';
+
+      await Helpers.withRetry(async () => {
+        const res = await fetch(url, {
+          method,
+          headers: {
+            ...this.authHeaders(token),
+            'Content-Type': `multipart/related; boundary=${boundary}`,
+          },
+          body: multipartBody,
+        });
+        if (res.status === 401) {
+          throw mapHttpError(401, await res.text(), 'saving synced reminder config');
+        }
+        if (res.status === 403 || res.status === 404) {
+          return res;
+        }
+        if (!res.ok) {
+          throw mapHttpError(res.status, await res.text(), 'saving synced reminder config');
+        }
+        return res;
+      });
+
+      for (const dupFileId of state.duplicateFileIds) {
+        await fetch(`${DRIVE_FILES_URL}/${encodeURIComponent(dupFileId)}`, {
+          method: 'DELETE',
+          headers: this.authHeaders(token),
+        }).catch(() => undefined);
+      }
+    } catch (err) {
+      if (err instanceof NonRetryableError && /expired/i.test(err.message)) {
+        throw err;
+      }
+    }
+  }
+
+  public async publishCalendarIdIfMissing(
+    mode: SessionMode | null,
+    accessToken: string | null,
+    calendarId: string | null,
+    trackerTimeZone: string
+  ): Promise<void> {
+    if (mode !== 'google' || !accessToken || !calendarId) return;
+    try {
+      const state = await this.readRemoteReminderMeta(accessToken);
+      if (state.meta?.calendarId) return;
+      const metaExists = await Helpers.withRetry(() =>
+        this.fetchCalendarMeta(accessToken, calendarId)
+      );
+      if (!metaExists) return;
+      await this.writeRemoteReminderMetaBestEffort(
+        accessToken,
+        {
+          calendarId,
+          timeZone: ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone),
+          updatedAt: Date.now(),
+        },
+        state
+      );
+    } catch {
+      // Best-effort metadata publish should not interrupt caller flow.
+    }
+  }
+
+  private async listAppCalendars(accessToken: string): Promise<GoogleCalendarResource[]> {
+    const matched: GoogleCalendarResource[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const qs = new URLSearchParams({
+        minAccessRole: 'owner',
+        maxResults: '250',
+      });
+      if (pageToken) {
+        qs.set('pageToken', pageToken);
+      }
+      const url = `${CALENDAR_API_BASE}/users/me/calendarList?${qs.toString()}`;
+      const res = await Helpers.withRetry(async () => {
+        const response = await fetch(url, {
+          headers: this.authHeaders(accessToken),
+        });
+        if (response.status === 401) {
+          throw mapHttpError(401, await response.text(), 'listing app calendars');
+        }
+        if (response.status === 403) {
+          return response;
+        }
+        if (!response.ok) {
+          throw mapHttpError(response.status, await response.text(), 'listing app calendars');
+        }
+        return response;
+      });
+
+      if (res.status === 403) {
+        return [];
+      }
+
+      const data = (await res.json()) as GoogleCalendarListResponse;
+      for (const item of data.items ?? []) {
+        if (!item.id || item.deleted) continue;
+        if (
+          item.summary === SECONDARY_CALENDAR_SUMMARY ||
+          item.description === SECONDARY_CALENDAR_DESCRIPTION
+        ) {
+          matched.push(item);
+        }
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+
+    return matched.sort((a, b) => (a.id ?? '').localeCompare(b.id ?? ''));
   }
 
   private async listCalendarEvents(
@@ -184,25 +442,63 @@ export class CalendarReminderService {
       trackerTimeZone
     );
 
-    let resolvedCalendarId = prefs.calendarId;
-    let willCreateCalendar = false;
-    let willUpdateCalendarTz = false;
-    let existingEvents: ExistingReminderEvent[] = [];
+    const [remoteState, appCalendars] = await Promise.all([
+      this.readRemoteReminderMeta(token),
+      this.listAppCalendars(token),
+    ]);
 
-    if (resolvedCalendarId) {
-      const meta = await Helpers.withRetry(() =>
-        this.fetchCalendarMeta(token, resolvedCalendarId!)
-      );
-      if (!meta || !meta.id) {
-        resolvedCalendarId = null;
-        willCreateCalendar = true;
-      } else {
-        willUpdateCalendarTz = meta.timeZone !== timeZone;
-        existingEvents = await this.listCalendarEvents(token, resolvedCalendarId);
-      }
-    } else {
-      willCreateCalendar = true;
+    const appCalendarById = new Map<string, GoogleCalendarResource>();
+    for (const cal of appCalendars) {
+      if (cal.id) appCalendarById.set(cal.id, cal);
     }
+
+    const candidateIds: string[] = [];
+    const addCandidate = (id: string | null | undefined) => {
+      if (!id) return;
+      const trimmed = id.trim();
+      if (trimmed && !candidateIds.includes(trimmed)) {
+        candidateIds.push(trimmed);
+      }
+    };
+
+    // Priority: shared Drive appDataFolder ID -> sorted calendarList entries -> localStorage ID
+    addCandidate(remoteState.meta?.calendarId);
+    for (const cal of appCalendars) {
+      addCandidate(cal.id);
+    }
+    addCandidate(prefs.calendarId);
+    for (const extraId of remoteState.meta?.knownCalendarIds ?? []) {
+      addCandidate(extraId);
+    }
+
+    const liveCalendars: GoogleCalendarResource[] = [];
+    for (const candidateId of candidateIds) {
+      const fromList = appCalendarById.get(candidateId);
+      if (fromList) {
+        liveCalendars.push(fromList);
+        continue;
+      }
+      const meta = await Helpers.withRetry(() =>
+        this.fetchCalendarMeta(token, candidateId)
+      );
+      if (meta && !meta.deleted && meta.id) {
+        liveCalendars.push(meta);
+      }
+    }
+
+    const resolvedMeta = liveCalendars[0] ?? null;
+    const resolvedCalendarId = resolvedMeta?.id ?? null;
+    const willCreateCalendar = resolvedCalendarId === null;
+    const willUpdateCalendarTz =
+      resolvedMeta !== null && resolvedMeta.timeZone !== timeZone;
+    const duplicateCalendarIds = liveCalendars
+      .slice(1)
+      .map((c) => c.id)
+      .filter((id): id is string => Boolean(id) && id !== resolvedCalendarId);
+
+    const existingEvents = resolvedCalendarId
+      ? await this.listCalendarEvents(token, resolvedCalendarId)
+      : [];
 
     const desiredByDay = new Map<number, DesiredReminderEvent>();
     for (const desired of desiredEvents) {
@@ -266,6 +562,7 @@ export class CalendarReminderService {
       calendarId: resolvedCalendarId,
       willCreateCalendar,
       willUpdateCalendarTz,
+      duplicateCalendarIds,
       timeZone,
       todayDay,
       todayCleared,
@@ -422,22 +719,34 @@ export class CalendarReminderService {
       created += 1;
     }
 
+    let duplicatesRemoved = 0;
+    for (const dupId of plan.duplicateCalendarIds) {
+      if (!dupId || dupId === calendarId) continue;
+      await this.deleteCalendarResource(token, dupId);
+      duplicatesRemoved += 1;
+    }
+
+    await this.writeRemoteReminderMetaBestEffort(token, {
+      calendarId,
+      timeZone: plan.timeZone,
+      updatedAt: Date.now(),
+    });
+
     return {
       calendarId,
       timeZone: plan.timeZone,
       created,
       updated,
       deleted,
+      duplicatesRemoved,
       targetSignature: plan.targetSignature,
     };
   }
 
-  public async deleteReminderCalendar(
-    mode: SessionMode | null,
-    accessToken: string | null,
+  private async deleteCalendarResource(
+    token: string,
     calendarId: string
   ): Promise<void> {
-    const token = this.assertAuthorized(mode, accessToken);
     if (!calendarId.trim()) return;
 
     await Helpers.withRetry(async () => {
@@ -455,6 +764,22 @@ export class CalendarReminderService {
         throw mapHttpError(res.status, await res.text(), 'deleting reminders calendar');
       }
       return res;
+    });
+  }
+
+  public async deleteReminderCalendar(
+    mode: SessionMode | null,
+    accessToken: string | null,
+    calendarId: string
+  ): Promise<void> {
+    const token = this.assertAuthorized(mode, accessToken);
+    if (!calendarId.trim()) return;
+
+    await this.deleteCalendarResource(token, calendarId);
+    await this.writeRemoteReminderMetaBestEffort(token, {
+      calendarId: null,
+      timeZone: null,
+      updatedAt: Date.now(),
     });
   }
 }
