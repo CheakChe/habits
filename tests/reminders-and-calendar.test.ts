@@ -749,7 +749,12 @@ test('CalendarReminderService discovers calendarId via Drive appDataFolder when 
       });
     }
     if (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-file-1')) {
-      savedMetaBody = typeof init?.body === 'string' ? init.body : '';
+      savedMetaBody =
+        typeof init?.body === 'string'
+          ? init.body
+          : init?.body instanceof Uint8Array
+            ? new TextDecoder().decode(init.body)
+            : '';
       return new Response(JSON.stringify({ id: 'meta-file-1' }), { status: 200 });
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-pc')) {
@@ -791,3 +796,50 @@ test('CalendarReminderService discovers calendarId via Drive appDataFolder when 
   assert.deepEqual(deletedCalendars, ['cal-phone']);
   assert.match(savedMetaBody, /"calendarId":"cal-pc"/);
 });
+
+test('CalendarReminderService.syncRemoteCalendarId pulls shared calendarId and falls back to POST when PATCH returns 404', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  let createdViaPost = false;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
+      return new Response(
+        JSON.stringify({ files: [{ id: 'stale-file', modifiedTime: '2026-11-22T00:00:00Z' }] }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.endsWith('/drive/v3/files/stale-file?alt=media')) {
+      return new Response(JSON.stringify({ calendarId: null }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-local')) {
+      return new Response(JSON.stringify({ id: 'cal-local', timeZone: 'Europe/Moscow' }), {
+        status: 200,
+      });
+    }
+    if (method === 'PATCH' && url.includes('/upload/drive/v3/files/stale-file')) {
+      return new Response('Not Found', { status: 404 });
+    }
+    if (method === 'POST' && url.endsWith('/upload/drive/v3/files?uploadType=multipart')) {
+      createdViaPost = true;
+      return new Response(JSON.stringify({ id: 'fresh-file' }), { status: 200 });
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+  const published = await service.syncRemoteCalendarId(
+    'google',
+    'tok-1',
+    'cal-local',
+    'Europe/Moscow'
+  );
+  assert.deepEqual(published, { calendarId: 'cal-local', timeZone: 'Europe/Moscow' });
+  assert.equal(createdViaPost, true);
+});
+

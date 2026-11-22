@@ -1049,12 +1049,19 @@ export class TrackerStore {
       }
 
       if (result.status === 'up-to-date') {
-        void this.calendarSync.publishCalendarIdIfMissing(
+        const syncedMeta = await this.calendarSync.syncRemoteCalendarId(
           this.mode(),
           this.session.getAccessToken(),
           this.reminderPrefs().calendarId,
           this.timeZone()
         );
+        if (syncedMeta && !this.reminderPrefs().calendarId) {
+          this.persistReminderPrefs({
+            ...this.reminderPrefs(),
+            calendarId: syncedMeta.calendarId,
+            calendarTimeZone: syncedMeta.timeZone ?? this.reminderPrefs().calendarTimeZone,
+          });
+        }
         this.setSyncBanner({
           kind: 'success',
           text: result.localChanged
@@ -1093,12 +1100,19 @@ export class TrackerStore {
         this.session.getAccessToken(),
         pending
       );
-      void this.calendarSync.publishCalendarIdIfMissing(
+      const syncedMeta = await this.calendarSync.syncRemoteCalendarId(
         this.mode(),
         this.session.getAccessToken(),
         this.reminderPrefs().calendarId,
         this.timeZone()
       );
+      if (syncedMeta && !this.reminderPrefs().calendarId) {
+        this.persistReminderPrefs({
+          ...this.reminderPrefs(),
+          calendarId: syncedMeta.calendarId,
+          calendarTimeZone: syncedMeta.timeZone ?? this.reminderPrefs().calendarTimeZone,
+        });
+      }
       this.setPendingSync(null);
       this.setSyncBanner({
         kind: 'success',
@@ -1301,7 +1315,7 @@ export class TrackerStore {
         plan.toDelete.length > 0;
 
       if (!hasMutations && plan.calendarId) {
-        void this.calendarSync.publishCalendarIdIfMissing(
+        await this.calendarSync.syncRemoteCalendarId(
           this.mode(),
           this.session.getAccessToken(),
           plan.calendarId,

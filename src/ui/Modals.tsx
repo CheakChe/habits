@@ -1783,6 +1783,9 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                         <Show when={plan().willCreateCalendar}>
                           <li>Create secondary calendar &quot;Habits Reminders&quot; ({plan().timeZone})</li>
                         </Show>
+                        <Show when={!plan().willCreateCalendar && plan().calendarId}>
+                          <li>Reuse existing &quot;Habits Reminders&quot; calendar ({plan().timeZone})</li>
+                        </Show>
                         <Show when={plan().willUpdateCalendarTz}>
                           <li>Update calendar timezone to {plan().timeZone}</li>
                         </Show>

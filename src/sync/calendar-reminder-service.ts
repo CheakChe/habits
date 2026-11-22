@@ -244,6 +244,23 @@ export class CalendarReminderService {
     };
   }
 
+  private buildMultipartJsonBody(
+    boundary: string,
+    fileMetadata: Record<string, unknown>,
+    payload: string
+  ): Uint8Array {
+    const encoder = new TextEncoder();
+    return encoder.encode(
+      `--${boundary}\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${JSON.stringify(fileMetadata)}\r\n` +
+        `--${boundary}\r\n` +
+        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+        `${payload}\r\n` +
+        `--${boundary}--`
+    );
+  }
+
   private async writeRemoteReminderMetaBestEffort(
     token: string,
     meta: RemoteReminderMeta,
@@ -251,55 +268,57 @@ export class CalendarReminderService {
   ): Promise<void> {
     try {
       const state = existingState ?? (await this.readRemoteReminderMeta(token));
-      const boundary = `habits_rem_meta_${Date.now().toString(36)}`;
-      const fileMetadata = state.fileId
-        ? { name: REMOTE_REMINDER_META_FILENAME, mimeType: 'application/json' }
-        : {
-            name: REMOTE_REMINDER_META_FILENAME,
-            parents: ['appDataFolder'],
-            mimeType: 'application/json',
-          };
       const payload = JSON.stringify(meta);
-      const multipartBody =
-        `--${boundary}\r\n` +
-        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-        `${JSON.stringify(fileMetadata)}\r\n` +
-        `--${boundary}\r\n` +
-        `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-        `${payload}\r\n` +
-        `--${boundary}--`;
 
-      const url = state.fileId
-        ? `${DRIVE_UPLOAD_URL}/${encodeURIComponent(state.fileId)}?uploadType=multipart`
-        : `${DRIVE_UPLOAD_URL}?uploadType=multipart`;
-      const method = state.fileId ? 'PATCH' : 'POST';
+      const uploadOnce = async (targetFileId: string | null): Promise<Response> => {
+        const boundary = `habits_rem_meta_${Date.now().toString(36)}`;
+        const fileMetadata = targetFileId
+          ? { name: REMOTE_REMINDER_META_FILENAME, mimeType: 'application/json' }
+          : {
+              name: REMOTE_REMINDER_META_FILENAME,
+              parents: ['appDataFolder'],
+              mimeType: 'application/json',
+            };
+        const bodyBytes = this.buildMultipartJsonBody(boundary, fileMetadata, payload);
+        const url = targetFileId
+          ? `${DRIVE_UPLOAD_URL}/${encodeURIComponent(targetFileId)}?uploadType=multipart`
+          : `${DRIVE_UPLOAD_URL}?uploadType=multipart`;
+        const method = targetFileId ? 'PATCH' : 'POST';
 
-      await Helpers.withRetry(async () => {
-        const res = await fetch(url, {
-          method,
-          headers: {
-            ...this.authHeaders(token),
-            'Content-Type': `multipart/related; boundary=${boundary}`,
-          },
-          body: multipartBody,
-        });
-        if (res.status === 401) {
-          throw mapHttpError(401, await res.text(), 'saving synced reminder config');
-        }
-        if (res.status === 403 || res.status === 404) {
+        return Helpers.withRetry(async () => {
+          const res = await fetch(url, {
+            method,
+            headers: {
+              ...this.authHeaders(token),
+              'Content-Type': `multipart/related; boundary=${boundary}`,
+            },
+            body: bodyBytes as unknown as BodyInit,
+          });
+          if (res.status === 401) {
+            throw mapHttpError(401, await res.text(), 'saving synced reminder config');
+          }
+          if (res.status === 403 || res.status === 404) {
+            return res;
+          }
+          if (!res.ok) {
+            throw mapHttpError(res.status, await res.text(), 'saving synced reminder config');
+          }
           return res;
-        }
-        if (!res.ok) {
-          throw mapHttpError(res.status, await res.text(), 'saving synced reminder config');
-        }
-        return res;
-      });
+        });
+      };
 
-      for (const dupFileId of state.duplicateFileIds) {
-        await fetch(`${DRIVE_FILES_URL}/${encodeURIComponent(dupFileId)}`, {
-          method: 'DELETE',
-          headers: this.authHeaders(token),
-        }).catch(() => undefined);
+      let res = await uploadOnce(state.fileId);
+      if (res.status === 404 && state.fileId) {
+        res = await uploadOnce(null);
+      }
+
+      if (res.ok) {
+        for (const dupFileId of state.duplicateFileIds) {
+          await fetch(`${DRIVE_FILES_URL}/${encodeURIComponent(dupFileId)}`, {
+            method: 'DELETE',
+            headers: this.authHeaders(token),
+          }).catch(() => undefined);
+        }
       }
     } catch (err) {
       if (err instanceof NonRetryableError && /expired/i.test(err.message)) {
@@ -308,31 +327,77 @@ export class CalendarReminderService {
     }
   }
 
-  public async publishCalendarIdIfMissing(
+  public async syncRemoteCalendarId(
     mode: SessionMode | null,
     accessToken: string | null,
-    calendarId: string | null,
+    localCalendarId: string | null,
     trackerTimeZone: string
-  ): Promise<void> {
-    if (mode !== 'google' || !accessToken || !calendarId) return;
+  ): Promise<{ calendarId: string; timeZone: string | null } | null> {
+    if (mode !== 'google' || !accessToken) return null;
     try {
       const state = await this.readRemoteReminderMeta(accessToken);
-      if (state.meta?.calendarId) return;
-      const metaExists = await Helpers.withRetry(() =>
-        this.fetchCalendarMeta(accessToken, calendarId)
-      );
-      if (!metaExists) return;
-      await this.writeRemoteReminderMetaBestEffort(
-        accessToken,
-        {
-          calendarId,
-          timeZone: ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone),
-          updatedAt: Date.now(),
-        },
-        state
-      );
+      const remoteCalId = state.meta?.calendarId ?? null;
+
+      if (remoteCalId) {
+        const remoteCalMeta = await Helpers.withRetry(() =>
+          this.fetchCalendarMeta(accessToken, remoteCalId)
+        );
+        if (remoteCalMeta && !remoteCalMeta.deleted && remoteCalMeta.id) {
+          if (localCalendarId && localCalendarId !== remoteCalMeta.id) {
+            const localMeta = await Helpers.withRetry(() =>
+              this.fetchCalendarMeta(accessToken, localCalendarId)
+            );
+            const existingKnown = state.meta?.knownCalendarIds ?? [];
+            if (
+              localMeta &&
+              !localMeta.deleted &&
+              localMeta.id &&
+              !existingKnown.includes(localMeta.id)
+            ) {
+              await this.writeRemoteReminderMetaBestEffort(
+                accessToken,
+                {
+                  calendarId: remoteCalMeta.id,
+                  timeZone: remoteCalMeta.timeZone ?? state.meta?.timeZone ?? null,
+                  knownCalendarIds: [...existingKnown, localMeta.id],
+                  updatedAt: Date.now(),
+                },
+                state
+              );
+            }
+          }
+          return {
+            calendarId: remoteCalMeta.id,
+            timeZone: remoteCalMeta.timeZone ?? state.meta?.timeZone ?? null,
+          };
+        }
+      }
+
+      if (localCalendarId) {
+        const localCalMeta = await Helpers.withRetry(() =>
+          this.fetchCalendarMeta(accessToken, localCalendarId)
+        );
+        if (localCalMeta && !localCalMeta.deleted && localCalMeta.id) {
+          const resolvedTz =
+            localCalMeta.timeZone ?? ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone);
+          await this.writeRemoteReminderMetaBestEffort(
+            accessToken,
+            {
+              calendarId: localCalMeta.id,
+              timeZone: resolvedTz,
+              updatedAt: Date.now(),
+            },
+            state
+          );
+          return {
+            calendarId: localCalMeta.id,
+            timeZone: resolvedTz,
+          };
+        }
+      }
+      return null;
     } catch {
-      // Best-effort metadata publish should not interrupt caller flow.
+      return null;
     }
   }
 
