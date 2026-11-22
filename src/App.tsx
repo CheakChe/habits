@@ -237,9 +237,6 @@ export default function App(): JSX.Element {
                   onScheduleTaskToday={(t) => store.scheduleTaskForDay(t, store.todayDay())}
                   onOpenNewHabit={() => store.openCreateHabit()}
                   onOpenEditTask={(t) => store.openEditTask(t)}
-                  onOpenReminders={() => store.openRemindersModal()}
-                  calendarSyncNeeded={store.isCalendarSyncNeeded()}
-                  calendarEnabled={store.reminderPrefs().calendarEnabled}
                 />
               </Match>
               <Match when={store.activeTab() === 'habits'}>

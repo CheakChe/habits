@@ -7,7 +7,6 @@ import { TodayBoard } from '../utils/today-board';
 import { HabitBadge } from './HabitBadge';
 import {
   AlertIcon,
-  BellIcon,
   CheckIcon,
   ChevronDownIcon,
   NoteIcon,
@@ -27,9 +26,6 @@ interface TodayViewProps {
   onScheduleTaskToday: (task: Task) => Promise<void>;
   onOpenNewHabit: () => void;
   onOpenEditTask: (task: Task) => void;
-  onOpenReminders?: () => void;
-  calendarSyncNeeded?: boolean;
-  calendarEnabled?: boolean;
 }
 
 export function TodayView(props: TodayViewProps): JSX.Element {
@@ -144,28 +140,6 @@ export function TodayView(props: TodayViewProps): JSX.Element {
         </div>
 
         <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
-          <Show when={props.onOpenReminders}>
-            <button
-              type="button"
-              onClick={() => props.onOpenReminders?.()}
-              class="h-10 px-3.5 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-sm font-medium text-[#C8CDD8] hover:text-[#F5F7FA] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <BellIcon
-                class={`w-4 h-4 ${
-                  props.calendarSyncNeeded
-                    ? 'text-[#F59E0B]'
-                    : props.calendarEnabled
-                      ? 'text-[#60A5FA]'
-                      : 'text-[#8E95A5]'
-                }`}
-              />
-              <span>Reminders</span>
-              <Show when={props.calendarSyncNeeded}>
-                <span class="text-xs font-mono text-[#F59E0B]">· Sync</span>
-              </Show>
-            </button>
-          </Show>
-
           <button
             type="button"
             onClick={() => props.onOpenNewHabit()}
