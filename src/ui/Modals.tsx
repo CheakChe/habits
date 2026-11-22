@@ -1,4 +1,5 @@
-import { For, JSX, Show, createEffect, createSignal } from 'solid-js';
+import { For, JSX, Show, createEffect, createSignal, onCleanup } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { CalendarSyncPlan } from '../sync/calendar-reminder-service';
 import {
   DriveRevisionInspectResult,
@@ -41,6 +42,7 @@ import {
 } from './Icons';
 import { PWAInstallButton } from './PwaControls';
 import { ALL_WEEKDAYS_MASK, DEFAULT_HABIT_COLOR, HABIT_COLORS } from './constants';
+import { useBodyScrollLock } from './scroll-lock';
 import { TaskDraftPrefill, TaskModalMode } from './tracker-store';
 
 interface HabitModalProps {
@@ -167,31 +169,46 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
     }
   };
 
+  useBodyScrollLock(() => props.open);
+
+  createEffect(() => {
+    if (!props.open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !saving()) {
+        props.onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   return (
     <Show when={props.open}>
-      <div
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="habit-modal-title"
-      >
-        <div class="w-full sm:max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
-          <div class="flex items-center justify-between">
-            <h2 id="habit-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
-              {props.editingHabit ? 'Edit Habit' : 'New Habit'}
-            </h2>
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-            >
-              <CloseIcon class="w-4 h-4" />
-            </button>
-          </div>
+      <Portal>
+        <div
+          class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="habit-modal-title"
+        >
+          <div class="w-full sm:max-w-md max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08]">
+            <div class="shrink-0 flex items-center justify-between px-6 pt-5 pb-3 sm:pt-6 border-b border-white/[0.06]">
+              <h2 id="habit-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
+                {props.editingHabit ? 'Edit Habit' : 'New Habit'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                aria-label="Close modal"
+                class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+              >
+                <CloseIcon class="w-4 h-4" />
+              </button>
+            </div>
 
-          <form onSubmit={(e) => void handleSubmit(e)} class="space-y-5">
-            <Show when={error()}>
+            <form onSubmit={(e) => void handleSubmit(e)} class="flex flex-col flex-1 min-h-0">
+              <div class="overflow-y-auto overscroll-contain flex-1 min-h-0 px-6 py-4 space-y-5">
+                <Show when={error()}>
               {(msg) => (
                 <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5]">
                   {msg()}
@@ -508,26 +525,28 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                 placement="top"
               />
             </div>
-
-            <div class="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => props.onClose()}
-                class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving()}
-                class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {saving() ? 'Saving...' : props.editingHabit ? 'Save Changes' : 'Create Habit'}
-              </button>
             </div>
-          </form>
+
+              <div class="shrink-0 px-6 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 border-t border-white/[0.06] bg-[#14161B] flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => props.onClose()}
+                  class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving()}
+                  class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {saving() ? 'Saving...' : props.editingHabit ? 'Save Changes' : 'Create Habit'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      </Portal>
     </Show>
   );
 }
@@ -634,44 +653,59 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
     }
   };
 
+  useBodyScrollLock(() => props.open);
+
+  createEffect(() => {
+    if (!props.open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !saving()) {
+        props.onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   return (
     <Show when={props.open}>
-      <div
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="task-modal-title"
-      >
-        <div class="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
-          <div class="flex items-center justify-between">
-            <h2 id="task-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
-              {props.mode === 'edit'
-                ? 'Edit Task'
-                : props.mode === 'next'
-                  ? 'Schedule Next Occurrence'
-                  : 'New Task'}
-            </h2>
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-            >
-              <CloseIcon class="w-4 h-4" />
-            </button>
-          </div>
-
-          <Show when={props.mode === 'next'}>
-            <div class="rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/25 px-3.5 py-2.5 text-xs text-[#93C5FD] flex items-center gap-2">
-              <RepeatIcon class="w-4 h-4 shrink-0" />
-              <span>
-                Completed! Pre-filled the next occurrence below — pick a new date or skip.
-              </span>
+      <Portal>
+        <div
+          class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="task-modal-title"
+        >
+          <div class="w-full sm:max-w-md max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08]">
+            <div class="shrink-0 flex items-center justify-between px-6 pt-5 pb-3 sm:pt-6 border-b border-white/[0.06]">
+              <h2 id="task-modal-title" class="font-display text-lg font-semibold text-[#F5F7FA]">
+                {props.mode === 'edit'
+                  ? 'Edit Task'
+                  : props.mode === 'next'
+                    ? 'Schedule Next Occurrence'
+                    : 'New Task'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                aria-label="Close modal"
+                class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+              >
+                <CloseIcon class="w-4 h-4" />
+              </button>
             </div>
-          </Show>
 
-          <form onSubmit={(e) => void handleSubmit(e)} class="space-y-4">
-            <Show when={error()}>
+            <form onSubmit={(e) => void handleSubmit(e)} class="flex flex-col flex-1 min-h-0">
+              <div class="overflow-y-auto overscroll-contain flex-1 min-h-0 px-6 py-4 space-y-4">
+                <Show when={props.mode === 'next'}>
+                  <div class="rounded-xl bg-[#3B82F6]/10 border border-[#3B82F6]/25 px-3.5 py-2.5 text-xs text-[#93C5FD] flex items-center gap-2">
+                    <RepeatIcon class="w-4 h-4 shrink-0" />
+                    <span>
+                      Completed! Pre-filled the next occurrence below — pick a new date or skip.
+                    </span>
+                  </div>
+                </Show>
+
+                <Show when={error()}>
               {(msg) => (
                 <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5]">
                   {msg()}
@@ -819,31 +853,34 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
               </div>
             </Show>
 
-            <div class="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => props.onClose()}
-                class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-              >
-                {props.mode === 'next' ? 'Skip' : 'Cancel'}
-              </button>
-              <button
-                type="submit"
-                disabled={saving()}
-                class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {saving()
-                  ? 'Saving...'
-                  : props.mode === 'edit'
-                    ? 'Save Changes'
-                    : props.mode === 'next'
-                      ? 'Create Next Task'
-                      : 'Create Task'}
-              </button>
-            </div>
-          </form>
+              </div>
+
+              <div class="shrink-0 px-6 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 border-t border-white/[0.06] bg-[#14161B] flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => props.onClose()}
+                  class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                >
+                  {props.mode === 'next' ? 'Skip' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving()}
+                  class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {saving()
+                    ? 'Saving...'
+                    : props.mode === 'edit'
+                      ? 'Save Changes'
+                      : props.mode === 'next'
+                        ? 'Create Next Task'
+                        : 'Create Task'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      </Portal>
     </Show>
   );
 }
@@ -856,17 +893,32 @@ interface SyncConfirmModalProps {
 }
 
 export function SyncConfirmModal(props: SyncConfirmModalProps): JSX.Element {
+  useBodyScrollLock(() => Boolean(props.pending));
+
+  createEffect(() => {
+    if (!props.pending) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !props.uploading) {
+        props.onCancel();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   return (
     <Show when={props.pending}>
       {(pending) => (
-        <div
-          class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="sync-confirm-title"
-        >
-          <div class="w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
-            <div class="flex items-start gap-3">
+        <Portal>
+          <div
+            class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sync-confirm-title"
+          >
+            <div class="w-full sm:max-w-md max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08]">
+              <div class="overflow-y-auto overscroll-contain flex-1 min-h-0 p-6 space-y-5">
+                <div class="flex items-start gap-3">
               <div class="w-10 h-10 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0">
                 <CloudSyncIcon class="w-5 h-5" />
               </div>
@@ -922,30 +974,33 @@ export function SyncConfirmModal(props: SyncConfirmModalProps): JSX.Element {
               </div>
             </Show>
 
-            <div class="flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => props.onCancel()}
-                disabled={props.uploading}
-                class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void props.onConfirm()}
-                disabled={props.uploading}
-                class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {props.uploading
-                  ? 'Uploading...'
-                  : pending().remoteFileId
-                    ? 'Update Snapshot'
-                    : 'Upload Snapshot'}
-              </button>
+              </div>
+
+              <div class="shrink-0 px-6 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 border-t border-white/[0.06] bg-[#14161B] flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => props.onCancel()}
+                  disabled={props.uploading}
+                  class="h-10 px-4 rounded-xl text-sm font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void props.onConfirm()}
+                  disabled={props.uploading}
+                  class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {props.uploading
+                    ? 'Uploading...'
+                    : pending().remoteFileId
+                      ? 'Update Snapshot'
+                      : 'Upload Snapshot'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </Show>
   );
@@ -1041,31 +1096,52 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
     }
   };
 
+  useBodyScrollLock(() => props.open);
+
+  createEffect(() => {
+    if (!props.open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !busy()) {
+        props.onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   return (
     <Show when={props.open}>
-      <div
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="account-modal-title"
-      >
-        <div class="w-full sm:max-w-sm max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
-          <div class="flex items-center justify-between gap-2">
-            <h2
-              id="account-modal-title"
-              class="font-display text-lg font-semibold text-[#F5F7FA] min-w-0"
-            >
-              Workspace &amp; Sync Mode
-            </h2>
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer shrink-0"
-            >
-              <CloseIcon class="w-4 h-4" />
-            </button>
-          </div>
+      <Portal>
+        <div
+          class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="account-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !busy()) {
+              props.onClose();
+            }
+          }}
+        >
+          <div class="w-full sm:max-w-sm max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08]">
+            <div class="shrink-0 flex items-center justify-between gap-2 px-6 pt-5 pb-3 sm:pt-6 border-b border-white/[0.06]">
+              <h2
+                id="account-modal-title"
+                class="font-display text-lg font-semibold text-[#F5F7FA] min-w-0"
+              >
+                Workspace &amp; Sync Mode
+              </h2>
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                aria-label="Close modal"
+                class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer shrink-0"
+              >
+                <CloseIcon class="w-4 h-4" />
+              </button>
+            </div>
+
+            <div class="overflow-y-auto overscroll-contain flex-1 min-h-0 px-6 pt-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-5">
 
           <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-4 flex items-start gap-3">
             <DriveIcon class="w-5 h-5 text-[#60A5FA] shrink-0 mt-0.5" />
@@ -1191,8 +1267,10 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
               </a>
             </div>
           </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </Portal>
     </Show>
   );
 }
@@ -1232,52 +1310,71 @@ function formatByteSize(bytes?: number): string {
 }
 
 export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Element {
+  useBodyScrollLock(() => props.open);
+
+  createEffect(() => {
+    if (!props.open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !props.restoring) {
+        props.onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   return (
     <Show when={props.open}>
-      <div
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="revisions-modal-title"
-      >
-        <div class="w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-5 sm:p-6 space-y-4 max-h-[90vh] flex flex-col">
-          <div class="flex items-start justify-between gap-3 shrink-0">
-            <div class="flex items-start gap-3 min-w-0 flex-1">
-              <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0 mt-0.5">
-                <HistoryClockIcon class="w-4 h-4" />
+      <Portal>
+        <div
+          class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="revisions-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !props.restoring) {
+              props.onClose();
+            }
+          }}
+        >
+          <div class="w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] max-h-modal flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 pb-3 sm:pt-6 border-b border-white/[0.06] shrink-0">
+              <div class="flex items-start gap-3 min-w-0 flex-1">
+                <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0 mt-0.5">
+                  <HistoryClockIcon class="w-4 h-4" />
+                </div>
+                <div class="min-w-0 flex-1 space-y-0.5">
+                  <h2
+                    id="revisions-modal-title"
+                    class="font-display text-lg font-semibold text-[#F5F7FA]"
+                  >
+                    Drive Version History
+                  </h2>
+                  <p class="text-xs text-[#8E95A5]">
+                    Up to the latest {MAX_REVISIONS_TO_KEEP} versions are kept automatically in Google Drive.
+                  </p>
+                </div>
               </div>
-              <div class="min-w-0 flex-1 space-y-0.5">
-                <h2
-                  id="revisions-modal-title"
-                  class="font-display text-lg font-semibold text-[#F5F7FA]"
-                >
-                  Drive Version History
-                </h2>
-                <p class="text-xs text-[#8E95A5]">
-                  Up to the latest {MAX_REVISIONS_TO_KEEP} versions are kept automatically in Google Drive.
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                disabled={props.restoring}
+                aria-label="Close modal"
+                class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <CloseIcon class="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              disabled={props.restoring}
-              aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              <CloseIcon class="w-4 h-4" />
-            </button>
-          </div>
 
-          <Show when={props.error}>
-            {(msg) => (
-              <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0 break-anywhere">
-                {msg()}
-              </div>
-            )}
-          </Show>
+            <Show when={props.error}>
+              {(msg) => (
+                <div class="mx-5 sm:mx-6 mt-3 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0 break-anywhere">
+                  {msg()}
+                </div>
+              )}
+            </Show>
 
-          <div class="overflow-y-auto space-y-3 pr-1 flex-1 min-h-0">
+            <div class="overflow-y-auto overscroll-contain space-y-3 px-5 sm:px-6 py-4 flex-1 min-h-0">
             <Show
               when={!props.loading}
               fallback={
@@ -1426,28 +1523,29 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
                 );
               }}
             </Show>
-          </div>
+            </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-3 pt-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => void props.onRefresh()}
-              disabled={props.loading || props.restoring}
-              class="h-9 px-3.5 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50"
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              disabled={props.restoring}
-              class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
-            >
-              Close
-            </button>
+            <div class="flex flex-wrap items-center justify-between gap-3 px-5 sm:px-6 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 border-t border-white/[0.06] bg-[#14161B] shrink-0">
+              <button
+                type="button"
+                onClick={() => void props.onRefresh()}
+                disabled={props.loading || props.restoring}
+                class="h-9 px-3.5 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Refresh
+              </button>
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                disabled={props.restoring}
+                class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </Portal>
     </Show>
   );
 }
@@ -1491,52 +1589,71 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
   const isStandalone = ReminderPlanner.isStandalonePwa();
   const resolvedTz = () => ReminderPlanner.resolveCalendarTimeZone(props.trackerTimeZone);
 
+  useBodyScrollLock(() => props.open);
+
+  createEffect(() => {
+    if (!props.open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented && !props.busy) {
+        props.onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   return (
     <Show when={props.open}>
-      <div
-        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reminders-modal-title"
-      >
-        <div class="w-full sm:max-w-lg max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-5 sm:p-6 space-y-4">
-          <div class="flex items-start justify-between gap-3 shrink-0">
-            <div class="flex items-start gap-3 min-w-0 flex-1">
-              <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0 mt-0.5">
-                <BellIcon class="w-4 h-4" />
+      <Portal>
+        <div
+          class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reminders-modal-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !props.busy) {
+              props.onClose();
+            }
+          }}
+        >
+          <div class="w-full sm:max-w-lg max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08]">
+            <div class="flex items-start justify-between gap-3 px-5 sm:px-6 pt-5 pb-3 sm:pt-6 border-b border-white/[0.06] shrink-0">
+              <div class="flex items-start gap-3 min-w-0 flex-1">
+                <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0 mt-0.5">
+                  <BellIcon class="w-4 h-4" />
+                </div>
+                <div class="min-w-0 flex-1 space-y-0.5">
+                  <h2
+                    id="reminders-modal-title"
+                    class="font-display text-lg font-semibold text-[#F5F7FA]"
+                  >
+                    Reminders &amp; App Badge
+                  </h2>
+                  <p class="text-xs text-[#8E95A5]">
+                    Show remaining items on the app icon and push reminders via a separate Habits Reminders Google Calendar.
+                  </p>
+                </div>
               </div>
-              <div class="min-w-0 flex-1 space-y-0.5">
-                <h2
-                  id="reminders-modal-title"
-                  class="font-display text-lg font-semibold text-[#F5F7FA]"
-                >
-                  Reminders &amp; App Badge
-                </h2>
-                <p class="text-xs text-[#8E95A5]">
-                  Show remaining items on the app icon and push reminders via a separate Habits Reminders Google Calendar.
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                disabled={props.busy}
+                aria-label="Close modal"
+                class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <CloseIcon class="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              disabled={props.busy}
-              aria-label="Close modal"
-              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              <CloseIcon class="w-4 h-4" />
-            </button>
-          </div>
 
-          <Show when={props.error}>
-            {(msg) => (
-              <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0 break-anywhere">
-                {msg()}
-              </div>
-            )}
-          </Show>
+            <Show when={props.error}>
+              {(msg) => (
+                <div class="mx-5 sm:mx-6 mt-3 rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0 break-anywhere">
+                  {msg()}
+                </div>
+              )}
+            </Show>
 
-          <div class="overflow-y-auto space-y-4 pr-1 flex-1 min-h-0">
+            <div class="overflow-y-auto overscroll-contain space-y-4 px-5 sm:px-6 py-4 flex-1 min-h-0">
             {/* App Icon Badge Section */}
             <section class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-4 space-y-3">
               <div class="flex items-start justify-between gap-3">
@@ -1863,20 +1980,21 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                 </Show>
               </Show>
             </section>
-          </div>
+            </div>
 
-          <div class="flex justify-end pt-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => props.onClose()}
-              disabled={props.busy}
-              class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
-            >
-              Close
-            </button>
+            <div class="flex justify-end px-5 sm:px-6 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6 border-t border-white/[0.06] bg-[#14161B] shrink-0">
+              <button
+                type="button"
+                onClick={() => props.onClose()}
+                disabled={props.busy}
+                class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </Portal>
     </Show>
   );
 }

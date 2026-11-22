@@ -1,6 +1,7 @@
-import { JSX, Show, createSignal, onCleanup, onMount } from 'solid-js';
+import { JSX, Show, createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { CloseIcon, InstallAppIcon, WifiOffIcon } from './Icons';
+import { useBodyScrollLock } from './scroll-lock';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -70,6 +71,19 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = createSignal(false);
 
+  useBodyScrollLock(showIOSGuide);
+
+  createEffect(() => {
+    if (!showIOSGuide()) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        setShowIOSGuide(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => document.removeEventListener('keydown', handleKeyDown));
+  });
+
   const buttonClass = () =>
     props.variant === 'full'
       ? 'w-full h-11 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer'
@@ -93,7 +107,7 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
             <Show when={showIOSGuide()}>
               <Portal>
                 <div
-                  class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4"
+                  class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="ios-install-title"
@@ -101,7 +115,7 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
                     if (e.target === e.currentTarget) setShowIOSGuide(false);
                   }}
                 >
-                  <div class="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-4">
+                  <div class="w-full sm:max-w-sm max-h-modal overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-4">
                     <div class="flex items-center justify-between">
                       <h3
                         id="ios-install-title"

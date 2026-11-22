@@ -43,6 +43,11 @@
     overflow-wrap: anywhere;
     word-break: break-word;
   }
+
+  .max-h-modal {
+    max-height: min(90vh, calc(100vh - env(safe-area-inset-top, 0px) - 0.5rem));
+    max-height: min(90dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 0.5rem));
+  }
 }
 
 /* Official Google Sign-In Material Button Styling */

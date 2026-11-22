@@ -20,6 +20,7 @@ import {
   GlobeIcon,
   SearchIcon,
 } from './Icons';
+import { useBodyScrollLock } from './scroll-lock';
 
 export interface SelectOption<T extends string | number> {
   value: T;
@@ -57,6 +58,7 @@ export function CustomSelect<T extends string | number>(
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         setOpen(false);
       }
     };
@@ -99,7 +101,7 @@ export function CustomSelect<T extends string | number>(
       <Show when={open()}>
         <div
           role="listbox"
-          class="absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/70 p-1.5 z-50 max-h-64 overflow-y-auto"
+          class="absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/70 p-1.5 z-50 max-h-64 overflow-y-auto overscroll-contain"
         >
           <For each={props.options}>
             {(option) => {
@@ -264,6 +266,7 @@ export function CustomMultiSelect<T extends string | number>(
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         setOpen(false);
       }
     };
@@ -364,7 +367,7 @@ export function CustomMultiSelect<T extends string | number>(
             </div>
           </div>
 
-          <div class="max-h-64 overflow-y-auto space-y-0.5">
+          <div class="max-h-64 overflow-y-auto overscroll-contain space-y-0.5">
             <Show
               when={props.options.length > 0}
               fallback={
@@ -449,7 +452,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
     if (!containerRef) return;
     const rect = containerRef.getBoundingClientRect();
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
     const width = Math.min(304, vw - 24);
     const measuredHeight = popoverRef?.getBoundingClientRect().height || 344;
     const spaceAbove = rect.top - 12;
@@ -486,6 +489,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         setOpen(false);
       }
     };
@@ -606,7 +610,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
               left: `${coords().left}px`,
               width: `${coords().width}px`,
             }}
-            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-4 space-y-3 z-[70] max-h-[calc(100vh-16px)] overflow-y-auto"
+            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-4 space-y-3 z-[70] max-h-[calc(100dvh-16px)] overflow-y-auto overscroll-contain"
           >
           <div class="flex items-center justify-between">
             <span class="font-display text-sm font-semibold text-[#F5F7FA]">
@@ -746,7 +750,7 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
     if (!containerRef) return;
     const rect = containerRef.getBoundingClientRect();
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
     const width = Math.min(276, vw - 24);
     const measuredHeight = popoverRef?.getBoundingClientRect().height || 312;
     const spaceAbove = rect.top - 12;
@@ -786,6 +790,7 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         setOpen(false);
       }
     };
@@ -842,7 +847,7 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
               left: `${coords().left}px`,
               width: `${coords().width}px`,
             }}
-            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-3.5 space-y-3 z-[70]"
+            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-3.5 space-y-3 z-[70] max-h-[calc(100dvh-16px)] overflow-y-auto overscroll-contain"
           >
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs font-medium text-[#C8CDD8]">Pick time</span>
@@ -990,8 +995,59 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
   const [tzExpanded, setTzExpanded] = createSignal(false);
   const [tzQuery, setTzQuery] = createSignal('');
   const [clockNow, setClockNow] = createSignal(new Date());
-  const [popoverAlign, setPopoverAlign] = createSignal<'right' | 'left' | 'fixed'>('right');
+  const [popoverMode, setPopoverMode] = createSignal<'modal' | 'popover'>('modal');
+  const [popoverStyle, setPopoverStyle] = createSignal<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  }>({ top: 16, left: 16, width: 660, maxHeight: 560 });
   let containerRef: HTMLDivElement | undefined;
+  let popoverRef: HTMLDivElement | undefined;
+
+  const closePicker = () => {
+    setOpen(false);
+    setTzExpanded(false);
+    setYmPickerOpen(false);
+    setEditingEdge(null);
+    setDraftStartDay(null);
+    setHoverDay(null);
+  };
+
+  useBodyScrollLock(() => open() && popoverMode() === 'modal');
+
+  const updatePopoverLayout = () => {
+    const vw = window.innerWidth;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
+    if (!containerRef || vw < 700) {
+      setPopoverMode('modal');
+      return;
+    }
+    const rect = containerRef.getBoundingClientRect();
+    const width = Math.min(660, vw - 32);
+    const fitsRight = rect.right >= width + 16;
+    const fitsLeft = vw - rect.left >= width + 16;
+    if (!fitsRight && !fitsLeft) {
+      setPopoverMode('modal');
+      return;
+    }
+    const left = fitsRight
+      ? rect.right - width
+      : Math.max(16, Math.min(rect.left, vw - width - 16));
+    const spaceBelow = vh - rect.bottom - 16;
+    const spaceAbove = rect.top - 16;
+    let top: number;
+    let maxHeight: number;
+    if (spaceBelow >= 360 || spaceBelow >= spaceAbove) {
+      top = Math.max(16, rect.bottom + 8);
+      maxHeight = Math.max(240, vh - top - 16);
+    } else {
+      maxHeight = Math.max(240, Math.min(600, spaceAbove - 8));
+      top = Math.max(16, rect.top - maxHeight - 8);
+    }
+    setPopoverMode('popover');
+    setPopoverStyle({ top, left, width, maxHeight });
+  };
 
   const allTimeZones = createMemo(() => CivilCalendar.getAvailableTimeZones());
   const deviceTimeZone = createMemo(() => CivilCalendar.getDeviceTimeZone());
@@ -1015,31 +1071,23 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     setYmPickerOpen(false);
     setClockNow(new Date());
 
-    if (containerRef) {
-      const rect = containerRef.getBoundingClientRect();
-      const vw = window.innerWidth;
-      if (rect.right >= 676) {
-        setPopoverAlign('right');
-      } else if (vw - rect.left >= 676) {
-        setPopoverAlign('left');
-      } else {
-        setPopoverAlign('fixed');
-      }
-    }
+    updatePopoverLayout();
+    const rafId = window.requestAnimationFrame(() => updatePopoverLayout());
 
     const timer = window.setInterval(() => setClockNow(new Date()), 30_000);
 
     const handlePointerDown = (e: PointerEvent) => {
-      if (containerRef && !containerRef.contains(e.target as Node)) {
-        setOpen(false);
-        setTzExpanded(false);
-        setYmPickerOpen(false);
-        setEditingEdge(null);
+      const targetNode = e.target as Node;
+      const inTrigger = containerRef?.contains(targetNode) ?? false;
+      const inPopover = popoverRef?.contains(targetNode) ?? false;
+      if (!inTrigger && !inPopover) {
+        closePicker();
       }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         if (ymPickerOpen()) {
           setYmPickerOpen(false);
         } else if (editingEdge() !== null) {
@@ -1049,18 +1097,31 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
           setDraftStartDay(null);
           setHoverDay(null);
         } else {
-          setOpen(false);
-          setTzExpanded(false);
+          closePicker();
         }
+      }
+    };
+
+    const handleViewportChange = () => updatePopoverLayout();
+    const handleScroll = () => {
+      if (popoverMode() === 'popover') {
+        updatePopoverLayout();
       }
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleScroll, true);
+    window.visualViewport?.addEventListener('resize', handleViewportChange);
     onCleanup(() => {
+      window.cancelAnimationFrame(rafId);
       window.clearInterval(timer);
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleScroll, true);
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
     });
   });
 
@@ -1191,6 +1252,373 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     setTzExpanded(false);
   };
 
+  const renderPickerBody = () => (
+    <div class="grid grid-cols-1 sm:grid-cols-12">
+      {/* Presets list */}
+      <div class="sm:col-span-5 border-b sm:border-b-0 sm:border-r border-white/[0.08] p-2.5 max-h-48 sm:max-h-[430px] overflow-y-auto overscroll-contain space-y-0.5">
+        <p class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">
+          Presets
+        </p>
+        <For each={DATE_RANGE_PRESETS}>
+          {(option) => {
+            const isActive = () => props.preset === option.id;
+            return (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftStartDay(null);
+                  setEditingEdge(null);
+                  setHoverDay(null);
+                  setYmPickerOpen(false);
+                  props.onSelectPreset(option.id);
+                  if (option.id !== 'custom') {
+                    setOpen(false);
+                    setTzExpanded(false);
+                  }
+                }}
+                class={`w-full min-h-[34px] px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-left text-xs transition-colors cursor-pointer ${
+                  isActive()
+                    ? 'bg-[#3B82F6]/15 text-[#F5F7FA] font-medium'
+                    : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                }`}
+              >
+                <span>{option.label}</span>
+                <Show when={isActive()}>
+                  <CheckIcon class="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
+                </Show>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+
+      {/* Custom range calendar + Timezone */}
+      <div class="sm:col-span-7 p-4 space-y-4">
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
+              From
+            </span>
+            <button
+              type="button"
+              onClick={() => focusEdge('start')}
+              aria-pressed={editingEdge() === 'start'}
+              class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
+                editingEdge() === 'start'
+                  ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
+                  : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
+              }`}
+            >
+              <CalendarIcon
+                class={`w-3.5 h-3.5 shrink-0 ${
+                  editingEdge() === 'start' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
+                }`}
+              />
+              <span class="text-xs font-mono tabular-nums truncate">
+                {CivilCalendar.formatShortDateWithYear(
+                  activeVisualRange().startDay
+                )}
+              </span>
+            </button>
+          </div>
+
+          <div class="space-y-1">
+            <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
+              To
+            </span>
+            <button
+              type="button"
+              onClick={() => focusEdge('end')}
+              aria-pressed={editingEdge() === 'end'}
+              class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
+                editingEdge() === 'end'
+                  ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
+                  : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
+              }`}
+            >
+              <CalendarIcon
+                class={`w-3.5 h-3.5 shrink-0 ${
+                  editingEdge() === 'end' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
+                }`}
+              />
+              <span class="text-xs font-mono tabular-nums truncate">
+                {CivilCalendar.formatShortDateWithYear(
+                  activeVisualRange().endDay
+                )}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setYmPickerOpen((v) => !v)}
+              aria-expanded={ymPickerOpen()}
+              class="inline-flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-lg font-display text-sm font-semibold text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+            >
+              <span>{CivilCalendar.formatMonthYear(viewYear(), viewMonth())}</span>
+              <ChevronDownIcon
+                class={`w-3.5 h-3.5 text-[#8E95A5] transition-transform duration-150 ${
+                  ymPickerOpen() ? 'rotate-180 text-[#60A5FA]' : ''
+                }`}
+              />
+            </button>
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (ymPickerOpen()) {
+                    setViewYear((y) => y - 1);
+                  } else {
+                    goPrevMonth();
+                  }
+                }}
+                aria-label={ymPickerOpen() ? 'Previous year' : 'Previous month'}
+                class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
+              >
+                <ChevronLeftIcon class="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (ymPickerOpen()) {
+                    setViewYear((y) => Math.min(todayLocal().year, y + 1));
+                  } else {
+                    goNextMonth();
+                  }
+                }}
+                aria-label={ymPickerOpen() ? 'Next year' : 'Next month'}
+                class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
+              >
+                <ChevronRightIcon class="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <Show
+            when={!ymPickerOpen()}
+            fallback={
+              <div class="rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-2.5 space-y-2.5">
+                <div class="flex items-center gap-1 overflow-x-auto pb-0.5">
+                  <For each={selectableYears()}>
+                    {(yr) => (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewYear(yr);
+                          if (yr === todayLocal().year && viewMonth() > todayLocal().month) {
+                            setViewMonth(todayLocal().month);
+                          }
+                        }}
+                        class={`px-2 py-1 rounded-md text-xs font-mono tabular-nums transition-colors cursor-pointer shrink-0 ${
+                          viewYear() === yr
+                            ? 'bg-[#3B82F6] text-white font-semibold'
+                            : 'text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06]'
+                        }`}
+                      >
+                        {yr}
+                      </button>
+                    )}
+                  </For>
+                </div>
+
+                <div class="grid grid-cols-4 gap-1.5">
+                  <For each={MONTH_SHORT_NAMES}>
+                    {(mLabel, idx) => {
+                      const monthNum = idx() + 1;
+                      const isFutureMonth = () =>
+                        viewYear() > todayLocal().year ||
+                        (viewYear() === todayLocal().year &&
+                          monthNum > todayLocal().month);
+                      const isActiveMonth = () => viewMonth() === monthNum;
+                      return (
+                        <button
+                          type="button"
+                          disabled={isFutureMonth()}
+                          onClick={() => {
+                            setViewMonth(monthNum);
+                            setYmPickerOpen(false);
+                          }}
+                          class={`h-8 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
+                            isActiveMonth()
+                              ? 'bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/40'
+                              : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                          }`}
+                        >
+                          {mLabel}
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
+            }
+          >
+            <div class="grid grid-cols-7 gap-1 text-center">
+              <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                {(bit) => (
+                  <div class="text-[10px] font-medium text-[#6B7280] py-0.5">
+                    {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
+                  </div>
+                )}
+              </For>
+
+              <For each={Array.from({ length: monthGrid().leadingEmpty })}>
+                {() => <div />}
+              </For>
+
+              <For each={monthGrid().days}>
+                {(dayIndex) => {
+                  const local = CivilCalendar.toLocalDate(dayIndex);
+                  const isFuture = () => dayIndex > props.todayDay;
+                  const isEdge = () =>
+                    dayIndex === activeVisualRange().startDay ||
+                    dayIndex === activeVisualRange().endDay;
+                  const isInRange = () =>
+                    dayIndex > activeVisualRange().startDay &&
+                    dayIndex < activeVisualRange().endDay;
+                  const isToday = () => dayIndex === props.todayDay;
+
+                  return (
+                    <button
+                      type="button"
+                      disabled={isFuture()}
+                      onClick={() => handleDayClick(dayIndex)}
+                      onMouseEnter={() => {
+                        if (
+                          (draftStartDay() !== null || editingEdge() !== null) &&
+                          !isFuture()
+                        ) {
+                          setHoverDay(dayIndex);
+                        }
+                      }}
+                      class={`h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
+                        isEdge()
+                          ? 'bg-[#3B82F6] text-white font-semibold'
+                          : isInRange()
+                            ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
+                            : isToday()
+                              ? 'ring-1 ring-[#60A5FA]/60 text-[#60A5FA] hover:bg-[#3B82F6]/15'
+                              : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      {local.day}
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+
+          <p class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+            {editingEdge() === 'start'
+              ? 'Picking start date (From) — click any day'
+              : editingEdge() === 'end'
+                ? 'Picking end date (To) — click any day'
+                : draftStartDay() !== null
+                  ? `Start: ${CivilCalendar.formatShortDateWithYear(draftStartDay()!)} — pick end date`
+                  : `Range: ${DateRangeResolver.formatRangeLabel(
+                      activeVisualRange().startDay,
+                      activeVisualRange().endDay
+                    )}`}
+          </p>
+        </div>
+
+        {/* Offline IANA Timezone selector */}
+        <div class="pt-3 border-t border-white/[0.08] space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="inline-flex items-center gap-1.5 text-xs font-medium text-[#C8CDD8]">
+              <GlobeIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
+              <span>Timezone</span>
+            </span>
+            <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+              {CivilCalendar.formatClockInTimeZone(clockNow(), props.timeZone)}
+            </span>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => props.onChangeTimeZone('UTC')}
+              class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                props.timeZone === 'UTC'
+                  ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#F5F7FA]'
+                  : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+              }`}
+            >
+              UTC
+            </button>
+            <button
+              type="button"
+              onClick={() => props.onChangeTimeZone('local')}
+              class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                props.timeZone === 'local'
+                  ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#F5F7FA]'
+                  : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+              }`}
+            >
+              Local ({deviceTimeZone().split('/').pop()?.replace(/_/g, ' ')})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTzExpanded((v) => !v)}
+              class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ml-auto ${
+                tzExpanded() ||
+                (props.timeZone !== 'UTC' && props.timeZone !== 'local')
+                  ? 'bg-[#1C1F26] border-white/20 text-[#F5F7FA]'
+                  : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+              }`}
+            >
+              {props.timeZone !== 'UTC' && props.timeZone !== 'local'
+                ? props.timeZone
+                : 'All Zones'}
+            </button>
+          </div>
+
+          <Show when={tzExpanded()}>
+            <div class="space-y-1.5 pt-1">
+              <div class="relative">
+                <SearchIcon class="w-3.5 h-3.5 text-[#6B7280] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={tzQuery()}
+                  onInput={(e) => setTzQuery(e.currentTarget.value)}
+                  placeholder="Search IANA timezone (e.g. Europe/Kyiv)..."
+                  class="w-full h-8 rounded-lg bg-[#0A0B0E] border border-white/[0.08] pl-8 pr-2.5 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+                />
+              </div>
+              <div class="max-h-32 overflow-y-auto overscroll-contain rounded-lg bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5">
+                <For each={filteredTimeZones()}>
+                  {(tz) => (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        props.onChangeTimeZone(tz);
+                        setTzExpanded(false);
+                      }}
+                      class={`w-full px-2.5 py-1.5 rounded-md text-left text-xs font-mono flex items-center justify-between gap-2 cursor-pointer ${
+                        props.timeZone === tz
+                          ? 'bg-[#3B82F6]/20 text-[#F5F7FA]'
+                          : 'text-[#9AA1B1] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      <span class="truncate">{tz}</span>
+                      <Show when={props.timeZone === tz}>
+                        <CheckIcon class="w-3 h-3 text-[#60A5FA] shrink-0" />
+                      </Show>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div ref={containerRef} class="relative">
       <button
@@ -1226,382 +1654,63 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
       </button>
 
       <Show when={open()}>
-        <div
-          role="dialog"
-          aria-label="Choose date range and timezone"
-          class={`${
-            popoverAlign() === 'fixed'
-              ? 'fixed left-4 right-4 top-20 sm:top-28 mx-auto max-w-[660px]'
-              : popoverAlign() === 'left'
-                ? 'absolute left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px]'
-                : 'absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-[660px]'
-          } rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 overflow-y-auto max-h-[calc(100vh-2rem)] z-50`}
-        >
-          <div class="grid grid-cols-1 sm:grid-cols-12">
-            {/* Presets list */}
-            <div class="sm:col-span-5 border-b sm:border-b-0 sm:border-r border-white/[0.08] p-2.5 max-h-56 sm:max-h-[430px] overflow-y-auto space-y-0.5">
-              <p class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">
-                Presets
-              </p>
-              <For each={DATE_RANGE_PRESETS}>
-                {(option) => {
-                  const isActive = () => props.preset === option.id;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraftStartDay(null);
-                        setEditingEdge(null);
-                        setHoverDay(null);
-                        setYmPickerOpen(false);
-                        props.onSelectPreset(option.id);
-                        if (option.id !== 'custom') {
-                          setOpen(false);
-                          setTzExpanded(false);
-                        }
-                      }}
-                      class={`w-full min-h-[34px] px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-left text-xs transition-colors cursor-pointer ${
-                        isActive()
-                          ? 'bg-[#3B82F6]/15 text-[#F5F7FA] font-medium'
-                          : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
-                      }`}
-                    >
-                      <span>{option.label}</span>
-                      <Show when={isActive()}>
-                        <CheckIcon class="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
-                      </Show>
-                    </button>
-                  );
+        <Portal>
+          <Show
+            when={popoverMode() === 'modal'}
+            fallback={
+              <div
+                ref={popoverRef}
+                role="dialog"
+                aria-label="Choose date range and timezone"
+                style={{
+                  top: `${popoverStyle().top}px`,
+                  left: `${popoverStyle().left}px`,
+                  width: `${popoverStyle().width}px`,
+                  'max-height': `${popoverStyle().maxHeight}px`,
                 }}
-              </For>
-            </div>
-
-            {/* Custom range calendar + Timezone */}
-            <div class="sm:col-span-7 p-4 space-y-4">
-              <div class="grid grid-cols-2 gap-2">
-                <div class="space-y-1">
-                  <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
-                    From
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => focusEdge('start')}
-                    aria-pressed={editingEdge() === 'start'}
-                    class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
-                      editingEdge() === 'start'
-                        ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
-                        : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
-                    }`}
-                  >
-                    <CalendarIcon
-                      class={`w-3.5 h-3.5 shrink-0 ${
-                        editingEdge() === 'start' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-                      }`}
-                    />
-                    <span class="text-xs font-mono tabular-nums truncate">
-                      {CivilCalendar.formatShortDateWithYear(
-                        activeVisualRange().startDay
-                      )}
-                    </span>
-                  </button>
-                </div>
-
-                <div class="space-y-1">
-                  <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
-                    To
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => focusEdge('end')}
-                    aria-pressed={editingEdge() === 'end'}
-                    class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
-                      editingEdge() === 'end'
-                        ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
-                        : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
-                    }`}
-                  >
-                    <CalendarIcon
-                      class={`w-3.5 h-3.5 shrink-0 ${
-                        editingEdge() === 'end' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-                      }`}
-                    />
-                    <span class="text-xs font-mono tabular-nums truncate">
-                      {CivilCalendar.formatShortDateWithYear(
-                        activeVisualRange().endDay
-                      )}
-                    </span>
-                  </button>
+                class="fixed flex flex-col overflow-hidden rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 z-50"
+              >
+                <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                  {renderPickerBody()}
                 </div>
               </div>
-
-              <div class="space-y-2.5">
-                <div class="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setYmPickerOpen((v) => !v)}
-                    aria-expanded={ymPickerOpen()}
-                    class="inline-flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-lg font-display text-sm font-semibold text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-                  >
-                    <span>{CivilCalendar.formatMonthYear(viewYear(), viewMonth())}</span>
-                    <ChevronDownIcon
-                      class={`w-3.5 h-3.5 text-[#8E95A5] transition-transform duration-150 ${
-                        ymPickerOpen() ? 'rotate-180 text-[#60A5FA]' : ''
-                      }`}
-                    />
-                  </button>
-                  <div class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (ymPickerOpen()) {
-                          setViewYear((y) => y - 1);
-                        } else {
-                          goPrevMonth();
-                        }
-                      }}
-                      aria-label={ymPickerOpen() ? 'Previous year' : 'Previous month'}
-                      class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
-                    >
-                      <ChevronLeftIcon class="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (ymPickerOpen()) {
-                          setViewYear((y) => Math.min(todayLocal().year, y + 1));
-                        } else {
-                          goNextMonth();
-                        }
-                      }}
-                      aria-label={ymPickerOpen() ? 'Next year' : 'Next month'}
-                      class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
-                    >
-                      <ChevronRightIcon class="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <Show
-                  when={!ymPickerOpen()}
-                  fallback={
-                    <div class="rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-2.5 space-y-2.5">
-                      <div class="flex items-center gap-1 overflow-x-auto pb-0.5">
-                        <For each={selectableYears()}>
-                          {(yr) => (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setViewYear(yr);
-                                if (yr === todayLocal().year && viewMonth() > todayLocal().month) {
-                                  setViewMonth(todayLocal().month);
-                                }
-                              }}
-                              class={`px-2 py-1 rounded-md text-xs font-mono tabular-nums transition-colors cursor-pointer shrink-0 ${
-                                viewYear() === yr
-                                  ? 'bg-[#3B82F6] text-white font-semibold'
-                                  : 'text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06]'
-                              }`}
-                            >
-                              {yr}
-                            </button>
-                          )}
-                        </For>
-                      </div>
-
-                      <div class="grid grid-cols-4 gap-1.5">
-                        <For each={MONTH_SHORT_NAMES}>
-                          {(mLabel, idx) => {
-                            const monthNum = idx() + 1;
-                            const isFutureMonth = () =>
-                              viewYear() > todayLocal().year ||
-                              (viewYear() === todayLocal().year &&
-                                monthNum > todayLocal().month);
-                            const isActiveMonth = () => viewMonth() === monthNum;
-                            return (
-                              <button
-                                type="button"
-                                disabled={isFutureMonth()}
-                                onClick={() => {
-                                  setViewMonth(monthNum);
-                                  setYmPickerOpen(false);
-                                }}
-                                class={`h-8 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
-                                  isActiveMonth()
-                                    ? 'bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/40'
-                                    : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
-                                }`}
-                              >
-                                {mLabel}
-                              </button>
-                            );
-                          }}
-                        </For>
-                      </div>
-                    </div>
-                  }
-                >
-                  <div class="grid grid-cols-7 gap-1 text-center">
-                    <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                      {(bit) => (
-                        <div class="text-[10px] font-medium text-[#6B7280] py-0.5">
-                          {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
-                        </div>
-                      )}
-                    </For>
-
-                    <For each={Array.from({ length: monthGrid().leadingEmpty })}>
-                      {() => <div />}
-                    </For>
-
-                    <For each={monthGrid().days}>
-                      {(dayIndex) => {
-                        const local = CivilCalendar.toLocalDate(dayIndex);
-                        const isFuture = () => dayIndex > props.todayDay;
-                        const isEdge = () =>
-                          dayIndex === activeVisualRange().startDay ||
-                          dayIndex === activeVisualRange().endDay;
-                        const isInRange = () =>
-                          dayIndex > activeVisualRange().startDay &&
-                          dayIndex < activeVisualRange().endDay;
-                        const isToday = () => dayIndex === props.todayDay;
-
-                        return (
-                          <button
-                            type="button"
-                            disabled={isFuture()}
-                            onClick={() => handleDayClick(dayIndex)}
-                            onMouseEnter={() => {
-                              if (
-                                (draftStartDay() !== null || editingEdge() !== null) &&
-                                !isFuture()
-                              ) {
-                                setHoverDay(dayIndex);
-                              }
-                            }}
-                            class={`h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
-                              isEdge()
-                                ? 'bg-[#3B82F6] text-white font-semibold'
-                                : isInRange()
-                                  ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
-                                  : isToday()
-                                    ? 'ring-1 ring-[#60A5FA]/60 text-[#60A5FA] hover:bg-[#3B82F6]/15'
-                                    : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
-                            }`}
-                          >
-                            {local.day}
-                          </button>
-                        );
-                      }}
-                    </For>
-                  </div>
-                </Show>
-
-                <p class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                  {editingEdge() === 'start'
-                    ? 'Picking start date (From) — click any day'
-                    : editingEdge() === 'end'
-                      ? 'Picking end date (To) — click any day'
-                      : draftStartDay() !== null
-                        ? `Start: ${CivilCalendar.formatShortDateWithYear(draftStartDay()!)} — pick end date`
-                        : `Range: ${DateRangeResolver.formatRangeLabel(
-                            activeVisualRange().startDay,
-                            activeVisualRange().endDay
-                          )}`}
-                </p>
-              </div>
-
-              {/* Offline IANA Timezone selector */}
-              <div class="pt-3 border-t border-white/[0.08] space-y-2">
-                <div class="flex items-center justify-between gap-2">
-                  <span class="inline-flex items-center gap-1.5 text-xs font-medium text-[#C8CDD8]">
-                    <GlobeIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
-                    <span>Timezone</span>
+            }
+          >
+            <div
+              class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  closePicker();
+                }
+              }}
+            >
+              <div
+                ref={popoverRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Choose date range and timezone"
+                class="w-full sm:max-w-[660px] max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-2xl bg-[#181B22] border border-white/[0.1] shadow-2xl shadow-black/75"
+              >
+                <div class="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3 border-b border-white/[0.08]">
+                  <span class="font-display text-sm font-semibold text-[#F5F7FA]">
+                    Date Range &amp; Timezone
                   </span>
-                  <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                    {CivilCalendar.formatClockInTimeZone(clockNow(), props.timeZone)}
-                  </span>
-                </div>
-
-                <div class="flex items-center gap-1.5 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => props.onChangeTimeZone('UTC')}
-                    class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
-                      props.timeZone === 'UTC'
-                        ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#F5F7FA]'
-                        : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
-                    }`}
+                    onClick={closePicker}
+                    aria-label="Close date range picker"
+                    class="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
                   >
-                    UTC
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => props.onChangeTimeZone('local')}
-                    class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
-                      props.timeZone === 'local'
-                        ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#F5F7FA]'
-                        : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
-                    }`}
-                  >
-                    Local ({deviceTimeZone().split('/').pop()?.replace(/_/g, ' ')})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTzExpanded((v) => !v)}
-                    class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ml-auto ${
-                      tzExpanded() ||
-                      (props.timeZone !== 'UTC' && props.timeZone !== 'local')
-                        ? 'bg-[#1C1F26] border-white/20 text-[#F5F7FA]'
-                        : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
-                    }`}
-                  >
-                    {props.timeZone !== 'UTC' && props.timeZone !== 'local'
-                      ? props.timeZone
-                      : 'All Zones'}
+                    <CloseIcon class="w-4 h-4" />
                   </button>
                 </div>
-
-                <Show when={tzExpanded()}>
-                  <div class="space-y-1.5 pt-1">
-                    <div class="relative">
-                      <SearchIcon class="w-3.5 h-3.5 text-[#6B7280] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={tzQuery()}
-                        onInput={(e) => setTzQuery(e.currentTarget.value)}
-                        placeholder="Search IANA timezone (e.g. Europe/Kyiv)..."
-                        class="w-full h-8 rounded-lg bg-[#0A0B0E] border border-white/[0.08] pl-8 pr-2.5 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
-                      />
-                    </div>
-                    <div class="max-h-32 overflow-y-auto rounded-lg bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5">
-                      <For each={filteredTimeZones()}>
-                        {(tz) => (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              props.onChangeTimeZone(tz);
-                              setTzExpanded(false);
-                            }}
-                            class={`w-full px-2.5 py-1.5 rounded-md text-left text-xs font-mono flex items-center justify-between gap-2 cursor-pointer ${
-                              props.timeZone === tz
-                                ? 'bg-[#3B82F6]/20 text-[#F5F7FA]'
-                                : 'text-[#9AA1B1] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
-                            }`}
-                          >
-                            <span class="truncate">{tz}</span>
-                            <Show when={props.timeZone === tz}>
-                              <CheckIcon class="w-3 h-3 text-[#60A5FA] shrink-0" />
-                            </Show>
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                  </div>
-                </Show>
+                <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)] sm:pb-0">
+                  {renderPickerBody()}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
+          </Show>
+        </Portal>
       </Show>
     </div>
   );
