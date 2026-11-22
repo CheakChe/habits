@@ -217,6 +217,18 @@ export class TrackerStore {
     return 'UTC';
   }
 
+  private static hasStoredTimeZone(): boolean {
+    try {
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.TIMEZONE_STORAGE_KEY)
+          : null;
+      return Boolean(saved && CivilCalendar.isValidTimeZone(saved));
+    } catch {
+      return false;
+    }
+  }
+
   private static readStoredTodayGoalsExpanded(): boolean {
     try {
       const saved =
@@ -1049,18 +1061,16 @@ export class TrackerStore {
       }
 
       if (result.status === 'up-to-date') {
+        const localPrefs = this.reminderPrefs();
         const syncedMeta = await this.calendarSync.syncRemoteCalendarId(
           this.mode(),
           this.session.getAccessToken(),
-          this.reminderPrefs().calendarId,
-          this.timeZone()
+          localPrefs.calendarId,
+          this.timeZone(),
+          localPrefs
         );
-        if (syncedMeta && !this.reminderPrefs().calendarId) {
-          this.persistReminderPrefs({
-            ...this.reminderPrefs(),
-            calendarId: syncedMeta.calendarId,
-            calendarTimeZone: syncedMeta.timeZone ?? this.reminderPrefs().calendarTimeZone,
-          });
+        if (syncedMeta) {
+          this.applyPulledRemoteCalendarMeta(syncedMeta);
         }
         this.setSyncBanner({
           kind: 'success',
@@ -1100,18 +1110,16 @@ export class TrackerStore {
         this.session.getAccessToken(),
         pending
       );
+      const localPrefs = this.reminderPrefs();
       const syncedMeta = await this.calendarSync.syncRemoteCalendarId(
         this.mode(),
         this.session.getAccessToken(),
-        this.reminderPrefs().calendarId,
-        this.timeZone()
+        localPrefs.calendarId,
+        this.timeZone(),
+        localPrefs
       );
-      if (syncedMeta && !this.reminderPrefs().calendarId) {
-        this.persistReminderPrefs({
-          ...this.reminderPrefs(),
-          calendarId: syncedMeta.calendarId,
-          calendarTimeZone: syncedMeta.timeZone ?? this.reminderPrefs().calendarTimeZone,
-        });
+      if (syncedMeta) {
+        this.applyPulledRemoteCalendarMeta(syncedMeta);
       }
       this.setPendingSync(null);
       this.setSyncBanner({
@@ -1319,7 +1327,8 @@ export class TrackerStore {
           this.mode(),
           this.session.getAccessToken(),
           plan.calendarId,
-          this.timeZone()
+          this.timeZone(),
+          prefs
         );
         this.persistReminderPrefs({
           ...prefs,
@@ -1350,6 +1359,41 @@ export class TrackerStore {
     }
   }
 
+  private applyPulledRemoteCalendarMeta(syncedMeta: {
+    calendarId: string;
+    timeZone: string | null;
+    reminderTime?: string;
+    horizonDays?: number;
+    calendarEnabled?: boolean;
+    updatedAt?: number;
+  }): void {
+    const current = this.reminderPrefs();
+    const isFreshDevice = !current.calendarId;
+    const remoteIsNewer =
+      typeof syncedMeta.updatedAt === 'number' &&
+      syncedMeta.updatedAt > (current.lastSyncedAt ?? 0);
+
+    if (
+      isFreshDevice &&
+      syncedMeta.timeZone &&
+      CivilCalendar.isValidTimeZone(syncedMeta.timeZone) &&
+      !TrackerStore.hasStoredTimeZone()
+    ) {
+      this.setTimeZone(syncedMeta.timeZone);
+    }
+
+    if (isFreshDevice || remoteIsNewer) {
+      this.persistReminderPrefs({
+        ...current,
+        calendarId: syncedMeta.calendarId,
+        calendarTimeZone: syncedMeta.timeZone ?? current.calendarTimeZone,
+        reminderTime: syncedMeta.reminderTime ?? current.reminderTime,
+        horizonDays: syncedMeta.horizonDays ?? current.horizonDays,
+        calendarEnabled: syncedMeta.calendarEnabled ?? current.calendarEnabled,
+      });
+    }
+  }
+
   public cancelCalendarSync(): void {
     if (this.calendarBusy()) return;
     this.setPendingCalendarPlan(null);
@@ -1370,7 +1414,8 @@ export class TrackerStore {
       const result = await this.calendarSync.applySyncPlan(
         this.mode(),
         this.session.getAccessToken(),
-        plan
+        plan,
+        this.reminderPrefs()
       );
       this.persistReminderPrefs({
         ...this.reminderPrefs(),

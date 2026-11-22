@@ -839,7 +839,9 @@ test('CalendarReminderService.syncRemoteCalendarId pulls shared calendarId and f
     'cal-local',
     'Europe/Moscow'
   );
-  assert.deepEqual(published, { calendarId: 'cal-local', timeZone: 'Europe/Moscow' });
+  assert.equal(published?.calendarId, 'cal-local');
+  assert.equal(published?.timeZone, 'Europe/Moscow');
+  assert.equal(typeof published?.updatedAt, 'number');
   assert.equal(createdViaPost, true);
 });
 

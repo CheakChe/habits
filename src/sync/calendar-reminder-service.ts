@@ -112,6 +112,9 @@ interface DriveMetaFileEntry {
 interface RemoteReminderMeta {
   calendarId: string | null;
   timeZone?: string | null;
+  reminderTime?: string;
+  horizonDays?: number;
+  calendarEnabled?: boolean;
   knownCalendarIds?: string[];
   updatedAt?: number;
 }
@@ -229,6 +232,16 @@ export class CalendarReminderService {
         return {
           calendarId,
           timeZone: typeof parsed.timeZone === 'string' ? parsed.timeZone : null,
+          reminderTime:
+            typeof parsed.reminderTime === 'string'
+              ? ReminderPlanner.normalizeTime(parsed.reminderTime)
+              : undefined,
+          horizonDays:
+            typeof parsed.horizonDays === 'number'
+              ? ReminderPlanner.normalizeHorizonDays(parsed.horizonDays)
+              : undefined,
+          calendarEnabled:
+            typeof parsed.calendarEnabled === 'boolean' ? parsed.calendarEnabled : undefined,
           knownCalendarIds,
           updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : undefined,
         } satisfies RemoteReminderMeta;
@@ -331,8 +344,16 @@ export class CalendarReminderService {
     mode: SessionMode | null,
     accessToken: string | null,
     localCalendarId: string | null,
-    trackerTimeZone: string
-  ): Promise<{ calendarId: string; timeZone: string | null } | null> {
+    trackerTimeZone: string,
+    localPrefs?: Pick<ReminderPreferences, 'reminderTime' | 'horizonDays' | 'calendarEnabled'>
+  ): Promise<{
+    calendarId: string;
+    timeZone: string | null;
+    reminderTime?: string;
+    horizonDays?: number;
+    calendarEnabled?: boolean;
+    updatedAt?: number;
+  } | null> {
     if (mode !== 'google' || !accessToken) return null;
     try {
       const state = await this.readRemoteReminderMeta(accessToken);
@@ -357,6 +378,7 @@ export class CalendarReminderService {
               await this.writeRemoteReminderMetaBestEffort(
                 accessToken,
                 {
+                  ...state.meta,
                   calendarId: remoteCalMeta.id,
                   timeZone: remoteCalMeta.timeZone ?? state.meta?.timeZone ?? null,
                   knownCalendarIds: [...existingKnown, localMeta.id],
@@ -369,6 +391,10 @@ export class CalendarReminderService {
           return {
             calendarId: remoteCalMeta.id,
             timeZone: remoteCalMeta.timeZone ?? state.meta?.timeZone ?? null,
+            reminderTime: state.meta?.reminderTime,
+            horizonDays: state.meta?.horizonDays,
+            calendarEnabled: state.meta?.calendarEnabled,
+            updatedAt: state.meta?.updatedAt,
           };
         }
       }
@@ -380,18 +406,34 @@ export class CalendarReminderService {
         if (localCalMeta && !localCalMeta.deleted && localCalMeta.id) {
           const resolvedTz =
             localCalMeta.timeZone ?? ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone);
+          const now = Date.now();
           await this.writeRemoteReminderMetaBestEffort(
             accessToken,
             {
               calendarId: localCalMeta.id,
               timeZone: resolvedTz,
-              updatedAt: Date.now(),
+              ...(localPrefs
+                ? {
+                    reminderTime: localPrefs.reminderTime,
+                    horizonDays: localPrefs.horizonDays,
+                    calendarEnabled: localPrefs.calendarEnabled,
+                  }
+                : {}),
+              updatedAt: now,
             },
             state
           );
           return {
             calendarId: localCalMeta.id,
             timeZone: resolvedTz,
+            ...(localPrefs
+              ? {
+                  reminderTime: localPrefs.reminderTime,
+                  horizonDays: localPrefs.horizonDays,
+                  calendarEnabled: localPrefs.calendarEnabled,
+                }
+              : {}),
+            updatedAt: now,
           };
         }
       }
@@ -670,7 +712,8 @@ export class CalendarReminderService {
   public async applySyncPlan(
     mode: SessionMode | null,
     accessToken: string | null,
-    plan: CalendarSyncPlan
+    plan: CalendarSyncPlan,
+    prefs?: Pick<ReminderPreferences, 'reminderTime' | 'horizonDays' | 'calendarEnabled'>
   ): Promise<CalendarSyncApplyResult> {
     const token = this.assertAuthorized(mode, accessToken);
     let calendarId = plan.calendarId;
@@ -794,6 +837,13 @@ export class CalendarReminderService {
     await this.writeRemoteReminderMetaBestEffort(token, {
       calendarId,
       timeZone: plan.timeZone,
+      ...(prefs
+        ? {
+            reminderTime: prefs.reminderTime,
+            horizonDays: prefs.horizonDays,
+            calendarEnabled: true,
+          }
+        : {}),
       updatedAt: Date.now(),
     });
 

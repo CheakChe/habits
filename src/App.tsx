@@ -196,7 +196,7 @@ export default function App(): JSX.Element {
             {(banner) => (
               <div
                 role="status"
-                class={`rounded-2xl px-4 py-3 flex items-start sm:items-center justify-between gap-3 text-xs border ${
+                class={`rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-xs border ${
                   banner().kind === 'error'
                     ? 'bg-[#EF4444]/10 border-[#EF4444]/25 text-[#FCA5A5]'
                     : 'bg-[#3B82F6]/10 border-[#3B82F6]/30 text-[#93C5FD]'
