@@ -35,16 +35,34 @@ function loadFirebaseConfig(env: Record<string, string>): Record<string, string>
   return null;
 }
 
+function loadGoogleOAuthClientId(
+  env: Record<string, string>,
+  firebaseConfig: Record<string, string> | null
+): string | null {
+  const fromEnv =
+    env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim() ||
+    env.GOOGLE_OAUTH_CLIENT_ID?.trim() ||
+    '';
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const fromConfig = firebaseConfig?.oAuthClientId?.trim() || '';
+  return fromConfig || null;
+}
+
 export default defineConfig(({mode}) => {
   const env = {
     ...loadEnv(mode, __dirname, ''),
     ...(process.env as Record<string, string>),
   };
+  const firebaseConfig = loadFirebaseConfig(env);
+  const googleOAuthClientId = loadGoogleOAuthClientId(env, firebaseConfig);
 
   return {
     base: './',
     define: {
-      __FIREBASE_CONFIG__: JSON.stringify(loadFirebaseConfig(env)),
+      __FIREBASE_CONFIG__: JSON.stringify(firebaseConfig),
+      __GOOGLE_OAUTH_CLIENT_ID__: JSON.stringify(googleOAuthClientId),
     },
     plugins: [
       solid(),

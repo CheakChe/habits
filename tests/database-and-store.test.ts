@@ -6,6 +6,7 @@ import { ConcurrentSyncError, SyncPreparationResult } from '../src/sync/drive-sy
 import { SnapshotCodec } from '../src/sync/snapshot-codec';
 import { DomainSnapshot } from '../src/types/domain';
 import { TrackerStore } from '../src/ui/tracker-store';
+import { OPEN_TASK_BUCKETS, TodayBoard } from '../src/utils/today-board';
 import { FakeIndexedDBFactory } from './helpers/fake-indexeddb';
 
 function installTestGlobals() {
@@ -585,6 +586,221 @@ test('TrackerStore handles repeatable tasks, dateless goal scheduling, and UI st
     assert.equal(store.snapshot().tasks[1].status, 'archived');
     assert.equal(store.snapshot().tasks[1].done, false);
     assert.equal(store.snapshot().tasks[1].completedDay, null);
+  } finally {
+    store.dispose();
+  }
+});
+
+test('TodayBoard filters tasks by arbitrary status combinations and normalizes status selections', () => {
+  const today = 20770;
+  const tasks = [
+    {
+      id: 1,
+      title: 'Overdue task',
+      note: '',
+      dueDay: today - 2,
+      done: false,
+      repeatable: false,
+      status: 'open' as const,
+      completedDay: null,
+      deletedAt: null,
+      createdAt: 100,
+      updatedAt: 100,
+    },
+    {
+      id: 2,
+      title: 'Today task',
+      note: 'important',
+      dueDay: today,
+      done: false,
+      repeatable: false,
+      status: 'open' as const,
+      completedDay: null,
+      deletedAt: null,
+      createdAt: 200,
+      updatedAt: 200,
+    },
+    {
+      id: 3,
+      title: 'Upcoming task',
+      note: '',
+      dueDay: today + 3,
+      done: false,
+      repeatable: false,
+      status: 'open' as const,
+      completedDay: null,
+      deletedAt: null,
+      createdAt: 300,
+      updatedAt: 300,
+    },
+    {
+      id: 4,
+      title: 'No date goal',
+      note: '',
+      dueDay: null,
+      done: false,
+      repeatable: false,
+      status: 'open' as const,
+      completedDay: null,
+      deletedAt: null,
+      createdAt: 400,
+      updatedAt: 400,
+    },
+    {
+      id: 5,
+      title: 'Finished task',
+      note: 'important',
+      dueDay: today - 1,
+      done: true,
+      repeatable: false,
+      status: 'done' as const,
+      completedDay: today,
+      deletedAt: null,
+      createdAt: 500,
+      updatedAt: 500,
+    },
+    {
+      id: 6,
+      title: 'Missed task',
+      note: '',
+      dueDay: today - 1,
+      done: false,
+      repeatable: false,
+      status: 'not_done' as const,
+      completedDay: null,
+      deletedAt: null,
+      createdAt: 600,
+      updatedAt: 600,
+    },
+    {
+      id: 7,
+      title: 'Old archived',
+      note: '',
+      dueDay: null,
+      done: false,
+      repeatable: false,
+      status: 'archived' as const,
+      completedDay: null,
+      deletedAt: null,
+      createdAt: 700,
+      updatedAt: 700,
+    },
+    {
+      id: 8,
+      title: 'Deleted task',
+      note: '',
+      dueDay: today,
+      done: false,
+      repeatable: false,
+      status: 'open' as const,
+      completedDay: null,
+      deletedAt: 999,
+      createdAt: 800,
+      updatedAt: 800,
+    },
+  ];
+
+  // 'all' includes all non-deleted tasks across open + closed buckets
+  assert.deepEqual(
+    TodayBoard.filterTasksByStatuses(tasks, today, 'all').map((t) => t.id),
+    [1, 2, 3, 4, 5, 6, 7]
+  );
+
+  // Default open buckets include overdue, today, upcoming, nodate
+  assert.deepEqual(
+    TodayBoard.filterTasksByStatuses(tasks, today, OPEN_TASK_BUCKETS).map((t) => t.id),
+    [1, 2, 3, 4]
+  );
+
+  // Arbitrary combination: today + completed + not_done, filtered by search query
+  assert.deepEqual(
+    TodayBoard.filterTasksByStatuses(tasks, today, ['today', 'completed', 'not_done']).map(
+      (t) => t.id
+    ),
+    [2, 5, 6]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasksByStatuses(
+      tasks,
+      today,
+      ['today', 'completed', 'not_done'],
+      'important'
+    ).map((t) => t.id),
+    [2, 5]
+  );
+
+  // Empty selection returns []
+  assert.deepEqual(TodayBoard.filterTasksByStatuses(tasks, today, []), []);
+
+  // Selecting all 7 buckets normalizes to 'all'
+  assert.equal(
+    TodayBoard.normalizeStatusFilterSelection([
+      'overdue',
+      'today',
+      'upcoming',
+      'nodate',
+      'completed',
+      'not_done',
+      'archived',
+    ]),
+    'all'
+  );
+  assert.deepEqual(
+    TodayBoard.normalizeStatusFilterSelection(['today', 'invalid_key', 'today']),
+    ['today']
+  );
+});
+
+test('TrackerStore persists History multi-habit filter, Tasks multi-status filter, and Tasks sort mode', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const store = new TrackerStore();
+  try {
+    store.init();
+    store.selectGuest();
+    await new Promise((r) => setTimeout(r, 15));
+
+    await store.saveHabit({ name: 'Run', color: '#3B82F6', weekdays: 127, startDay: store.todayDay() });
+    await store.saveHabit({ name: 'Read', color: '#22C55E', weekdays: 127, startDay: store.todayDay() });
+    await store.saveHabit({ name: 'Meditate', color: '#A855F7', weekdays: 127, startDay: store.todayDay() });
+
+    const ids = store.snapshot().habits.map((h) => h.id);
+    assert.equal(store.historyHabitFilter(), 'all');
+
+    // Picking a subset persists across reloads
+    store.setHistoryHabitFilter([ids[0], ids[2]]);
+    assert.deepEqual(store.historyHabitFilter(), [ids[0], ids[2]]);
+
+    // Selecting all habit IDs normalizes cleanly to 'all'
+    store.setHistoryHabitFilter([...ids]);
+    assert.equal(store.historyHabitFilter(), 'all');
+
+    // Persist multi-habit subset + multi-status tasks filter + tasks sort mode
+    store.setHistoryHabitFilter([ids[0], ids[1]]);
+    store.setTasksStatusFilter(['today', 'completed', 'archived']);
+    store.setTasksSortMode('due_desc');
+
+    const restored = new TrackerStore();
+    try {
+      restored.init();
+      await new Promise((r) => setTimeout(r, 15));
+      assert.deepEqual(restored.historyHabitFilter(), [ids[0], ids[1]]);
+      assert.deepEqual(restored.tasksStatusFilter(), ['today', 'completed', 'archived']);
+      assert.equal(restored.tasksSortMode(), 'due_desc');
+
+      // Storing 'all' for tasks status filter persists cleanly
+      restored.setTasksStatusFilter('all');
+      assert.equal(restored.tasksStatusFilter(), 'all');
+      const restoredAll = new TrackerStore();
+      try {
+        assert.equal(restoredAll.tasksStatusFilter(), 'all');
+      } finally {
+        restoredAll.dispose();
+      }
+    } finally {
+      restored.dispose();
+    }
   } finally {
     store.dispose();
   }

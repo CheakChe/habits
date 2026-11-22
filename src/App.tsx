@@ -15,6 +15,7 @@ import {
   AccountModal,
   DriveRevisionsModal,
   HabitModal,
+  RemindersModal,
   SyncConfirmModal,
   TaskModal,
 } from './ui/Modals';
@@ -156,10 +157,23 @@ export default function App(): JSX.Element {
 
           <Show when={store.mode() === 'google'}>
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-[#8E95A5]">
-              <span class="min-w-0">
-                Google Drive Sync Mode · Snapshot stored in private app folder
+              <span class="min-w-0 break-anywhere">
+                {store.googleEmail()
+                  ? `Google Mode (${store.googleEmail()}) · Private Drive snapshots`
+                  : 'Google Sync Mode · Snapshot stored in private app folder'}
               </span>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => store.openRemindersModal()}
+                  class={`whitespace-nowrap shrink-0 cursor-pointer ${
+                    store.isCalendarSyncNeeded()
+                      ? 'text-[#F59E0B] hover:underline'
+                      : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                  }`}
+                >
+                  {store.isCalendarSyncNeeded() ? 'Reminders · Sync' : 'Reminders'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void store.openDriveRevisions()}
@@ -185,7 +199,7 @@ export default function App(): JSX.Element {
                 class={`rounded-2xl px-4 py-3 flex items-start sm:items-center justify-between gap-3 text-xs border ${
                   banner().kind === 'error'
                     ? 'bg-[#EF4444]/10 border-[#EF4444]/25 text-[#FCA5A5]'
-                    : 'bg-[#22C55E]/10 border-[#22C55E]/25 text-[#86EFAC]'
+                    : 'bg-[#3B82F6]/10 border-[#3B82F6]/30 text-[#93C5FD]'
                 }`}
               >
                 <span class="min-w-0 flex-1 break-anywhere">{banner().text}</span>
@@ -223,6 +237,9 @@ export default function App(): JSX.Element {
                   onScheduleTaskToday={(t) => store.scheduleTaskForDay(t, store.todayDay())}
                   onOpenNewHabit={() => store.openCreateHabit()}
                   onOpenEditTask={(t) => store.openEditTask(t)}
+                  onOpenReminders={() => store.openRemindersModal()}
+                  calendarSyncNeeded={store.isCalendarSyncNeeded()}
+                  calendarEnabled={store.reminderPrefs().calendarEnabled}
                 />
               </Match>
               <Match when={store.activeTab() === 'habits'}>
@@ -238,6 +255,10 @@ export default function App(): JSX.Element {
                 <TasksView
                   snapshot={store.snapshot()}
                   todayDay={store.todayDay()}
+                  statusFilter={store.tasksStatusFilter()}
+                  onChangeStatusFilter={(f) => store.setTasksStatusFilter(f)}
+                  sortMode={store.tasksSortMode()}
+                  onChangeSortMode={(s) => store.setTasksSortMode(s)}
                   onCreateTask={(opts) => store.openCreateTask(opts)}
                   onEditTask={(t) => store.openEditTask(t)}
                   onToggleTask={(t) => store.toggleTaskDone(t)}
@@ -252,6 +273,8 @@ export default function App(): JSX.Element {
                   timeZone={store.timeZone()}
                   subTab={store.historySubTab()}
                   onSelectSubTab={(tab) => store.setHistorySubTab(tab)}
+                  habitFilter={store.historyHabitFilter()}
+                  onChangeHabitFilter={(f) => store.setHistoryHabitFilter(f)}
                   rangePreset={store.historyRangePreset()}
                   customStartDay={store.historyCustomStartDay()}
                   customEndDay={store.historyCustomEndDay()}
@@ -340,12 +363,39 @@ export default function App(): JSX.Element {
           open={store.accountModalOpen()}
           mode={store.mode()!}
           hasGoogleToken={store.hasGoogleToken()}
+          googleEmail={store.googleEmail()}
           onClose={() => store.setAccountModalOpen(false)}
           onConnectGoogle={() => store.reconnectGoogle()}
           onSwitchToEntry={() => store.switchToEntry()}
           onExportBackup={() => store.exportBackup()}
           onImportBackup={(bytes) => store.importBackup(bytes)}
           onOpenRevisions={() => store.openDriveRevisions()}
+          onOpenReminders={() => store.openRemindersModal()}
+        />
+        <RemindersModal
+          open={store.remindersModalOpen()}
+          mode={store.mode()!}
+          hasGoogleToken={store.hasGoogleToken()}
+          googleEmail={store.googleEmail()}
+          prefs={store.reminderPrefs()}
+          pendingToday={store.getTodayPendingSummary()}
+          trackerTimeZone={store.timeZone()}
+          calendarSyncNeeded={store.isCalendarSyncNeeded()}
+          busy={store.calendarBusy()}
+          error={store.calendarError()}
+          pendingPlan={store.pendingCalendarPlan()}
+          confirmDeleteOpen={store.confirmDeleteCalendarOpen()}
+          onClose={() => store.closeRemindersModal()}
+          onToggleBadge={(enabled) => store.setBadgeEnabled(enabled)}
+          onToggleCalendar={(enabled) => store.setCalendarEnabled(enabled)}
+          onChangeTime={(t) => store.setReminderTime(t)}
+          onChangeHorizon={(d) => store.setReminderHorizonDays(d)}
+          onPrepareCalendarSync={() => store.prepareCalendarSync()}
+          onConfirmCalendarSync={() => store.confirmCalendarSync()}
+          onCancelCalendarSync={() => store.cancelCalendarSync()}
+          onRequestDeleteCalendar={() => store.requestDeleteCalendar()}
+          onConfirmDeleteCalendar={() => store.confirmDeleteCalendar()}
+          onCancelDeleteCalendar={() => store.cancelDeleteCalendar()}
         />
         <DriveRevisionsModal
           open={store.revisionsModalOpen()}

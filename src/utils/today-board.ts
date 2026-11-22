@@ -9,6 +9,33 @@ export type TaskFilterMode =
   | 'completed'
   | 'not_done'
   | 'archived';
+export type TaskStatusBucket =
+  | 'overdue'
+  | 'today'
+  | 'upcoming'
+  | 'nodate'
+  | 'completed'
+  | 'not_done'
+  | 'archived';
+export type TaskStatusFilterSelection = 'all' | TaskStatusBucket[];
+
+export const TASK_STATUS_BUCKETS: readonly TaskStatusBucket[] = [
+  'overdue',
+  'today',
+  'upcoming',
+  'nodate',
+  'completed',
+  'not_done',
+  'archived',
+] as const;
+
+export const OPEN_TASK_BUCKETS: TaskStatusBucket[] = [
+  'overdue',
+  'today',
+  'upcoming',
+  'nodate',
+];
+
 export type TaskSortMode = 'default' | 'due_asc' | 'due_desc' | 'newest' | 'title';
 
 export interface TodayTasksPartition {
@@ -226,6 +253,121 @@ export class TodayBoard {
           return a.dueDay - b.dueDay;
         }
         return a.id - b.id;
+      });
+  }
+
+  public static getTaskBucket(task: Task, todayDay: number): TaskStatusBucket {
+    const status = TodayBoard.getStatus(task);
+    if (status === 'done') return 'completed';
+    if (status === 'not_done') return 'not_done';
+    if (status === 'archived') return 'archived';
+    if (task.dueDay === null) return 'nodate';
+    if (task.dueDay < todayDay) return 'overdue';
+    if (task.dueDay === todayDay) return 'today';
+    return 'upcoming';
+  }
+
+  public static normalizeStatusFilterSelection(
+    raw: unknown
+  ): TaskStatusFilterSelection {
+    if (raw === 'all') return 'all';
+    if (!Array.isArray(raw)) {
+      return [...OPEN_TASK_BUCKETS];
+    }
+    const allowed = new Set<TaskStatusBucket>(TASK_STATUS_BUCKETS);
+    const deduped: TaskStatusBucket[] = [];
+    for (const item of raw) {
+      if (typeof item === 'string' && allowed.has(item as TaskStatusBucket)) {
+        const bucket = item as TaskStatusBucket;
+        if (!deduped.includes(bucket)) {
+          deduped.push(bucket);
+        }
+      }
+    }
+    if (deduped.length === TASK_STATUS_BUCKETS.length) {
+      return 'all';
+    }
+    return deduped;
+  }
+
+  public static filterTasksByStatuses(
+    tasks: Task[],
+    todayDay: number,
+    selection: TaskStatusFilterSelection,
+    searchQuery: string = '',
+    sort: TaskSortMode = 'default'
+  ): Task[] {
+    const q = searchQuery.trim().toLowerCase();
+    const activeSet =
+      selection === 'all' ? null : new Set<TaskStatusBucket>(selection);
+
+    if (activeSet && activeSet.size === 0) {
+      return [];
+    }
+
+    return tasks
+      .filter((task) => {
+        if (task.deletedAt !== null) return false;
+        if (activeSet) {
+          const bucket = TodayBoard.getTaskBucket(task, todayDay);
+          if (!activeSet.has(bucket)) return false;
+        }
+        if (q.length > 0) {
+          const inTitle = task.title.toLowerCase().includes(q);
+          const inNote = task.note.toLowerCase().includes(q);
+          if (!inTitle && !inNote) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (sort === 'title') {
+          const cmp = a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+          return cmp !== 0 ? cmp : a.id - b.id;
+        }
+        if (sort === 'newest') {
+          return b.createdAt - a.createdAt || b.id - a.id;
+        }
+        if (sort === 'due_asc') {
+          if (a.dueDay === null && b.dueDay !== null) return 1;
+          if (a.dueDay !== null && b.dueDay === null) return -1;
+          if (a.dueDay !== null && b.dueDay !== null && a.dueDay !== b.dueDay) {
+            return a.dueDay - b.dueDay;
+          }
+          return a.id - b.id;
+        }
+        if (sort === 'due_desc') {
+          if (a.dueDay === null && b.dueDay !== null) return 1;
+          if (a.dueDay !== null && b.dueDay === null) return -1;
+          if (a.dueDay !== null && b.dueDay !== null && a.dueDay !== b.dueDay) {
+            return b.dueDay - a.dueDay;
+          }
+          return a.id - b.id;
+        }
+
+        // Default ordering across arbitrary status combinations:
+        // Open tasks first (dueDay ascending, null dueDay last), then Completed, Not Done, Archived.
+        const sa = TodayBoard.getStatus(a);
+        const sb = TodayBoard.getStatus(b);
+        const rank = (s: TaskStatus): number =>
+          s === 'open' ? 0 : s === 'done' ? 1 : s === 'not_done' ? 2 : 3;
+        const ra = rank(sa);
+        const rb = rank(sb);
+        if (ra !== rb) return ra - rb;
+
+        if (sa === 'open') {
+          if (a.dueDay === null && b.dueDay !== null) return 1;
+          if (a.dueDay !== null && b.dueDay === null) return -1;
+          if (a.dueDay !== null && b.dueDay !== null && a.dueDay !== b.dueDay) {
+            return a.dueDay - b.dueDay;
+          }
+          return a.id - b.id;
+        }
+        if (sa === 'done') {
+          const dayDiff = (b.completedDay ?? 0) - (a.completedDay ?? 0);
+          if (dayDiff !== 0) return dayDiff;
+          return b.updatedAt - a.updatedAt || b.id - a.id;
+        }
+        return b.updatedAt - a.updatedAt || b.id - a.id;
       });
   }
 }

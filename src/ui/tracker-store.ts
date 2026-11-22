@@ -3,6 +3,10 @@ import { SessionManager } from '../auth/session-manager';
 import { HabitDatabase } from '../db/habit-database';
 import { BackupService } from '../sync/backup-service';
 import {
+  CalendarReminderService,
+  CalendarSyncPlan,
+} from '../sync/calendar-reminder-service';
+import {
   ConcurrentSyncError,
   DriveRevisionInspectResult,
   DriveRevisionMeta,
@@ -20,7 +24,18 @@ import {
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DATE_RANGE_PRESETS, DateRangePresetId } from '../utils/date-range';
-import { TodayBoard } from '../utils/today-board';
+import {
+  DEFAULT_REMINDER_PREFERENCES,
+  ReminderPlanner,
+  ReminderPreferences,
+  TodayPendingSummary,
+} from '../utils/reminder-planner';
+import {
+  OPEN_TASK_BUCKETS,
+  TaskSortMode,
+  TaskStatusFilterSelection,
+  TodayBoard,
+} from '../utils/today-board';
 
 export type TaskModalMode = 'create' | 'edit' | 'next';
 
@@ -42,6 +57,7 @@ export class TrackerStore {
   private readonly db = new HabitDatabase();
   private readonly session = new SessionManager();
   private readonly driveSync = new DriveSyncService();
+  private readonly calendarSync = new CalendarReminderService();
 
   public readonly mode: Accessor<SessionMode | null>;
   private readonly setMode: Setter<SessionMode | null>;
@@ -57,6 +73,9 @@ export class TrackerStore {
 
   public readonly hasGoogleToken: Accessor<boolean>;
   private readonly setHasGoogleToken: Setter<boolean>;
+
+  public readonly googleEmail: Accessor<string | null>;
+  private readonly setGoogleEmail: Setter<string | null>;
 
   public readonly isSigningIn: Accessor<boolean>;
   private readonly setIsSigningIn: Setter<boolean>;
@@ -139,12 +158,44 @@ export class TrackerStore {
   public readonly historySubTab: Accessor<HistorySubTab>;
   private readonly setHistorySubTabSignal: Setter<HistorySubTab>;
 
+  public readonly historyHabitFilter: Accessor<'all' | number[]>;
+  private readonly setHistoryHabitFilterSignal: Setter<'all' | number[]>;
+
+  public readonly tasksStatusFilter: Accessor<TaskStatusFilterSelection>;
+  private readonly setTasksStatusFilterSignal: Setter<TaskStatusFilterSelection>;
+
+  public readonly tasksSortMode: Accessor<TaskSortMode>;
+  private readonly setTasksSortModeSignal: Setter<TaskSortMode>;
+
+  public readonly reminderPrefs: Accessor<ReminderPreferences>;
+  private readonly setReminderPrefsSignal: Setter<ReminderPreferences>;
+
+  public readonly remindersModalOpen: Accessor<boolean>;
+  private readonly setRemindersModalOpen: Setter<boolean>;
+
+  public readonly calendarBusy: Accessor<boolean>;
+  private readonly setCalendarBusy: Setter<boolean>;
+
+  public readonly calendarError: Accessor<string | null>;
+  private readonly setCalendarError: Setter<string | null>;
+
+  public readonly pendingCalendarPlan: Accessor<CalendarSyncPlan | null>;
+  private readonly setPendingCalendarPlan: Setter<CalendarSyncPlan | null>;
+
+  public readonly confirmDeleteCalendarOpen: Accessor<boolean>;
+  private readonly setConfirmDeleteCalendarOpen: Setter<boolean>;
+
   private unsubscribeAuth: (() => void) | null = null;
   private midnightTimer: number | null = null;
+  private tokenExpiryTimer: number | null = null;
   private static readonly TIMEZONE_STORAGE_KEY = 'habits.timezone';
   private static readonly TODAY_GOALS_EXPANDED_KEY = 'habits.todayGoalsExpanded';
   private static readonly HISTORY_RANGE_STORAGE_KEY = 'habits.historyRange';
   private static readonly HISTORY_SUBTAB_STORAGE_KEY = 'habits.historySubTab';
+  private static readonly HISTORY_HABIT_FILTER_KEY = 'habits.historyHabitFilter';
+  private static readonly TASKS_STATUS_FILTER_KEY = 'habits.tasksStatusFilter';
+  private static readonly TASKS_SORT_MODE_KEY = 'habits.tasksSortMode';
+  private static readonly REMINDERS_STORAGE_KEY = 'habits.reminders';
 
   private static readStoredTimeZone(): string {
     try {
@@ -231,6 +282,77 @@ export class TrackerStore {
     return 'calendar';
   }
 
+  private static readStoredHistoryHabitFilter(): 'all' | number[] {
+    try {
+      const raw =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.HISTORY_HABIT_FILTER_KEY)
+          : null;
+      if (!raw) return 'all';
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed === 'all') return 'all';
+      if (Array.isArray(parsed)) {
+        const ids: number[] = [];
+        for (const item of parsed) {
+          if (typeof item === 'number' && Number.isInteger(item) && item > 0 && !ids.includes(item)) {
+            ids.push(item);
+          }
+        }
+        return ids;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'all';
+  }
+
+  private static readStoredTasksStatusFilter(): TaskStatusFilterSelection {
+    try {
+      const raw =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.TASKS_STATUS_FILTER_KEY)
+          : null;
+      if (!raw) return [...OPEN_TASK_BUCKETS];
+      return TodayBoard.normalizeStatusFilterSelection(JSON.parse(raw));
+    } catch {
+      return [...OPEN_TASK_BUCKETS];
+    }
+  }
+
+  private static readStoredTasksSortMode(): TaskSortMode {
+    try {
+      const saved =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.TASKS_SORT_MODE_KEY)
+          : null;
+      if (
+        saved === 'default' ||
+        saved === 'due_asc' ||
+        saved === 'due_desc' ||
+        saved === 'newest' ||
+        saved === 'title'
+      ) {
+        return saved;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'default';
+  }
+
+  private static readStoredReminderPrefs(): ReminderPreferences {
+    try {
+      const raw =
+        typeof localStorage !== 'undefined'
+          ? localStorage.getItem(TrackerStore.REMINDERS_STORAGE_KEY)
+          : null;
+      if (!raw) return { ...DEFAULT_REMINDER_PREFERENCES };
+      return ReminderPlanner.normalizePreferences(JSON.parse(raw));
+    } catch {
+      return { ...DEFAULT_REMINDER_PREFERENCES };
+    }
+  }
+
   constructor() {
     [this.mode, this.setMode] = createSignal<SessionMode | null>(
       this.session.getRememberedMode()
@@ -240,6 +362,9 @@ export class TrackerStore {
     [this.dbReady, this.setDbReady] = createSignal(false);
     [this.hasGoogleToken, this.setHasGoogleToken] = createSignal(
       this.session.hasAccessToken()
+    );
+    [this.googleEmail, this.setGoogleEmail] = createSignal<string | null>(
+      this.session.getAccountEmail()
     );
     [this.isSigningIn, this.setIsSigningIn] = createSignal(false);
     [this.authError, this.setAuthError] = createSignal<string | null>(null);
@@ -288,6 +413,124 @@ export class TrackerStore {
     [this.historySubTab, this.setHistorySubTabSignal] = createSignal<HistorySubTab>(
       TrackerStore.readStoredHistorySubTab()
     );
+    [this.historyHabitFilter, this.setHistoryHabitFilterSignal] = createSignal<
+      'all' | number[]
+    >(TrackerStore.readStoredHistoryHabitFilter());
+    [this.tasksStatusFilter, this.setTasksStatusFilterSignal] =
+      createSignal<TaskStatusFilterSelection>(TrackerStore.readStoredTasksStatusFilter());
+    [this.tasksSortMode, this.setTasksSortModeSignal] = createSignal<TaskSortMode>(
+      TrackerStore.readStoredTasksSortMode()
+    );
+    [this.reminderPrefs, this.setReminderPrefsSignal] = createSignal<ReminderPreferences>(
+      TrackerStore.readStoredReminderPrefs()
+    );
+    [this.remindersModalOpen, this.setRemindersModalOpen] = createSignal(false);
+    [this.calendarBusy, this.setCalendarBusy] = createSignal(false);
+    [this.calendarError, this.setCalendarError] = createSignal<string | null>(null);
+    [this.pendingCalendarPlan, this.setPendingCalendarPlan] =
+      createSignal<CalendarSyncPlan | null>(null);
+    [this.confirmDeleteCalendarOpen, this.setConfirmDeleteCalendarOpen] =
+      createSignal(false);
+  }
+
+  private persistReminderPrefs(next: ReminderPreferences): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(TrackerStore.REMINDERS_STORAGE_KEY, JSON.stringify(next));
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setReminderPrefsSignal(next);
+  }
+
+  private refreshAppBadge(): void {
+    const prefs = this.reminderPrefs();
+    if (!prefs.badgeEnabled || !this.dbReady()) {
+      void ReminderPlanner.syncAppBadge(null);
+      return;
+    }
+    const summary = ReminderPlanner.getTodayPendingSummary(
+      this.snapshot(),
+      this.todayDay()
+    );
+    void ReminderPlanner.syncAppBadge(summary.totalPendingCount);
+  }
+
+  public getTodayPendingSummary(): TodayPendingSummary {
+    return ReminderPlanner.getTodayPendingSummary(this.snapshot(), this.todayDay());
+  }
+
+  public isCalendarSyncNeeded(): boolean {
+    const prefs = this.reminderPrefs();
+    if (this.mode() !== 'google' || !prefs.calendarEnabled) {
+      return false;
+    }
+    if (!prefs.calendarId || !prefs.lastSyncedSignature) {
+      return true;
+    }
+    const currentSignature = ReminderPlanner.computeStateSignature(
+      this.snapshot(),
+      this.todayDay(),
+      prefs,
+      this.timeZone()
+    );
+    return currentSignature !== prefs.lastSyncedSignature;
+  }
+
+  public setBadgeEnabled(enabled: boolean): void {
+    const next: ReminderPreferences = {
+      ...this.reminderPrefs(),
+      badgeEnabled: enabled,
+    };
+    this.persistReminderPrefs(next);
+    this.refreshAppBadge();
+  }
+
+  public setCalendarEnabled(enabled: boolean): void {
+    const next: ReminderPreferences = {
+      ...this.reminderPrefs(),
+      calendarEnabled: enabled,
+    };
+    this.persistReminderPrefs(next);
+    this.setPendingCalendarPlan(null);
+    this.setCalendarError(null);
+  }
+
+  public setReminderTime(time: string): void {
+    const normalized = ReminderPlanner.normalizeTime(time);
+    const next: ReminderPreferences = {
+      ...this.reminderPrefs(),
+      reminderTime: normalized,
+    };
+    this.persistReminderPrefs(next);
+    this.setPendingCalendarPlan(null);
+  }
+
+  public setReminderHorizonDays(days: number): void {
+    const normalized = ReminderPlanner.normalizeHorizonDays(days);
+    const next: ReminderPreferences = {
+      ...this.reminderPrefs(),
+      horizonDays: normalized,
+    };
+    this.persistReminderPrefs(next);
+    this.setPendingCalendarPlan(null);
+  }
+
+  public openRemindersModal(): void {
+    this.setAccountModalOpen(false);
+    this.setCalendarError(null);
+    this.setPendingCalendarPlan(null);
+    this.setConfirmDeleteCalendarOpen(false);
+    this.setRemindersModalOpen(true);
+  }
+
+  public closeRemindersModal(): void {
+    if (this.calendarBusy()) return;
+    this.setRemindersModalOpen(false);
+    this.setPendingCalendarPlan(null);
+    this.setConfirmDeleteCalendarOpen(false);
+    this.setCalendarError(null);
   }
 
   public setTimeZone(nextTz: string): void {
@@ -301,6 +544,7 @@ export class TrackerStore {
     }
     this.setTimeZoneSignal(normalized);
     this.setTodayDay(CivilCalendar.todayDayIndex(new Date(), normalized));
+    this.refreshAppBadge();
   }
 
   public toggleTodayGoalsExpanded(): void {
@@ -367,6 +611,58 @@ export class TrackerStore {
     this.setHistorySubTabSignal(nextTab);
   }
 
+  public setHistoryHabitFilter(nextFilter: 'all' | number[]): void {
+    let normalized: 'all' | number[] = 'all';
+    if (nextFilter !== 'all') {
+      const deduped: number[] = [];
+      for (const id of nextFilter) {
+        if (Number.isInteger(id) && id > 0 && !deduped.includes(id)) {
+          deduped.push(id);
+        }
+      }
+      const habitCount = this.snapshot().habits.length;
+      normalized =
+        habitCount > 0 && deduped.length === habitCount ? 'all' : deduped;
+    }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(
+          TrackerStore.HISTORY_HABIT_FILTER_KEY,
+          JSON.stringify(normalized)
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setHistoryHabitFilterSignal(normalized);
+  }
+
+  public setTasksStatusFilter(nextFilter: TaskStatusFilterSelection): void {
+    const normalized = TodayBoard.normalizeStatusFilterSelection(nextFilter);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(
+          TrackerStore.TASKS_STATUS_FILTER_KEY,
+          JSON.stringify(normalized)
+        );
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setTasksStatusFilterSignal(normalized);
+  }
+
+  public setTasksSortMode(nextSort: TaskSortMode): void {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(TrackerStore.TASKS_SORT_MODE_KEY, nextSort);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    this.setTasksSortModeSignal(nextSort);
+  }
+
   public init(): void {
     void this.reloadFromDb().catch((err) => {
       this.setSyncBanner({
@@ -376,16 +672,52 @@ export class TrackerStore {
       this.setDbReady(true);
     });
 
-    this.unsubscribeAuth = this.session.subscribeAuthChanges(() => {
-      this.setHasGoogleToken(false);
+    this.unsubscribeAuth = this.session.subscribeAuthChanges((state) => {
+      this.setHasGoogleToken(state.hasToken);
+      this.setGoogleEmail(state.email);
+      if (state.hasToken) {
+        this.scheduleTokenExpiryTimer();
+      } else {
+        this.clearTokenExpiryTimer();
+      }
     });
 
     this.midnightTimer = window.setInterval(() => {
       const current = CivilCalendar.todayDayIndex(new Date(), this.timeZone());
       if (current !== this.todayDay()) {
         this.setTodayDay(current);
+        this.refreshAppBadge();
       }
     }, 30_000);
+  }
+
+  private clearTokenExpiryTimer(): void {
+    if (this.tokenExpiryTimer !== null) {
+      window.clearTimeout(this.tokenExpiryTimer);
+      this.tokenExpiryTimer = null;
+    }
+  }
+
+  private scheduleTokenExpiryTimer(): void {
+    this.clearTokenExpiryTimer();
+    const expiresAt = this.session.getTokenExpiresAt();
+    if (!expiresAt) return;
+    const delayMs = Math.max(0, expiresAt - Date.now());
+    this.tokenExpiryTimer = window.setTimeout(() => {
+      this.tokenExpiryTimer = null;
+      this.setHasGoogleToken(this.session.hasAccessToken());
+    }, delayMs + 50);
+  }
+
+  private isAuthErrorMessage(msg: string): boolean {
+    const lower = msg.toLowerCase();
+    return (
+      lower.includes('authorization') ||
+      lower.includes('permission') ||
+      lower.includes('expired') ||
+      lower.includes('401') ||
+      lower.includes('403')
+    );
   }
 
   public dispose(): void {
@@ -397,19 +729,35 @@ export class TrackerStore {
       window.clearInterval(this.midnightTimer);
       this.midnightTimer = null;
     }
+    this.clearTokenExpiryTimer();
   }
 
   public async reloadFromDb(): Promise<void> {
     const data = await this.db.getAllSnapshot();
     this.setSnapshot(data);
     this.setDbReady(true);
+
+    const currentHabitFilter = this.historyHabitFilter();
+    if (currentHabitFilter !== 'all' && currentHabitFilter.length > 0) {
+      const validSet = new Set(data.habits.map((h) => h.id));
+      const surviving = currentHabitFilter.filter((id) => validSet.has(id));
+      if (surviving.length === 0) {
+        this.setHistoryHabitFilter('all');
+      } else if (surviving.length !== currentHabitFilter.length) {
+        this.setHistoryHabitFilter(surviving);
+      }
+    }
+
+    this.refreshAppBadge();
   }
 
   public selectGuest(): void {
+    this.clearTokenExpiryTimer();
     this.session.chooseGuest();
     this.driveSync.resetUploadCache();
     this.setAuthError(null);
     this.setHasGoogleToken(false);
+    this.setGoogleEmail(null);
     this.setSyncBanner(null);
     this.setMode('guest');
   }
@@ -418,8 +766,12 @@ export class TrackerStore {
     this.setIsSigningIn(true);
     this.setAuthError(null);
     try {
-      await this.session.signInWithGoogle();
-      this.setHasGoogleToken(true);
+      await this.session.signInWithGoogle({
+        interactiveAccountPicker: !this.session.getAccountEmail(),
+      });
+      this.setHasGoogleToken(this.session.hasAccessToken());
+      this.setGoogleEmail(this.session.getAccountEmail());
+      this.scheduleTokenExpiryTimer();
       this.setMode('google');
       this.setSyncBanner(null);
     } catch (err) {
@@ -434,22 +786,28 @@ export class TrackerStore {
   public async reconnectGoogle(): Promise<void> {
     this.setSyncBanner(null);
     try {
-      await this.session.signInWithGoogle();
-      this.setHasGoogleToken(true);
+      await this.session.signInWithGoogle({ interactiveAccountPicker: false });
+      this.setHasGoogleToken(this.session.hasAccessToken());
+      this.setGoogleEmail(this.session.getAccountEmail());
+      this.scheduleTokenExpiryTimer();
     } catch (err) {
       this.setSyncBanner({
         kind: 'error',
-        text: err instanceof Error ? err.message : 'Could not reconnect Google Drive.',
+        text: err instanceof Error ? err.message : 'Could not reconnect Google account.',
       });
     }
   }
 
   public async switchToEntry(): Promise<void> {
+    this.clearTokenExpiryTimer();
     await this.session.clearSessionAndReturnToEntry();
     this.driveSync.resetUploadCache();
     this.setHasGoogleToken(false);
+    this.setGoogleEmail(null);
     this.setSyncBanner(null);
     this.setPendingSync(null);
+    this.setPendingCalendarPlan(null);
+    this.setConfirmDeleteCalendarOpen(false);
     this.setMode(null);
   }
 
@@ -661,7 +1019,7 @@ export class TrackerStore {
       this.setPendingSync(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Google Drive sync failed.';
-      if (msg.toLowerCase().includes('authorization')) {
+      if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);
       }
@@ -733,7 +1091,7 @@ export class TrackerStore {
       }
 
       const msg = err instanceof Error ? err.message : 'Upload to Google Drive failed.';
-      if (msg.toLowerCase().includes('authorization')) {
+      if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);
       }
@@ -775,7 +1133,7 @@ export class TrackerStore {
       this.setRevisions(result.revisions);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load Drive version history.';
-      if (msg.toLowerCase().includes('authorization')) {
+      if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);
       }
@@ -806,7 +1164,7 @@ export class TrackerStore {
       this.setInspectedRevision(inspected);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to inspect Drive revision.';
-      if (msg.toLowerCase().includes('authorization')) {
+      if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);
       }
@@ -847,13 +1205,179 @@ export class TrackerStore {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to restore Drive revision.';
-      if (msg.toLowerCase().includes('authorization')) {
+      if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);
       }
       this.setRevisionsError(msg);
     } finally {
       this.setRestoringRevision(false);
+    }
+  }
+
+  public async prepareCalendarSync(): Promise<void> {
+    if (this.mode() !== 'google') return;
+
+    if (!this.session.hasAccessToken()) {
+      await this.reconnectGoogle();
+      if (!this.session.hasAccessToken()) return;
+    }
+
+    this.setCalendarBusy(true);
+    this.setCalendarError(null);
+    this.setConfirmDeleteCalendarOpen(false);
+
+    try {
+      const prefs = this.reminderPrefs();
+      const plan = await this.calendarSync.prepareSyncPlan(
+        this.mode(),
+        this.session.getAccessToken(),
+        this.snapshot(),
+        this.todayDay(),
+        prefs,
+        this.timeZone()
+      );
+
+      const hasMutations =
+        plan.willCreateCalendar ||
+        plan.willUpdateCalendarTz ||
+        plan.toCreate.length > 0 ||
+        plan.toUpdate.length > 0 ||
+        plan.toDelete.length > 0;
+
+      if (!hasMutations && plan.calendarId) {
+        this.persistReminderPrefs({
+          ...prefs,
+          calendarId: plan.calendarId,
+          calendarTimeZone: plan.timeZone,
+          lastSyncedSignature: plan.targetSignature,
+          lastSyncedAt: Date.now(),
+        });
+        this.setPendingCalendarPlan(null);
+        this.setSyncBanner({
+          kind: 'success',
+          text: 'Google Calendar reminders are already up to date.',
+        });
+        return;
+      }
+
+      this.setPendingCalendarPlan(plan);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to prepare Google Calendar sync.';
+      if (this.isAuthErrorMessage(msg)) {
+        this.session.clearAccessTokenOnly();
+        this.setHasGoogleToken(false);
+      }
+      this.setCalendarError(msg);
+    } finally {
+      this.setCalendarBusy(false);
+    }
+  }
+
+  public cancelCalendarSync(): void {
+    if (this.calendarBusy()) return;
+    this.setPendingCalendarPlan(null);
+  }
+
+  public async confirmCalendarSync(): Promise<void> {
+    const plan = this.pendingCalendarPlan();
+    if (!plan || this.mode() !== 'google') return;
+
+    if (!this.session.hasAccessToken()) {
+      await this.reconnectGoogle();
+      if (!this.session.hasAccessToken()) return;
+    }
+
+    this.setCalendarBusy(true);
+    this.setCalendarError(null);
+    try {
+      const result = await this.calendarSync.applySyncPlan(
+        this.mode(),
+        this.session.getAccessToken(),
+        plan
+      );
+      this.persistReminderPrefs({
+        ...this.reminderPrefs(),
+        calendarEnabled: true,
+        calendarId: result.calendarId,
+        calendarTimeZone: result.timeZone,
+        lastSyncedSignature: result.targetSignature,
+        lastSyncedAt: Date.now(),
+      });
+      this.setPendingCalendarPlan(null);
+      this.setSyncBanner({
+        kind: 'success',
+        text: `Google Calendar updated (${result.created} added, ${result.updated} updated, ${result.deleted} cleared).`,
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to update Google Calendar reminders.';
+      if (this.isAuthErrorMessage(msg)) {
+        this.session.clearAccessTokenOnly();
+        this.setHasGoogleToken(false);
+      }
+      this.setCalendarError(msg);
+    } finally {
+      this.setCalendarBusy(false);
+    }
+  }
+
+  public requestDeleteCalendar(): void {
+    this.setPendingCalendarPlan(null);
+    this.setCalendarError(null);
+    this.setConfirmDeleteCalendarOpen(true);
+  }
+
+  public cancelDeleteCalendar(): void {
+    if (this.calendarBusy()) return;
+    this.setConfirmDeleteCalendarOpen(false);
+  }
+
+  public async confirmDeleteCalendar(): Promise<void> {
+    const calId = this.reminderPrefs().calendarId;
+    if (!calId || this.mode() !== 'google') {
+      this.setConfirmDeleteCalendarOpen(false);
+      return;
+    }
+
+    if (!this.session.hasAccessToken()) {
+      await this.reconnectGoogle();
+      if (!this.session.hasAccessToken()) return;
+    }
+
+    this.setCalendarBusy(true);
+    this.setCalendarError(null);
+    try {
+      await this.calendarSync.deleteReminderCalendar(
+        this.mode(),
+        this.session.getAccessToken(),
+        calId
+      );
+      this.persistReminderPrefs({
+        ...this.reminderPrefs(),
+        calendarEnabled: false,
+        calendarId: null,
+        calendarTimeZone: null,
+        lastSyncedSignature: null,
+        lastSyncedAt: null,
+      });
+      this.setConfirmDeleteCalendarOpen(false);
+      this.setPendingCalendarPlan(null);
+      this.setSyncBanner({
+        kind: 'success',
+        text: 'Habits Reminders calendar deleted from your Google Calendar.',
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to delete Google Calendar.';
+      if (this.isAuthErrorMessage(msg)) {
+        this.session.clearAccessTokenOnly();
+        this.setHasGoogleToken(false);
+      }
+      this.setCalendarError(msg);
+    } finally {
+      this.setCalendarBusy(false);
     }
   }
 }

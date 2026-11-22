@@ -130,7 +130,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                 const streakToneClass = () => {
                   const m = milestone();
                   if (m === 100) return 'text-[#FBBF24]';
-                  if (m === 30) return 'text-[#4ADE80]';
+                  if (m === 30) return 'text-[#93C5FD]';
                   if (m === 7) return 'text-[#60A5FA]';
                   return '';
                 };
@@ -187,7 +187,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           <span aria-hidden="true">·</span>
                           <span
                             class={`font-mono tabular-nums ${
-                              weekly().isComplete ? 'text-[#4ADE80]' : ''
+                              weekly().isComplete ? 'text-[#60A5FA]' : ''
                             }`}
                           >
                             {weekly().isComplete

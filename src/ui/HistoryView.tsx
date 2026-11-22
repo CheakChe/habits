@@ -10,7 +10,7 @@ import {
 import { StreakCalculator, StreakUnit } from '../utils/streak-calculator';
 import { TaskAnalytics } from '../utils/task-analytics';
 import { HabitAppearance } from '../utils/habit-appearance';
-import { CustomSelect, HistoryRangePicker, SelectOption } from './CustomControls';
+import { CustomMultiSelect, HistoryRangePicker, SelectOption } from './CustomControls';
 import { HabitBadge } from './HabitBadge';
 import { HistoryChartsPanel } from './HistoryChartsPanel';
 import {
@@ -31,6 +31,8 @@ interface HistoryViewProps {
   timeZone: string;
   subTab: HistorySubTab;
   onSelectSubTab: (tab: HistorySubTab) => void;
+  habitFilter: 'all' | number[];
+  onChangeHabitFilter: (filter: 'all' | number[]) => void;
   rangePreset: DateRangePresetId;
   customStartDay: number;
   customEndDay: number;
@@ -47,7 +49,7 @@ function calendarTileClass(tone: DayCellTone, isSelected: boolean): string {
   }
   switch (tone) {
     case 'complete':
-      return 'bg-[#22C55E]/15 border-[#22C55E]/35 text-[#F5F7FA] hover:bg-[#22C55E]/25';
+      return 'bg-[#3B82F6]/15 border-[#3B82F6]/40 text-[#F5F7FA] hover:bg-[#3B82F6]/25';
     case 'missed-slight':
       return 'bg-[#7F1D1D]/20 border-[#EF4444]/25 text-[#FECACA] hover:bg-[#7F1D1D]/30';
     case 'missed-moderate':
@@ -77,7 +79,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   const [viewYear, setViewYear] = createSignal(initialLocal.year);
   const [viewMonth, setViewMonth] = createSignal(initialLocal.month);
   const [selectedDay, setSelectedDay] = createSignal(initialDay);
-  const [selectedHabitId, setSelectedHabitId] = createSignal<number | 'all'>('all');
   const [editingNoteHabitId, setEditingNoteHabitId] = createSignal<number | null>(null);
   const [noteDraft, setNoteDraft] = createSignal('');
 
@@ -147,9 +148,10 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   });
 
   const targetHabits = createMemo(() => {
-    const id = selectedHabitId();
-    if (id === 'all') return props.snapshot.habits;
-    return props.snapshot.habits.filter((h) => h.id === id);
+    const filter = props.habitFilter;
+    if (filter === 'all') return props.snapshot.habits;
+    const allowed = new Set(filter);
+    return props.snapshot.habits.filter((h) => allowed.has(h.id));
   });
 
   const analyticsSummary = createMemo(() => {
@@ -217,7 +219,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
 
   const habitBreakdown = createMemo(() =>
     StreakCalculator.summarizeHabitsForRange(
-      props.snapshot.habits,
+      targetHabits(),
       props.snapshot.checkins,
       effectiveRangeStart(),
       effectiveRangeEnd(),
@@ -385,7 +387,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   };
 
   const selectedDayHabits = createMemo(() =>
-    props.snapshot.habits
+    targetHabits()
       .filter((h) => h.startDay <= selectedDay())
       .sort((a, b) => a.id - b.id)
   );
@@ -461,26 +463,22 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         {/* Context Filters Row */}
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-3 flex-wrap">
-            <CustomSelect
-              ariaLabel="Filter by habit"
-              value={selectedHabitId() === 'all' ? 'all' : String(selectedHabitId())}
-              options={[
-                {
-                  value: 'all',
-                  label: `All Habits (${props.snapshot.habits.length})`,
-                },
-                ...props.snapshot.habits.map(
-                  (h): SelectOption<string> => ({
-                    value: String(h.id),
-                    label: h.name,
-                    hint: h.archivedAt !== null ? 'Archived' : undefined,
-                    dotColor: h.color,
-                  })
-                ),
-              ]}
-              onChange={(val) =>
-                setSelectedHabitId(val === 'all' ? 'all' : Number(val))
-              }
+            <CustomMultiSelect<number>
+              ariaLabel="Filter by habits"
+              value={props.habitFilter}
+              options={props.snapshot.habits.map(
+                (h): SelectOption<number> => ({
+                  value: h.id,
+                  label: h.name,
+                  hint: h.archivedAt !== null ? 'Archived' : undefined,
+                  dotColor: h.color,
+                })
+              )}
+              allLabel={`All Habits (${props.snapshot.habits.length})`}
+              emptyLabel="No habits selected"
+              selectedNoun={{ one: 'habit', many: 'habits' }}
+              align="left"
+              onChange={(val) => props.onChangeHabitFilter(val)}
             />
 
             <Show when={props.subTab === 'charts'}>
@@ -526,7 +524,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             <HistoryChartsPanel
               habits={props.snapshot.habits}
               targetHabits={targetHabits()}
-              selectedHabitId={selectedHabitId()}
+              habitFilter={props.habitFilter}
               checkins={props.snapshot.checkins}
               tasks={props.snapshot.tasks}
               effectiveRangeStart={effectiveRangeStart()}
@@ -541,7 +539,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               selectedDay={selectedDay()}
               onSelectDay={(day) => setSelectedDay(day)}
               onInspectDayInCalendar={inspectDayInCalendar}
-              onSelectHabitFilter={(id) => setSelectedHabitId(id)}
+              onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
             />
           }
         >
@@ -622,7 +620,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                         <span
                           class={`text-[9px] ${
                             tone() === 'complete'
-                              ? 'text-[#86EFAC]'
+                              ? 'text-[#93C5FD]'
                               : tone().startsWith('missed')
                                 ? 'text-[#FCA5A5]'
                                 : 'text-[#8E95A5]'
@@ -655,10 +653,21 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             <Show
               when={selectedDayHabits().length > 0}
               fallback={
-                <div class="px-6 py-10 text-center">
+                <div class="px-6 py-10 text-center space-y-3">
                   <p class="text-sm text-[#8E95A5]">
-                    No habits were active on this date.
+                    {props.habitFilter !== 'all' && targetHabits().length === 0
+                      ? 'No habits selected in filter.'
+                      : 'No habits were active on this date.'}
                   </p>
+                  <Show when={props.habitFilter !== 'all'}>
+                    <button
+                      type="button"
+                      onClick={() => props.onChangeHabitFilter('all')}
+                      class="h-9 px-3.5 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] transition-colors cursor-pointer"
+                    >
+                      Show All Habits
+                    </button>
+                  </Show>
                 </div>
               }
             >
@@ -840,7 +849,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                       };
                       return (
                         <li class="px-5 py-2.5 flex items-center gap-3">
-                          <span class="w-6 h-6 rounded-lg bg-[#22C55E]/20 border border-[#22C55E]/40 text-[#86EFAC] flex items-center justify-center shrink-0">
+                          <span class="w-6 h-6 rounded-lg bg-[#3B82F6]/20 border border-[#3B82F6]/40 text-[#93C5FD] flex items-center justify-center shrink-0">
                             <CheckIcon class="w-3.5 h-3.5" />
                           </span>
                           <div class="min-w-0 flex-1">

@@ -39,7 +39,7 @@ export function EntryView(props: EntryViewProps): JSX.Element {
             </div>
             <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-2">
               <div class="flex items-center gap-2.5 text-sm font-medium text-[#F5F7FA]">
-                <ShieldIcon class="w-4 h-4 text-[#22C55E]" />
+                <ShieldIcon class="w-4 h-4 text-[#60A5FA]" />
                 <span>Private App-Folder Sync</span>
               </div>
               <p class="text-xs text-[#8E95A5] leading-relaxed">
@@ -123,7 +123,7 @@ export function EntryView(props: EntryViewProps): JSX.Element {
             </div>
 
             <p class="text-xs text-[#8E95A5] leading-relaxed">
-              Guest mode never makes network requests. Google mode requests permission solely for the app&apos;s private Drive configuration folder.
+              Guest mode never makes network requests. Google mode uses your private Drive app folder for snapshots and can optionally manage a separate Habits Reminders calendar.
             </p>
           </div>
         </div>

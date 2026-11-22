@@ -7,6 +7,7 @@ import {
   DateRangeResolver,
   ResolvedDateRange,
 } from '../utils/date-range';
+import { ReminderPlanner } from '../utils/reminder-planner';
 import { HabitBadge } from './HabitBadge';
 import {
   CalendarIcon,
@@ -14,6 +15,7 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ClockIcon,
   CloseIcon,
   GlobeIcon,
   SearchIcon,
@@ -137,6 +139,283 @@ export function CustomSelect<T extends string | number>(
               );
             }}
           </For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+export interface MultiSelectQuickPreset<T extends string | number> {
+  label: string;
+  triggerLabel?: string;
+  values: T[];
+}
+
+interface CustomMultiSelectProps<T extends string | number> {
+  value: 'all' | T[];
+  options: SelectOption<T>[];
+  onChange: (value: 'all' | T[]) => void;
+  allLabel: string;
+  emptyLabel?: string;
+  selectedNoun?: { one: string; many: string };
+  quickPreset?: MultiSelectQuickPreset<T>;
+  align?: 'left' | 'right';
+  ariaLabel?: string;
+  class?: string;
+}
+
+export function CustomMultiSelect<T extends string | number>(
+  props: CustomMultiSelectProps<T>
+): JSX.Element {
+  const [open, setOpen] = createSignal(false);
+  let containerRef: HTMLDivElement | undefined;
+
+  const isAll = createMemo(() => {
+    if (props.value === 'all') return true;
+    if (props.options.length === 0) return false;
+    const set = new Set<T>(props.value);
+    return props.options.every((opt) => set.has(opt.value));
+  });
+
+  const selectedSet = createMemo(() => {
+    if (isAll()) {
+      return new Set<T>(props.options.map((opt) => opt.value));
+    }
+    return new Set<T>(props.value as T[]);
+  });
+
+  const selectedOptions = createMemo(() => {
+    const set = selectedSet();
+    return props.options.filter((opt) => set.has(opt.value));
+  });
+
+  const matchesQuickPreset = createMemo(() => {
+    const preset = props.quickPreset;
+    if (!preset || isAll()) return false;
+    const set = selectedSet();
+    if (set.size !== preset.values.length) return false;
+    return preset.values.every((v) => set.has(v));
+  });
+
+  const triggerText = createMemo(() => {
+    if (props.value === 'all' || (props.options.length > 0 && isAll())) {
+      return props.allLabel;
+    }
+    const picked = selectedOptions();
+    if (picked.length === 0) {
+      return props.emptyLabel ?? 'None selected';
+    }
+    if (picked.length === 1) {
+      return picked[0].label;
+    }
+    if (matchesQuickPreset() && props.quickPreset) {
+      return props.quickPreset.triggerLabel ?? props.quickPreset.label;
+    }
+    const noun = props.selectedNoun?.many ?? 'selected';
+    const preview = picked.map((o) => o.label).join(', ');
+    return `${picked.length} ${noun} · ${preview}`;
+  });
+
+  const triggerTitle = createMemo(() => {
+    if (isAll()) return props.allLabel;
+    const picked = selectedOptions();
+    if (picked.length === 0) return props.emptyLabel ?? 'None selected';
+    return picked.map((o) => o.label).join(', ');
+  });
+
+  const previewDots = createMemo(() => {
+    if (isAll()) return [];
+    const picked = selectedOptions();
+    if (picked.length === 0) return [];
+    return picked
+      .filter((o) => Boolean(o.dotColor))
+      .slice(0, 2)
+      .map((o) => o.dotColor!);
+  });
+
+  const toggleValue = (val: T) => {
+    const allValues = props.options.map((o) => o.value);
+    if (isAll()) {
+      props.onChange(allValues.filter((item) => item !== val));
+      return;
+    }
+    const current = new Set<T>(props.value as T[]);
+    if (current.has(val)) {
+      current.delete(val);
+    } else {
+      current.add(val);
+    }
+    const next = allValues.filter((item) => current.has(item));
+    if (next.length === allValues.length && allValues.length > 0) {
+      props.onChange('all');
+    } else {
+      props.onChange(next);
+    }
+  };
+
+  createEffect(() => {
+    if (!open()) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (containerRef && !containerRef.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    onCleanup(() => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    });
+  });
+
+  return (
+    <div ref={containerRef} class={`relative ${props.class ?? 'w-full sm:w-[232px]'}`}>
+      <button
+        type="button"
+        aria-label={props.ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open()}
+        title={triggerTitle()}
+        onClick={() => setOpen((v) => !v)}
+        class={`h-10 w-full rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium flex items-center justify-between gap-2 transition-colors whitespace-nowrap cursor-pointer ${
+          open()
+            ? 'border-[#3B82F6] text-[#F5F7FA]'
+            : 'border-white/[0.08] hover:border-white/20 text-[#F5F7FA]'
+        }`}
+      >
+        <span class="flex items-center gap-2 min-w-0 flex-1">
+          <Show when={previewDots().length > 0}>
+            <span class="inline-flex items-center gap-1 shrink-0">
+              <For each={previewDots()}>
+                {(dot) => <HabitBadge appearanceRaw={dot} size="xs" />}
+              </For>
+            </span>
+          </Show>
+          <span
+            class={`truncate ${
+              !isAll() && selectedOptions().length === 0 ? 'text-[#8E95A5]' : 'text-[#F5F7FA]'
+            }`}
+          >
+            {triggerText()}
+          </span>
+        </span>
+        <ChevronDownIcon
+          class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+            open() ? 'rotate-180 text-[#60A5FA]' : ''
+          }`}
+        />
+      </button>
+
+      <Show when={open()}>
+        <div
+          role="listbox"
+          aria-multiselectable="true"
+          aria-label={props.ariaLabel}
+          class={`absolute mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/70 p-1.5 z-50 ${
+            props.align === 'right' ? 'left-0 sm:left-auto sm:right-0' : 'left-0'
+          }`}
+        >
+          <div class="px-2 pt-1 pb-2 mb-1 border-b border-white/[0.06] flex items-center justify-between gap-2 text-[11px]">
+            <button
+              type="button"
+              onClick={() => props.onChange('all')}
+              class={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                isAll()
+                  ? 'bg-[#3B82F6]/15 text-[#60A5FA]'
+                  : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+              }`}
+            >
+              All
+            </button>
+
+            <div class="flex items-center gap-1">
+              <Show when={props.quickPreset}>
+                {(preset) => (
+                  <button
+                    type="button"
+                    onClick={() => props.onChange([...preset().values])}
+                    class={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                      matchesQuickPreset()
+                        ? 'bg-[#3B82F6]/15 text-[#60A5FA]'
+                        : 'text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    {preset().label}
+                  </button>
+                )}
+              </Show>
+              <Show when={selectedOptions().length > 0}>
+                <button
+                  type="button"
+                  onClick={() => props.onChange([])}
+                  class="px-2 py-1 rounded-lg font-medium text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA] transition-colors cursor-pointer"
+                >
+                  Clear
+                </button>
+              </Show>
+            </div>
+          </div>
+
+          <div class="max-h-64 overflow-y-auto space-y-0.5">
+            <Show
+              when={props.options.length > 0}
+              fallback={
+                <p class="px-3 py-3 text-xs text-[#8E95A5] text-center">
+                  No options available
+                </p>
+              }
+            >
+              <For each={props.options}>
+                {(option) => {
+                  const isChecked = () => selectedSet().has(option.value);
+                  return (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isChecked()}
+                      onClick={() => toggleValue(option.value)}
+                      class={`w-full min-h-[38px] px-2.5 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-xs transition-colors cursor-pointer ${
+                        isChecked()
+                          ? 'bg-[#3B82F6]/10 text-[#F5F7FA]'
+                          : 'text-[#9AA1B1] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      <span class="flex items-center gap-2.5 min-w-0 flex-1">
+                        <span
+                          class={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                            isChecked()
+                              ? 'bg-[#3B82F6] border-[#3B82F6] text-white'
+                              : 'bg-[#0A0B0E] border-white/[0.18] text-transparent'
+                          }`}
+                        >
+                          <CheckIcon class="w-3 h-3" />
+                        </span>
+                        <Show when={option.dotColor}>
+                          {(dot) => <HabitBadge appearanceRaw={dot()} size="xs" />}
+                        </Show>
+                        <span class="truncate font-medium">{option.label}</span>
+                      </span>
+                      <Show when={option.hint}>
+                        {(hint) => (
+                          <span class="text-[11px] font-mono tabular-nums text-[#6B7280] shrink-0">
+                            {hint()}
+                          </span>
+                        )}
+                      </Show>
+                    </button>
+                  );
+                }}
+              </For>
+            </Show>
+          </div>
         </div>
       </Show>
     </div>
@@ -429,6 +708,240 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
               </div>
             </Show>
           </div>
+          </div>
+        </Portal>
+      </Show>
+    </div>
+  );
+}
+
+interface CustomTimePickerProps {
+  id?: string;
+  value: string;
+  onChange: (value: string) => void;
+  ariaLabel?: string;
+}
+
+const HOURS_LIST = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES_LIST = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+const TIME_QUICK_PRESETS = ['09:00', '18:00', '20:00', '21:30'] as const;
+
+export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
+  const [open, setOpen] = createSignal(false);
+  const [coords, setCoords] = createSignal<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 268,
+  });
+  let containerRef: HTMLDivElement | undefined;
+  let popoverRef: HTMLDivElement | undefined;
+  let hoursColRef: HTMLDivElement | undefined;
+  let minutesColRef: HTMLDivElement | undefined;
+
+  const normalized = createMemo(() => ReminderPlanner.normalizeTime(props.value));
+  const selectedHour = createMemo(() => normalized().split(':')[0]);
+  const selectedMinute = createMemo(() => normalized().split(':')[1]);
+
+  const updatePosition = () => {
+    if (!containerRef) return;
+    const rect = containerRef.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const width = Math.min(276, vw - 24);
+    const measuredHeight = popoverRef?.getBoundingClientRect().height || 312;
+    const spaceAbove = rect.top - 12;
+    const spaceBelow = vh - rect.bottom - 12;
+    const openAbove = spaceAbove >= measuredHeight && spaceBelow < measuredHeight;
+
+    const rawTop = openAbove ? rect.top - measuredHeight - 8 : rect.bottom + 8;
+    const maxTop = Math.max(8, vh - measuredHeight - 8);
+    const top = Math.max(8, Math.min(rawTop, maxTop));
+    const left = Math.max(12, Math.min(rect.left, vw - width - 12));
+    setCoords({ top, left, width });
+  };
+
+  const scrollSelectedIntoView = () => {
+    const activeHour = hoursColRef?.querySelector<HTMLElement>('[data-active="true"]');
+    activeHour?.scrollIntoView({ block: 'center' });
+    const activeMinute = minutesColRef?.querySelector<HTMLElement>('[data-active="true"]');
+    activeMinute?.scrollIntoView({ block: 'center' });
+  };
+
+  createEffect(() => {
+    if (!open()) return;
+    updatePosition();
+    const rafId = window.requestAnimationFrame(() => {
+      updatePosition();
+      scrollSelectedIntoView();
+    });
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const targetNode = e.target as Node;
+      const inTrigger = containerRef?.contains(targetNode) ?? false;
+      const inPopover = popoverRef?.contains(targetNode) ?? false;
+      if (!inTrigger && !inPopover) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    const handleReposition = () => updatePosition();
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    onCleanup(() => {
+      window.cancelAnimationFrame(rafId);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    });
+  });
+
+  return (
+    <div ref={containerRef} class="relative">
+      <button
+        id={props.id}
+        type="button"
+        aria-label={props.ariaLabel ?? 'Reminder time'}
+        aria-haspopup="dialog"
+        aria-expanded={open()}
+        onClick={() => setOpen((v) => !v)}
+        class={`w-full h-10 rounded-xl bg-[#14161B] border px-3.5 text-sm font-mono tabular-nums flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${
+          open()
+            ? 'border-[#3B82F6] text-[#F5F7FA]'
+            : 'border-white/[0.1] hover:border-white/25 text-[#F5F7FA]'
+        }`}
+      >
+        <span class="flex items-center gap-2.5 min-w-0">
+          <ClockIcon class="w-4 h-4 text-[#60A5FA] shrink-0" />
+          <span>{normalized()}</span>
+        </span>
+        <ChevronDownIcon
+          class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+            open() ? 'rotate-180 text-[#60A5FA]' : ''
+          }`}
+        />
+      </button>
+
+      <Show when={open()}>
+        <Portal>
+          <div
+            ref={popoverRef}
+            role="dialog"
+            aria-label="Choose reminder time"
+            style={{
+              top: `${coords().top}px`,
+              left: `${coords().left}px`,
+              width: `${coords().width}px`,
+            }}
+            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-3.5 space-y-3 z-[70]"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-medium text-[#C8CDD8]">Pick time</span>
+              <span class="font-mono tabular-nums text-xs font-semibold text-[#60A5FA]">
+                {normalized()}
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div class="space-y-1">
+                <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280] text-center">
+                  Hour
+                </span>
+                <div
+                  ref={hoursColRef}
+                  class="h-44 overflow-y-auto rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5"
+                >
+                  <For each={HOURS_LIST}>
+                    {(hh) => {
+                      const active = () => selectedHour() === hh;
+                      return (
+                        <button
+                          type="button"
+                          data-active={active() ? 'true' : undefined}
+                          onClick={() => props.onChange(`${hh}:${selectedMinute()}`)}
+                          class={`w-full h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer ${
+                            active()
+                              ? 'bg-[#3B82F6] text-white font-semibold'
+                              : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                          }`}
+                        >
+                          {hh}
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
+
+              <div class="space-y-1">
+                <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280] text-center">
+                  Min
+                </span>
+                <div
+                  ref={minutesColRef}
+                  class="h-44 overflow-y-auto rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5"
+                >
+                  <For each={MINUTES_LIST}>
+                    {(mm) => {
+                      const active = () => selectedMinute() === mm;
+                      return (
+                        <button
+                          type="button"
+                          data-active={active() ? 'true' : undefined}
+                          onClick={() => props.onChange(`${selectedHour()}:${mm}`)}
+                          class={`w-full h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer ${
+                            active()
+                              ? 'bg-[#3B82F6] text-white font-semibold'
+                              : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                          }`}
+                        >
+                          {mm}
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-white/[0.08] flex items-center justify-between gap-1.5">
+              <div class="flex items-center gap-1 flex-wrap">
+                <For each={TIME_QUICK_PRESETS}>
+                  {(preset) => (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        props.onChange(preset);
+                        setOpen(false);
+                      }}
+                      class={`px-2 py-1 rounded-lg text-[11px] font-mono tabular-nums transition-colors cursor-pointer ${
+                        normalized() === preset
+                          ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
+                          : 'text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  )}
+                </For>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                class="px-2.5 py-1 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-[11px] font-medium text-white transition-colors cursor-pointer shrink-0"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </Portal>
       </Show>

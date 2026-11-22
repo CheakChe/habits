@@ -7,6 +7,7 @@ import { TodayBoard } from '../utils/today-board';
 import { HabitBadge } from './HabitBadge';
 import {
   AlertIcon,
+  BellIcon,
   CheckIcon,
   ChevronDownIcon,
   NoteIcon,
@@ -26,6 +27,9 @@ interface TodayViewProps {
   onScheduleTaskToday: (task: Task) => Promise<void>;
   onOpenNewHabit: () => void;
   onOpenEditTask: (task: Task) => void;
+  onOpenReminders?: () => void;
+  calendarSyncNeeded?: boolean;
+  calendarEnabled?: boolean;
 }
 
 export function TodayView(props: TodayViewProps): JSX.Element {
@@ -139,14 +143,38 @@ export function TodayView(props: TodayViewProps): JSX.Element {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => props.onOpenNewHabit()}
-          class="h-10 px-4 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer self-start sm:self-auto"
-        >
-          <PlusIcon class="w-4 h-4 text-[#60A5FA]" />
-          <span>New Habit</span>
-        </button>
+        <div class="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+          <Show when={props.onOpenReminders}>
+            <button
+              type="button"
+              onClick={() => props.onOpenReminders?.()}
+              class="h-10 px-3.5 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-sm font-medium text-[#C8CDD8] hover:text-[#F5F7FA] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <BellIcon
+                class={`w-4 h-4 ${
+                  props.calendarSyncNeeded
+                    ? 'text-[#F59E0B]'
+                    : props.calendarEnabled
+                      ? 'text-[#60A5FA]'
+                      : 'text-[#8E95A5]'
+                }`}
+              />
+              <span>Reminders</span>
+              <Show when={props.calendarSyncNeeded}>
+                <span class="text-xs font-mono text-[#F59E0B]">· Sync</span>
+              </Show>
+            </button>
+          </Show>
+
+          <button
+            type="button"
+            onClick={() => props.onOpenNewHabit()}
+            class="h-10 px-4 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <PlusIcon class="w-4 h-4 text-[#60A5FA]" />
+            <span>New Habit</span>
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -220,7 +248,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                   const streakToneClass = () => {
                     const m = milestone();
                     if (m === 100) return 'text-[#FBBF24]';
-                    if (m === 30) return 'text-[#4ADE80]';
+                    if (m === 30) return 'text-[#93C5FD]';
                     if (m === 7) return 'text-[#60A5FA]';
                     return '';
                   };
@@ -293,7 +321,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               <span aria-hidden="true">·</span>
                               <span
                                 class={`font-mono tabular-nums ${
-                                  weekly().isComplete ? 'text-[#4ADE80]' : ''
+                                  weekly().isComplete ? 'text-[#60A5FA]' : ''
                                 }`}
                               >
                                 {weekly().isComplete

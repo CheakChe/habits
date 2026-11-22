@@ -1,6 +1,6 @@
 # Habits
 
-Offline-first habit and task tracker built with SolidJS, Tailwind CSS, IndexedDB, and optional Google Drive (`drive.appdata`) binary snapshot sync.
+Offline-first habit and task tracker built with SolidJS, Tailwind CSS, IndexedDB, optional Google Drive (`drive.appdata`) binary snapshot sync, and optional Google Calendar (`calendar.app.created`) smart reminders.
 
 ## Local Development
 
@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-For Google Sign-In and Drive sync locally, copy `.env.example` to `.env.local` and fill in your Firebase Web App config (or provide `FIREBASE_CONFIG_JSON`). Without Firebase config, **Guest Mode** (IndexedDB) works fully offline.
+For Google Sign-In, Drive sync, and Calendar reminders locally, copy `.env.example` to `.env.local` and set `VITE_GOOGLE_OAUTH_CLIENT_ID` (or provide `FIREBASE_CONFIG_JSON` with `oAuthClientId`). Without OAuth config, **Guest Mode** (IndexedDB) works fully offline.
 
 ## Deploying to GitHub Pages
 
@@ -19,15 +19,16 @@ This repository includes `.github/workflows/deploy.yml` configured with `base: '
    - In your repository on GitHub, open **Settings → Pages**.
    - Under **Build and deployment → Source**, choose **GitHub Actions**.
 
-2. **Add Firebase Web Config (optional, required only for Google Drive sync)**
-   - In GitHub **Settings → Secrets and variables → Actions**, add either:
-     - `FIREBASE_CONFIG_JSON` (full JSON from Firebase Project Settings → Your apps → Web app), **or**
-     - Individual variables: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID`.
-   - You may store them in either **Secrets** or **Variables**.
+2. **Add Google OAuth Client ID (optional, required only for Google Drive & Calendar)**
+   - In GitHub **Settings → Secrets and variables → Actions**, add:
+     - `VITE_GOOGLE_OAUTH_CLIENT_ID` (Web application OAuth 2.0 Client ID from Google Cloud Console).
+   - You may store it in either **Secrets** or **Variables** (Variables is fine since a Web OAuth Client ID is public).
+   - Legacy `FIREBASE_CONFIG_JSON` / `VITE_FIREBASE_*` variables remain supported as an optional fallback.
 
-3. **Authorize your GitHub Pages domain in Firebase**
-   - In **Firebase Console → Authentication → Settings → Authorized domains**, add `<your-username>.github.io` (just the hostname, without `https://` or the `/<repo>` path).
-   - Ensure the Google sign-in provider is enabled in Firebase Authentication and your OAuth consent screen allows your users.
+3. **Configure Google Cloud Console**
+   - Enable **Google Drive API** and **Google Calendar API** in **APIs & Services → Library**.
+   - In **Google Auth Platform / OAuth consent screen**: add scopes `https://www.googleapis.com/auth/drive.appdata` and `https://www.googleapis.com/auth/calendar.app.created` (and add your Google email to **Test users** while publishing status is *Testing*).
+   - In **Clients → your Web OAuth Client → Authorized JavaScript origins**, add `https://<your-username>.github.io` (origin only, without `/<repo>` path) and `http://localhost:3000` for local dev.
 
 4. **Trigger deployment**
    - Push to `main` or `master`, or run **Actions → Deploy Habits to GitHub Pages → Run workflow**.

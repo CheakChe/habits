@@ -1,8 +1,14 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
-import { TaskFilterMode, TaskSortMode, TodayBoard } from '../utils/today-board';
-import { CustomSelect } from './CustomControls';
+import {
+  OPEN_TASK_BUCKETS,
+  TaskSortMode,
+  TaskStatusBucket,
+  TaskStatusFilterSelection,
+  TodayBoard,
+} from '../utils/today-board';
+import { CustomMultiSelect, CustomSelect, SelectOption } from './CustomControls';
 import {
   AlertIcon,
   ArchiveIcon,
@@ -18,6 +24,10 @@ import {
 interface TasksViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
+  statusFilter: TaskStatusFilterSelection;
+  onChangeStatusFilter: (filter: TaskStatusFilterSelection) => void;
+  sortMode: TaskSortMode;
+  onChangeSortMode: (sort: TaskSortMode) => void;
   onCreateTask: (options?: { dueDay?: number | null }) => void;
   onEditTask: (task: Task) => void;
   onToggleTask: (task: Task) => Promise<void>;
@@ -25,74 +35,111 @@ interface TasksViewProps {
   onDeleteTask: (taskId: number) => Promise<void>;
 }
 
-const FILTER_TABS: { id: TaskFilterMode; label: string }[] = [
-  { id: 'all', label: 'All Open' },
-  { id: 'today', label: 'Today' },
-  { id: 'overdue', label: 'Overdue' },
-  { id: 'nodate', label: 'No Date' },
-  { id: 'completed', label: 'Completed' },
-  { id: 'not_done', label: 'Not Done' },
-  { id: 'archived', label: 'Archived' },
-];
-
 export function TasksView(props: TasksViewProps): JSX.Element {
-  const [filter, setFilter] = createSignal<TaskFilterMode>('all');
   const [searchQuery, setSearchQuery] = createSignal('');
-  const [sortMode, setSortMode] = createSignal<TaskSortMode>('default');
 
   const visibleTasks = createMemo(() =>
     props.snapshot.tasks.filter((task) => task.deletedAt === null)
   );
 
   const filtered = createMemo(() =>
-    TodayBoard.filterTasks(
+    TodayBoard.filterTasksByStatuses(
       props.snapshot.tasks,
       props.todayDay,
-      filter(),
+      props.statusFilter,
       searchQuery(),
-      sortMode()
+      props.sortMode
     )
   );
 
+  const bucketCounts = createMemo(() => {
+    const counts: Record<TaskStatusBucket, number> = {
+      overdue: 0,
+      today: 0,
+      upcoming: 0,
+      nodate: 0,
+      completed: 0,
+      not_done: 0,
+      archived: 0,
+    };
+    for (const task of visibleTasks()) {
+      const bucket = TodayBoard.getTaskBucket(task, props.todayDay);
+      counts[bucket] += 1;
+    }
+    return counts;
+  });
+
   const openCount = createMemo(
-    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'open').length
-  );
-
-  const overdueCount = createMemo(
     () =>
-      visibleTasks().filter(
-        (t) =>
-          TodayBoard.getStatus(t) === 'open' &&
-          t.dueDay !== null &&
-          t.dueDay < props.todayDay
-      ).length
+      bucketCounts().overdue +
+      bucketCounts().today +
+      bucketCounts().upcoming +
+      bucketCounts().nodate
   );
+  const overdueCount = createMemo(() => bucketCounts().overdue);
+  const doneCount = createMemo(() => bucketCounts().completed);
+  const notDoneCount = createMemo(() => bucketCounts().not_done);
+  const archivedCount = createMemo(() => bucketCounts().archived);
 
-  const noDateCount = createMemo(
-    () =>
-      visibleTasks().filter(
-        (t) => TodayBoard.getStatus(t) === 'open' && t.dueDay === null
-      ).length
-  );
-
-  const doneCount = createMemo(
-    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'done').length
-  );
-
-  const notDoneCount = createMemo(
-    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'not_done').length
-  );
-
-  const archivedCount = createMemo(
-    () => visibleTasks().filter((t) => TodayBoard.getStatus(t) === 'archived').length
-  );
+  const statusOptions = createMemo((): SelectOption<TaskStatusBucket>[] => {
+    const c = bucketCounts();
+    return [
+      {
+        value: 'overdue',
+        label: 'Overdue',
+        hint: c.overdue > 0 ? String(c.overdue) : undefined,
+      },
+      {
+        value: 'today',
+        label: 'Today',
+        hint: c.today > 0 ? String(c.today) : undefined,
+      },
+      {
+        value: 'upcoming',
+        label: 'Upcoming',
+        hint: c.upcoming > 0 ? String(c.upcoming) : undefined,
+      },
+      {
+        value: 'nodate',
+        label: 'No Date',
+        hint: c.nodate > 0 ? String(c.nodate) : undefined,
+      },
+      {
+        value: 'completed',
+        label: 'Completed',
+        hint: c.completed > 0 ? String(c.completed) : undefined,
+      },
+      {
+        value: 'not_done',
+        label: 'Not Done',
+        hint: c.not_done > 0 ? String(c.not_done) : undefined,
+      },
+      {
+        value: 'archived',
+        label: 'Archived',
+        hint: c.archived > 0 ? String(c.archived) : undefined,
+      },
+    ];
+  });
 
   const handleOpenCreate = () => {
-    props.onCreateTask(filter() === 'nodate' ? { dueDay: null } : undefined);
+    const sel = props.statusFilter;
+    if (Array.isArray(sel) && sel.length === 1 && sel[0] === 'nodate') {
+      props.onCreateTask({ dueDay: null });
+      return;
+    }
+    props.onCreateTask(undefined);
   };
 
-  const isClosedFilter = () =>
-    filter() === 'completed' || filter() === 'not_done' || filter() === 'archived';
+  const isEmptySelection = () =>
+    Array.isArray(props.statusFilter) && props.statusFilter.length === 0;
+
+  const isClosedOnlySelection = () =>
+    Array.isArray(props.statusFilter) &&
+    props.statusFilter.length > 0 &&
+    props.statusFilter.every(
+      (b) => b === 'completed' || b === 'not_done' || b === 'archived'
+    );
 
   return (
     <div class="space-y-6">
@@ -134,34 +181,50 @@ export function TasksView(props: TasksViewProps): JSX.Element {
         </button>
       </div>
 
-      {/* Search, Sort & Status Filters */}
-      <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1">
-          <div class="relative flex-1 max-w-md">
-            <SearchIcon class="w-4 h-4 text-[#6B7280] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="search"
-              value={searchQuery()}
-              onInput={(e) => setSearchQuery(e.currentTarget.value)}
-              placeholder="Search tasks or notes..."
-              aria-label="Search tasks or notes"
-              class="w-full h-10 rounded-xl bg-[#14161B] border border-white/[0.08] pl-10 pr-9 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
-            />
-            <Show when={searchQuery().length > 0}>
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-                class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
-              >
-                <CloseIcon class="w-3.5 h-3.5" />
-              </button>
-            </Show>
-          </div>
+      {/* Search, Status Multi-Select & Sort */}
+      <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+        <div class="relative flex-1 max-w-md">
+          <SearchIcon class="w-4 h-4 text-[#6B7280] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="search"
+            value={searchQuery()}
+            onInput={(e) => setSearchQuery(e.currentTarget.value)}
+            placeholder="Search tasks or notes..."
+            aria-label="Search tasks or notes"
+            class="w-full h-10 rounded-xl bg-[#14161B] border border-white/[0.08] pl-10 pr-9 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+          />
+          <Show when={searchQuery().length > 0}>
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
+            >
+              <CloseIcon class="w-3.5 h-3.5" />
+            </button>
+          </Show>
+        </div>
+
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+          <CustomMultiSelect<TaskStatusBucket>
+            ariaLabel="Filter tasks by status"
+            value={props.statusFilter}
+            options={statusOptions()}
+            allLabel={`All Statuses (${visibleTasks().length})`}
+            emptyLabel="No statuses selected"
+            selectedNoun={{ one: 'status', many: 'statuses' }}
+            quickPreset={{
+              label: 'Open Only',
+              triggerLabel: `Open Tasks (${openCount()})`,
+              values: OPEN_TASK_BUCKETS,
+            }}
+            align="right"
+            onChange={(val) => props.onChangeStatusFilter(val)}
+          />
 
           <CustomSelect
             ariaLabel="Sort tasks"
-            value={sortMode()}
+            value={props.sortMode}
             options={[
               { value: 'default', label: 'Default Order' },
               { value: 'due_asc', label: 'Due: Earliest' },
@@ -169,46 +232,8 @@ export function TasksView(props: TasksViewProps): JSX.Element {
               { value: 'newest', label: 'Newest First' },
               { value: 'title', label: 'Title A–Z' },
             ]}
-            onChange={(val) => setSortMode(val as TaskSortMode)}
+            onChange={(val) => props.onChangeSortMode(val as TaskSortMode)}
           />
-        </div>
-
-        <div class="flex items-center gap-1 p-1 bg-[#14161B] border border-white/[0.08] rounded-xl overflow-x-auto max-w-full">
-          <For each={FILTER_TABS}>
-            {(tab) => (
-              <button
-                type="button"
-                onClick={() => setFilter(tab.id)}
-                class={`h-8 px-3 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  filter() === tab.id
-                    ? 'bg-[#1C1F26] text-[#F5F7FA]'
-                    : 'text-[#8E95A5] hover:text-[#F5F7FA]'
-                }`}
-              >
-                {tab.label}
-                <Show when={tab.id === 'overdue' && overdueCount() > 0}>
-                  <span class="ml-1.5 font-mono tabular-nums text-[#F59E0B]">
-                    {overdueCount()}
-                  </span>
-                </Show>
-                <Show when={tab.id === 'nodate' && noDateCount() > 0}>
-                  <span class="ml-1.5 font-mono tabular-nums text-[#8E95A5]">
-                    {noDateCount()}
-                  </span>
-                </Show>
-                <Show when={tab.id === 'not_done' && notDoneCount() > 0}>
-                  <span class="ml-1.5 font-mono tabular-nums text-[#FCA5A5]">
-                    {notDoneCount()}
-                  </span>
-                </Show>
-                <Show when={tab.id === 'archived' && archivedCount() > 0}>
-                  <span class="ml-1.5 font-mono tabular-nums text-[#8E95A5]">
-                    {archivedCount()}
-                  </span>
-                </Show>
-              </button>
-            )}
-          </For>
         </div>
       </div>
 
@@ -219,36 +244,59 @@ export function TasksView(props: TasksViewProps): JSX.Element {
             <p class="text-sm text-[#8E95A5]">
               {searchQuery().trim().length > 0
                 ? 'No tasks match your search.'
-                : filter() === 'completed'
-                  ? 'No completed tasks yet.'
-                  : filter() === 'not_done'
-                    ? 'No tasks marked as Not Done.'
-                    : filter() === 'archived'
-                      ? 'No archived tasks.'
-                      : 'No tasks match this filter.'}
+                : isEmptySelection()
+                  ? 'No task statuses selected.'
+                  : 'No tasks match the selected statuses.'}
             </p>
-            <Show
-              when={searchQuery().trim().length === 0 && !isClosedFilter()}
-              fallback={
-                <Show when={searchQuery().trim().length > 0}>
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    class="h-10 px-4 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] transition-colors cursor-pointer"
-                  >
-                    Clear Search
-                  </button>
-                </Show>
-              }
-            >
-              <button
-                type="button"
-                onClick={handleOpenCreate}
-                class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer"
+            <div class="flex flex-wrap items-center justify-center gap-2">
+              <Show when={searchQuery().trim().length > 0}>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  class="h-10 px-4 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] transition-colors cursor-pointer"
+                >
+                  Clear Search
+                </button>
+              </Show>
+              <Show when={searchQuery().trim().length === 0 && isEmptySelection()}>
+                <button
+                  type="button"
+                  onClick={() => props.onChangeStatusFilter([...OPEN_TASK_BUCKETS])}
+                  class="h-10 px-4 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] transition-colors cursor-pointer"
+                >
+                  Show Open Tasks
+                </button>
+              </Show>
+              <Show
+                when={
+                  searchQuery().trim().length === 0 &&
+                  (isClosedOnlySelection() || isEmptySelection())
+                }
               >
-                Create Task
-              </button>
-            </Show>
+                <button
+                  type="button"
+                  onClick={() => props.onChangeStatusFilter('all')}
+                  class="h-10 px-4 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] transition-colors cursor-pointer"
+                >
+                  Show All Statuses
+                </button>
+              </Show>
+              <Show
+                when={
+                  searchQuery().trim().length === 0 &&
+                  !isEmptySelection() &&
+                  !isClosedOnlySelection()
+                }
+              >
+                <button
+                  type="button"
+                  onClick={handleOpenCreate}
+                  class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer"
+                >
+                  Create Task
+                </button>
+              </Show>
+            </div>
           </div>
         }
       >
@@ -301,7 +349,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                           }`}
                           class={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
                             status() === 'done'
-                              ? 'bg-[#22C55E] border-transparent text-white'
+                              ? 'bg-[#3B82F6] border-transparent text-white'
                               : isOverdue()
                                 ? 'bg-[#0A0B0E] border-[#EF4444]/40 hover:border-[#EF4444] text-transparent'
                                 : 'bg-[#0A0B0E] border-white/[0.12] hover:border-white/30 text-transparent'

@@ -1,4 +1,5 @@
 import { For, JSX, Show, createEffect, createSignal } from 'solid-js';
+import { CalendarSyncPlan } from '../sync/calendar-reminder-service';
 import {
   DriveRevisionInspectResult,
   DriveRevisionMeta,
@@ -7,6 +8,11 @@ import {
 } from '../sync/drive-sync-service';
 import { Habit, SessionMode, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import {
+  ReminderPlanner,
+  ReminderPreferences,
+  TodayPendingSummary,
+} from '../utils/reminder-planner';
 import { TodayBoard } from '../utils/today-board';
 import {
   HABIT_EMOJIS,
@@ -14,10 +20,12 @@ import {
   HabitAppearance,
   HabitBadge as HabitBadgeType,
 } from '../utils/habit-appearance';
-import { DatePicker } from './CustomControls';
+import { CustomTimePicker, DatePicker } from './CustomControls';
 import { HabitBadge, HabitIconSvg } from './HabitBadge';
 import {
   ArchiveIcon,
+  BellIcon,
+  CalendarIcon,
   CheckIcon,
   CloseIcon,
   CloudSyncIcon,
@@ -27,6 +35,7 @@ import {
   RepeatIcon,
   RestoreIcon,
   SwitchAccountIcon,
+  TrashIcon,
   UploadIcon,
 } from './Icons';
 import { PWAInstallButton } from './PwaControls';
@@ -771,7 +780,7 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
                         }
                         switch (opt.value) {
                           case 'done':
-                            return 'bg-[#22C55E]/15 border-[#22C55E]/50 text-[#86EFAC]';
+                            return 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#93C5FD]';
                           case 'not_done':
                             return 'bg-[#EF4444]/15 border-[#EF4444]/50 text-[#FCA5A5]';
                           case 'archived':
@@ -945,12 +954,14 @@ interface AccountModalProps {
   open: boolean;
   mode: SessionMode;
   hasGoogleToken: boolean;
+  googleEmail: string | null;
   onClose: () => void;
   onConnectGoogle: () => Promise<void>;
   onSwitchToEntry: () => Promise<void>;
   onExportBackup: () => Promise<{ filename: string; bytes: Uint8Array }>;
   onImportBackup: (bytes: Uint8Array) => Promise<void>;
   onOpenRevisions?: () => Promise<void>;
+  onOpenReminders?: () => void;
 }
 
 export function AccountModal(props: AccountModalProps): JSX.Element {
@@ -1059,13 +1070,18 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
             <DriveIcon class="w-5 h-5 text-[#60A5FA] shrink-0 mt-0.5" />
             <div class="min-w-0 flex-1 space-y-1">
               <p class="text-sm font-medium text-[#F5F7FA]">
-                {props.mode === 'google' ? 'Google Drive Sync Mode' : 'Local Guest Mode'}
+                {props.mode === 'google' ? 'Google Drive & Calendar Mode' : 'Local Guest Mode'}
               </p>
+              <Show when={props.mode === 'google' && props.googleEmail}>
+                <p class="text-xs font-mono text-[#60A5FA] break-anywhere">
+                  {props.googleEmail}
+                </p>
+              </Show>
               <p class="text-xs text-[#8E95A5] leading-relaxed">
                 {props.mode === 'google'
                   ? props.hasGoogleToken
-                    ? 'Connected to Google Drive app data storage. Local edits stay in IndexedDB until you sync.'
-                    : 'Local IndexedDB is active. Reconnect Google Drive whenever you want to sync snapshots.'
+                    ? 'Connected to Google Drive and Calendar. Local edits stay in IndexedDB until you sync.'
+                    : 'Local IndexedDB is active. Reconnect Google whenever you want to sync Drive or Calendar reminders.'
                   : 'All habits, check-ins, notes, and tasks are stored solely in your browser IndexedDB.'}
               </p>
             </div>
@@ -1103,7 +1119,7 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
                 disabled={busy()}
                 class="h-10 px-3 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
               >
-                <UploadIcon class="w-3.5 h-3.5 text-[#22C55E]" />
+                <UploadIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
                 <span>Import .bin</span>
               </button>
               <input
@@ -1124,7 +1140,22 @@ export function AccountModal(props: AccountModalProps): JSX.Element {
                 disabled={busy()}
                 class="w-full h-11 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer disabled:opacity-50"
               >
-                {busy() ? 'Connecting...' : 'Reconnect Google Drive'}
+                {busy()
+                  ? 'Connecting...'
+                  : props.googleEmail
+                    ? `Reconnect (${props.googleEmail})`
+                    : 'Reconnect Google Account'}
+              </button>
+            </Show>
+            <Show when={props.onOpenReminders}>
+              <button
+                type="button"
+                onClick={() => props.onOpenReminders?.()}
+                disabled={busy()}
+                class="w-full h-11 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-sm font-medium text-[#F5F7FA] flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <BellIcon class="w-4 h-4 text-[#60A5FA]" />
+                <span>Reminders &amp; App Badge</span>
               </button>
             </Show>
             <Show when={props.mode === 'google' && props.onOpenRevisions}>
@@ -1277,7 +1308,7 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
                                   {formatRevisionTime(rev.modifiedTime)}
                                 </span>
                                 <Show when={isCurrent()}>
-                                  <span class="px-1.5 py-0.5 rounded-md bg-[#22C55E]/15 text-[10px] font-medium text-[#86EFAC] shrink-0">
+                                  <span class="px-1.5 py-0.5 rounded-md bg-[#3B82F6]/15 text-[10px] font-medium text-[#93C5FD] shrink-0">
                                     Current
                                   </span>
                                 </Show>
@@ -1399,6 +1430,395 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
               type="button"
               onClick={() => props.onClose()}
               disabled={props.restoring}
+              class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </Show>
+  );
+}
+
+interface RemindersModalProps {
+  open: boolean;
+  mode: SessionMode;
+  hasGoogleToken: boolean;
+  googleEmail: string | null;
+  prefs: ReminderPreferences;
+  pendingToday: TodayPendingSummary;
+  trackerTimeZone: string;
+  calendarSyncNeeded: boolean;
+  busy: boolean;
+  error: string | null;
+  pendingPlan: CalendarSyncPlan | null;
+  confirmDeleteOpen: boolean;
+  onClose: () => void;
+  onToggleBadge: (enabled: boolean) => void;
+  onToggleCalendar: (enabled: boolean) => void;
+  onChangeTime: (time: string) => void;
+  onChangeHorizon: (days: number) => void;
+  onPrepareCalendarSync: () => Promise<void>;
+  onConfirmCalendarSync: () => Promise<void>;
+  onCancelCalendarSync: () => void;
+  onRequestDeleteCalendar: () => void;
+  onConfirmDeleteCalendar: () => Promise<void>;
+  onCancelDeleteCalendar: () => void;
+}
+
+const HORIZON_OPTIONS = [
+  { days: 1, label: 'Today only' },
+  { days: 3, label: '3 days' },
+  { days: 7, label: '7 days' },
+];
+
+export function RemindersModal(props: RemindersModalProps): JSX.Element {
+  const badgeSupported = ReminderPlanner.isAppBadgeSupported();
+  const resolvedTz = () => ReminderPlanner.resolveCalendarTimeZone(props.trackerTimeZone);
+
+  return (
+    <Show when={props.open}>
+      <div
+        class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reminders-modal-title"
+      >
+        <div class="w-full sm:max-w-lg max-h-[90vh] flex flex-col rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-5 sm:p-6 space-y-4">
+          <div class="flex items-start justify-between gap-3 shrink-0">
+            <div class="flex items-start gap-3 min-w-0 flex-1">
+              <div class="w-9 h-9 rounded-xl bg-[#3B82F6]/15 border border-[#3B82F6]/30 flex items-center justify-center text-[#60A5FA] shrink-0 mt-0.5">
+                <BellIcon class="w-4 h-4" />
+              </div>
+              <div class="min-w-0 flex-1 space-y-0.5">
+                <h2
+                  id="reminders-modal-title"
+                  class="font-display text-lg font-semibold text-[#F5F7FA]"
+                >
+                  Reminders &amp; App Badge
+                </h2>
+                <p class="text-xs text-[#8E95A5]">
+                  Show remaining items on the app icon and push reminders via a separate Habits Reminders Google Calendar.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => props.onClose()}
+              disabled={props.busy}
+              aria-label="Close modal"
+              class="min-h-[40px] min-w-[40px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <CloseIcon class="w-4 h-4" />
+            </button>
+          </div>
+
+          <Show when={props.error}>
+            {(msg) => (
+              <div class="rounded-xl bg-[#EF4444]/10 border border-[#EF4444]/25 px-3.5 py-2.5 text-xs text-[#FCA5A5] shrink-0 break-anywhere">
+                {msg()}
+              </div>
+            )}
+          </Show>
+
+          <div class="overflow-y-auto space-y-4 pr-1 flex-1 min-h-0">
+            {/* App Icon Badge Section */}
+            <section class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-4 space-y-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1 space-y-1">
+                  <p class="text-sm font-medium text-[#F5F7FA]">PWA Icon Badge</p>
+                  <p class="text-xs text-[#8E95A5]">
+                    Displays unfinished habits and open tasks due today/overdue directly on your installed app icon.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={props.prefs.badgeEnabled}
+                  onClick={() => props.onToggleBadge(!props.prefs.badgeEnabled)}
+                  class={`h-8 px-3 rounded-xl border text-xs font-medium transition-colors cursor-pointer shrink-0 ${
+                    props.prefs.badgeEnabled
+                      ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#93C5FD]'
+                      : 'bg-[#14161B] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                  }`}
+                >
+                  {props.prefs.badgeEnabled ? 'On' : 'Off'}
+                </button>
+              </div>
+
+              <div class="pt-2 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span class="text-[#8E95A5]">Current pending today:</span>
+                <span class="font-mono tabular-nums font-medium text-[#F5F7FA]">
+                  {props.pendingToday.totalPendingCount === 0
+                    ? '0 (All clear)'
+                    : `${props.pendingToday.totalPendingCount} (${props.pendingToday.unfinishedHabitsCount} habits · ${props.pendingToday.openTasksCount} tasks)`}
+                </span>
+              </div>
+
+              <Show when={!badgeSupported}>
+                <p class="text-[11px] text-[#6B7280]">
+                  Your current browser view does not expose App Badging; install Habits as a standalone PWA on Android, iOS 16.4+, Windows, or macOS to see the icon counter.
+                </p>
+              </Show>
+            </section>
+
+            {/* Google Calendar Smart Push Section */}
+            <section class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-4 space-y-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 flex-1 space-y-1">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <CalendarIcon class="w-4 h-4 text-[#60A5FA] shrink-0" />
+                    <p class="text-sm font-medium text-[#F5F7FA]">
+                      Google Calendar Smart Push
+                    </p>
+                  </div>
+                  <p class="text-xs text-[#8E95A5]">
+                    Creates a dedicated <strong class="text-[#C8CDD8]">Habits Reminders</strong> secondary calendar (never touches your personal calendars) and clears completed days so you are not notified when everything is done.
+                  </p>
+                </div>
+                <Show when={props.mode === 'google'}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={props.prefs.calendarEnabled}
+                    onClick={() => props.onToggleCalendar(!props.prefs.calendarEnabled)}
+                    disabled={props.busy}
+                    class={`h-8 px-3 rounded-xl border text-xs font-medium transition-colors cursor-pointer shrink-0 disabled:opacity-50 ${
+                      props.prefs.calendarEnabled
+                        ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#93C5FD]'
+                        : 'bg-[#14161B] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                    }`}
+                  >
+                    {props.prefs.calendarEnabled ? 'On' : 'Off'}
+                  </button>
+                </Show>
+              </div>
+
+              <Show
+                when={props.mode === 'google'}
+                fallback={
+                  <div class="rounded-xl bg-[#14161B] border border-white/[0.08] p-3 text-xs text-[#8E95A5]">
+                    Calendar Push is available in Google Sign-In mode. Local Guest mode uses the PWA Icon Badge above without network requests.
+                  </div>
+                }
+              >
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div class="space-y-1.5">
+                    <label
+                      for="reminder-time-input"
+                      class="block text-xs font-medium text-[#9AA1B1]"
+                    >
+                      Reminder time
+                    </label>
+                    <CustomTimePicker
+                      id="reminder-time-input"
+                      value={props.prefs.reminderTime}
+                      onChange={(val) => props.onChangeTime(val)}
+                      ariaLabel="Reminder time"
+                    />
+                  </div>
+
+                  <div class="space-y-1.5">
+                    <span class="block text-xs font-medium text-[#9AA1B1]">
+                      Schedule window
+                    </span>
+                    <div class="grid grid-cols-3 gap-1.5">
+                      <For each={HORIZON_OPTIONS}>
+                        {(opt) => {
+                          const active = () => props.prefs.horizonDays === opt.days;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => props.onChangeHorizon(opt.days)}
+                              aria-pressed={active()}
+                              class={`h-10 px-2 rounded-xl border text-[11px] font-medium transition-colors cursor-pointer ${
+                                active()
+                                  ? 'bg-[#3B82F6]/15 border-[#3B82F6]/60 text-[#F5F7FA]'
+                                  : 'bg-[#14161B] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        }}
+                      </For>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="text-[11px] text-[#8E95A5]">
+                  Schedule window controls how many upcoming days of reminders are pre-created in Calendar (cleared automatically once today is completed).
+                </p>
+
+                <div class="rounded-xl bg-[#14161B] border border-white/[0.06] p-3 space-y-1 text-xs">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-[#8E95A5]">Calendar timezone</span>
+                    <span class="font-mono text-[#F5F7FA] break-anywhere">{resolvedTz()}</span>
+                  </div>
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-[#8E95A5]">Tonight&apos;s reminder</span>
+                    <span
+                      class={`font-mono ${
+                        props.pendingToday.totalPendingCount === 0
+                          ? 'text-[#60A5FA]'
+                          : 'text-[#F5F7FA]'
+                      }`}
+                    >
+                      {props.pendingToday.totalPendingCount === 0
+                        ? 'Cleared (all done today)'
+                        : `${props.prefs.reminderTime} · ${props.pendingToday.totalPendingCount} pending`}
+                    </span>
+                  </div>
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-[#8E95A5]">Calendar status</span>
+                    <span
+                      class={`font-mono ${
+                        props.calendarSyncNeeded
+                          ? 'text-[#F59E0B]'
+                          : props.prefs.calendarId
+                            ? 'text-[#60A5FA]'
+                            : 'text-[#8E95A5]'
+                      }`}
+                    >
+                      {!props.prefs.calendarId
+                        ? 'Not created yet'
+                        : props.calendarSyncNeeded
+                          ? 'Update needed'
+                          : 'Synced'}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void props.onPrepareCalendarSync()}
+                    disabled={props.busy}
+                    class="h-10 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <CalendarIcon class="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {props.busy
+                        ? 'Checking Calendar...'
+                        : props.hasGoogleToken
+                          ? 'Review & Sync Calendar'
+                          : props.googleEmail
+                            ? `Connect (${props.googleEmail}) & Review`
+                            : 'Connect Google & Review'}
+                    </span>
+                  </button>
+
+                  <Show when={props.prefs.calendarId}>
+                    <button
+                      type="button"
+                      onClick={() => props.onRequestDeleteCalendar()}
+                      disabled={props.busy}
+                      class="h-10 px-3 rounded-xl bg-[#14161B] hover:bg-[#EF4444]/10 border border-white/[0.08] hover:border-[#EF4444]/40 text-xs font-medium text-[#FCA5A5] inline-flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <TrashIcon class="w-3.5 h-3.5 shrink-0" />
+                      <span>Delete Calendar</span>
+                    </button>
+                  </Show>
+                </div>
+
+                {/* Explicit User Confirmation Dialog for Calendar Updates */}
+                <Show when={props.pendingPlan}>
+                  {(plan) => (
+                    <div class="rounded-xl bg-[#182030] border border-[#3B82F6]/45 p-4 space-y-3">
+                      <div class="space-y-1">
+                        <p class="text-xs font-semibold text-[#F5F7FA]">
+                          Confirm Google Calendar Changes
+                        </p>
+                        <p class="text-xs text-[#C8CDD8] leading-relaxed">
+                          Review what will change inside your dedicated{' '}
+                          <strong class="text-[#F5F7FA]">Habits Reminders</strong> calendar:
+                        </p>
+                      </div>
+
+                      <ul class="text-xs text-[#C8CDD8] space-y-1 list-disc list-inside font-mono tabular-nums">
+                        <Show when={plan().willCreateCalendar}>
+                          <li>Create secondary calendar &quot;Habits Reminders&quot; ({plan().timeZone})</li>
+                        </Show>
+                        <Show when={plan().willUpdateCalendarTz}>
+                          <li>Update calendar timezone to {plan().timeZone}</li>
+                        </Show>
+                        <Show when={plan().toCreate.length > 0}>
+                          <li>Add {plan().toCreate.length} upcoming reminder event(s)</li>
+                        </Show>
+                        <Show when={plan().toUpdate.length > 0}>
+                          <li>Update {plan().toUpdate.length} existing reminder event(s)</li>
+                        </Show>
+                        <Show when={plan().toDelete.length > 0}>
+                          <li>
+                            Remove {plan().toDelete.length} completed or past event(s)
+                            {plan().todayCleared ? ' (clears tonight)' : ''}
+                          </li>
+                        </Show>
+                      </ul>
+
+                      <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => props.onCancelCalendarSync()}
+                          disabled={props.busy}
+                          class="h-9 px-3.5 rounded-xl text-xs font-medium text-[#C8CDD8] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void props.onConfirmCalendarSync()}
+                          disabled={props.busy}
+                          class="h-9 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                        >
+                          {props.busy ? 'Updating...' : 'Confirm Calendar Update'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </Show>
+
+                {/* Explicit User Confirmation Dialog for Deleting Calendar */}
+                <Show when={props.confirmDeleteOpen}>
+                  <div class="rounded-xl bg-[#2A1417] border border-[#EF4444]/45 p-4 space-y-3">
+                    <div class="space-y-1">
+                      <p class="text-xs font-semibold text-[#FCA5A5]">
+                        Delete &quot;Habits Reminders&quot; Calendar?
+                      </p>
+                      <p class="text-xs text-[#E5C5C8] leading-relaxed">
+                        This permanently deletes the secondary Habits Reminders calendar and all its reminder events from your Google Calendar. Your personal calendars, habits, and Google Drive backups will not be touched.
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => props.onCancelDeleteCalendar()}
+                        disabled={props.busy}
+                        class="h-9 px-3.5 rounded-xl text-xs font-medium text-[#C8CDD8] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void props.onConfirmDeleteCalendar()}
+                        disabled={props.busy}
+                        class="h-9 px-4 rounded-xl bg-[#EF4444] hover:bg-[#DC2626] text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+                      >
+                        {props.busy ? 'Deleting...' : 'Delete Calendar'}
+                      </button>
+                    </div>
+                  </div>
+                </Show>
+              </Show>
+            </section>
+          </div>
+
+          <div class="flex justify-end pt-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => props.onClose()}
+              disabled={props.busy}
               class="h-9 px-4 rounded-xl text-xs font-medium text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer disabled:opacity-50"
             >
               Close

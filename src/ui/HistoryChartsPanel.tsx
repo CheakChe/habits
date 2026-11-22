@@ -43,7 +43,7 @@ interface AnalyticsSummaryView {
 interface HistoryChartsPanelProps {
   habits: Habit[];
   targetHabits: Habit[];
-  selectedHabitId: number | 'all';
+  habitFilter: 'all' | number[];
   checkins: HabitCheckin[];
   tasks: Task[];
   effectiveRangeStart: number;
@@ -58,13 +58,13 @@ interface HistoryChartsPanelProps {
   selectedDay: number;
   onSelectDay: (dayIndex: number) => void;
   onInspectDayInCalendar: (dayIndex: number) => void;
-  onSelectHabitFilter: (habitId: number) => void;
+  onSelectHabitFilter: (filter: 'all' | number[]) => void;
 }
 
 function heatmapSquareClass(tone: DayCellTone): string {
   switch (tone) {
     case 'complete':
-      return 'bg-[#39D353]';
+      return 'bg-[#3B82F6]';
     case 'missed-slight':
       return 'bg-[#581C24]';
     case 'missed-moderate':
@@ -83,8 +83,8 @@ function heatmapSquareClass(tone: DayCellTone): string {
 }
 
 function weekdayBarColor(rate: number): string {
-  if (rate >= 0.999) return '#22C55E';
-  if (rate >= 0.7) return '#3B82F6';
+  if (rate >= 0.999) return '#3B82F6';
+  if (rate >= 0.7) return '#60A5FA';
   if (rate >= 0.4) return '#F59E0B';
   return '#EF4444';
 }
@@ -172,7 +172,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
     }
 
     const accentColor =
-      props.selectedHabitId !== 'all' && props.targetHabits[0]
+      props.targetHabits.length === 1 && props.targetHabits[0]
         ? HabitAppearance.getColor(props.targetHabits[0].color)
         : '#3B82F6';
 
@@ -202,9 +202,9 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
   const taskSegments = createMemo(() => {
     const s = props.taskSummary;
     const raw = [
-      { key: 'on_time', label: 'On time', count: s.onTimeCount, color: '#22C55E' },
-      { key: 'late', label: 'Late', count: s.lateCount, color: '#3B82F6' },
-      { key: 'goal_done', label: 'Goals done', count: s.goalsDoneCount, color: '#38BDF8' },
+      { key: 'on_time', label: 'On time', count: s.onTimeCount, color: '#3B82F6' },
+      { key: 'late', label: 'Late', count: s.lateCount, color: '#F59E0B' },
+      { key: 'goal_done', label: 'Goals done', count: s.goalsDoneCount, color: '#60A5FA' },
       { key: 'not_done', label: 'Not Done', count: s.notDoneCount, color: '#EF4444' },
       { key: 'archived', label: 'Archived', count: s.archivedCount, color: '#6B7280' },
     ];
@@ -318,7 +318,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
           <span class="text-xs text-[#8E95A5]">
-            {props.selectedHabitId === 'all' ? 'Best Current Streak' : 'Current Streak'}
+            {props.targetHabits.length === 1 ? 'Current Streak' : 'Best Current Streak'}
           </span>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {props.analyticsSummary.currentStreak}
@@ -401,7 +401,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               <span
                 class={`text-xs font-mono tabular-nums ${
                   (trendChart().trendDeltaPct ?? 0) > 0
-                    ? 'text-[#86EFAC]'
+                    ? 'text-[#60A5FA]'
                     : (trendChart().trendDeltaPct ?? 0) < 0
                       ? 'text-[#FCA5A5]'
                       : 'text-[#8E95A5]'
@@ -1013,7 +1013,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               {(ex) => (
                 <>
                   <span>
-                    Best: <span class="text-[#86EFAC]">{ex().bestLabel} ({ex().bestPct}%)</span>
+                    Best: <span class="text-[#93C5FD]">{ex().bestLabel} ({ex().bestPct}%)</span>
                   </span>
                   <span>
                     Weakest: <span class="text-[#FCA5A5]">{ex().worstLabel} ({ex().worstPct}%)</span>
@@ -1060,38 +1060,38 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
         </div>
 
         <div class="overflow-x-auto pb-1">
-          <div class="inline-flex gap-2 items-start py-1 pl-0.5 pr-2">
-            <div class="flex flex-col gap-[3px] pt-[18px] text-[10px] leading-[12px] text-[#6B7280] select-none shrink-0">
-              <span class="h-[12px] flex items-center">Mon</span>
-              <span class="h-[12px]" aria-hidden="true" />
-              <span class="h-[12px] flex items-center">Wed</span>
-              <span class="h-[12px]" aria-hidden="true" />
-              <span class="h-[12px] flex items-center">Fri</span>
-              <span class="h-[12px]" aria-hidden="true" />
-              <span class="h-[12px]" aria-hidden="true" />
+          <div class="inline-flex gap-2.5 items-start py-1 pl-0.5 pr-2">
+            <div class="flex flex-col gap-[4px] pt-[20px] text-[11px] leading-[18px] text-[#6B7280] select-none shrink-0">
+              <span class="h-[18px] flex items-center">Mon</span>
+              <span class="h-[18px]" aria-hidden="true" />
+              <span class="h-[18px] flex items-center">Wed</span>
+              <span class="h-[18px]" aria-hidden="true" />
+              <span class="h-[18px] flex items-center">Fri</span>
+              <span class="h-[18px]" aria-hidden="true" />
+              <span class="h-[18px]" aria-hidden="true" />
             </div>
 
             <div class="flex flex-col gap-1.5">
-              <div class="flex gap-[3px] h-[12px] text-[10px] leading-[12px] text-[#8E95A5] select-none">
+              <div class="flex gap-[4px] h-[14px] text-[10px] leading-[14px] text-[#8E95A5] select-none">
                 <For each={props.heatmapData.weeks}>
                   {(week) => (
-                    <div class="w-[12px] shrink-0 overflow-visible whitespace-nowrap">
+                    <div class="w-[18px] shrink-0 overflow-visible whitespace-nowrap">
                       {week.monthLabel}
                     </div>
                   )}
                 </For>
               </div>
 
-              <div class="flex gap-[3px]">
+              <div class="flex gap-[4px]">
                 <For each={props.heatmapData.weeks}>
                   {(week) => (
-                    <div class="flex flex-col gap-[3px] shrink-0">
+                    <div class="flex flex-col gap-[4px] shrink-0">
                       <For each={week.days}>
                         {(cell) => (
                           <Show
                             when={cell.inRange}
                             fallback={
-                              <div class="w-[12px] h-[12px] rounded-[2px] bg-transparent" />
+                              <div class="w-[18px] h-[18px] rounded-[4px] bg-transparent" />
                             }
                           >
                             <button
@@ -1115,11 +1115,11 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                               onBlur={() => setHoveredCell(null)}
                               title={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done}/${cell.scheduled} scheduled`}
                               aria-label={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done} of ${cell.scheduled} completed`}
-                              class={`w-[12px] h-[12px] rounded-[2px] transition-transform duration-100 hover:scale-125 cursor-pointer ${heatmapSquareClass(
+                              class={`w-[18px] h-[18px] rounded-[4px] transition-transform duration-100 hover:scale-115 cursor-pointer ${heatmapSquareClass(
                                 cell.tone
                               )} ${
                                 cell.dayIndex === props.selectedDay
-                                  ? 'ring-1 ring-white ring-offset-1 ring-offset-[#14161B]'
+                                  ? 'ring-2 ring-white ring-offset-1 ring-offset-[#14161B]'
                                   : ''
                               }`}
                             />
@@ -1153,23 +1153,28 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
 
           <div
             class="flex items-center gap-1.5"
-            title="Rest = unscheduled · Red = unclosed severity · Green = 100% done"
+            title="Rest = unscheduled · Red = unclosed severity · Blue = 100% done"
           >
             <span>Rest</span>
-            <span class="w-[11px] h-[11px] rounded-[2px] bg-[#0D1016] border border-white/[0.06]" />
+            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#0D1016] border border-white/[0.06]" />
             <span class="ml-1">0%</span>
-            <span class="w-[11px] h-[11px] rounded-[2px] bg-[#EF4444]" />
-            <span class="w-[11px] h-[11px] rounded-[2px] bg-[#B91C1C]" />
-            <span class="w-[11px] h-[11px] rounded-[2px] bg-[#881B22]" />
-            <span class="w-[11px] h-[11px] rounded-[2px] bg-[#581C24]" />
+            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#EF4444]" />
+            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#B91C1C]" />
+            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#881B22]" />
+            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#581C24]" />
             <span>Done</span>
-            <span class="w-[11px] h-[11px] rounded-[2px] bg-[#39D353]" />
+            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#3B82F6]" />
           </div>
         </div>
       </section>
 
       {/* Row 4: Habit Breakdown */}
-      <Show when={props.selectedHabitId === 'all' && props.habitBreakdown.length > 0}>
+      <Show
+        when={
+          props.habitBreakdown.length > 0 &&
+          (props.habitFilter === 'all' || props.targetHabits.length > 1)
+        }
+      >
         <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
           <div class="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between gap-4">
             <div>
@@ -1200,7 +1205,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                   <li>
                     <button
                       type="button"
-                      onClick={() => props.onSelectHabitFilter(row.habit.id)}
+                      onClick={() => props.onSelectHabitFilter([row.habit.id])}
                       class="w-full text-left px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                       <div class="min-w-0 space-y-1 flex-1">
