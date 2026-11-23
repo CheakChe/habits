@@ -1,11 +1,17 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
-import { Habit, HabitCheckin, Task } from '../types/domain';
-import { ChartsAnalytics } from '../utils/charts-analytics';
+import { Habit, HabitCheckin, HabitNote, Task } from '../types/domain';
+import {
+  ChartsAnalytics,
+  HabitRowTrendInfo,
+  PerfectDaysSummary,
+} from '../utils/charts-analytics';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DateRangeResolver, DayCellTone } from '../utils/date-range';
 import { HabitAppearance } from '../utils/habit-appearance';
+import { HabitSchedule } from '../utils/habit-schedule';
 import { HabitPeriodSummary, StreakUnit } from '../utils/streak-calculator';
 import { TaskOutcomeBucket, TaskRangeSummary } from '../utils/task-analytics';
+import { CustomSelect, SelectOption } from './CustomControls';
 import { HabitBadge } from './HabitBadge';
 import { CalendarIcon } from './Icons';
 
@@ -40,17 +46,28 @@ interface AnalyticsSummaryView {
   missedScheduledDays: number;
 }
 
+export interface PeriodComparisonView {
+  prevLabel: string;
+  habitRateDeltaPct: number | null;
+  taskDoneDelta: number | null;
+  taskRateDeltaPct: number | null;
+}
+
 interface HistoryChartsPanelProps {
   habits: Habit[];
   targetHabits: Habit[];
   habitFilter: 'all' | number[];
   checkins: HabitCheckin[];
+  notes: HabitNote[];
   tasks: Task[];
   effectiveRangeStart: number;
   effectiveRangeEnd: number;
   rangeLabel: string;
   timeZone: string;
   analyticsSummary: AnalyticsSummaryView;
+  perfectDays: PerfectDaysSummary;
+  prevComparison: PeriodComparisonView | null;
+  habitTrends: Map<number, HabitRowTrendInfo>;
   taskSummary: TaskRangeSummary;
   taskOutcomeBuckets: TaskOutcomeBucket[];
   habitBreakdown: HabitPeriodSummary[];
@@ -95,11 +112,54 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
   const [hoveredTaskBucketKey, setHoveredTaskBucketKey] = createSignal<string | null>(null);
   const [weekdayMode, setWeekdayMode] = createSignal<'habits' | 'tasks'>('habits');
   const [hoveredWeekday, setHoveredWeekday] = createSignal<number | null>(null);
+  const [selectedVolumeHabitId, setSelectedVolumeHabitId] = createSignal<number | null>(null);
+  const [hoveredVolumeKey, setHoveredVolumeKey] = createSignal<string | null>(null);
   const [hoveredCell, setHoveredCell] = createSignal<{
     dayIndex: number;
     done: number;
     scheduled: number;
   } | null>(null);
+
+  const measuredHabits = createMemo(() =>
+    props.targetHabits.filter((h) => HabitSchedule.hasAnyDailyTarget(h))
+  );
+
+  const activeVolumeHabit = createMemo(() => {
+    const list = measuredHabits();
+    if (list.length === 0) return null;
+    return list.find((h) => h.id === selectedVolumeHabitId()) ?? list[0];
+  });
+
+  const volumeData = createMemo(() => {
+    const habit = activeVolumeHabit();
+    if (!habit) return null;
+    const buckets = ChartsAnalytics.habitVolumeBuckets(
+      habit,
+      props.checkins,
+      props.effectiveRangeStart,
+      props.effectiveRangeEnd,
+      14
+    );
+    const summary = ChartsAnalytics.summarizeHabitVolume(
+      habit,
+      props.checkins,
+      props.effectiveRangeStart,
+      props.effectiveRangeEnd
+    );
+    const maxVal = Math.max(
+      1,
+      ...buckets.map((b) => Math.max(b.actualTotal, b.targetTotal))
+    );
+    const accentColor = HabitAppearance.getColor(habit.color);
+    return { habit, buckets, summary, maxVal, accentColor };
+  });
+
+  const hoveredVolumeBucket = createMemo(() => {
+    const data = volumeData();
+    const key = hoveredVolumeKey();
+    if (!data || !key) return null;
+    return data.buckets.find((b) => b.key === key) ?? null;
+  });
 
   const trendBuckets = createMemo(() =>
     ChartsAnalytics.habitTrendBuckets(
@@ -127,7 +187,11 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       const x = n <= 1 ? padLeft + plotW / 2 : padLeft + (idx / (n - 1)) * plotW;
       const y =
         bucket.rate === null ? null : padTop + (1 - bucket.rate) * plotH;
-      return { ...bucket, idx, x, y };
+      const maY =
+        bucket.movingAvgRate === null
+          ? null
+          : padTop + (1 - bucket.movingAvgRate) * plotH;
+      return { ...bucket, idx, x, y, maY };
     });
 
     // Build contiguous line/area segments where rate !== null
@@ -163,6 +227,28 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
     }
     flush();
 
+    // Moving average continuous segments
+    const maSegments: string[] = [];
+    let maCurrent: typeof points = [];
+    const flushMa = () => {
+      if (maCurrent.length >= 2) {
+        maSegments.push(
+          maCurrent
+            .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.maY!.toFixed(1)}`)
+            .join(' ')
+        );
+      }
+      maCurrent = [];
+    };
+    for (const pt of points) {
+      if (pt.maY === null) {
+        flushMa();
+      } else {
+        maCurrent.push(pt);
+      }
+    }
+    flushMa();
+
     const activePts = points.filter((p) => p.rate !== null);
     let trendDeltaPct: number | null = null;
     if (activePts.length >= 2) {
@@ -187,6 +273,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       plotH,
       points,
       segments,
+      maSegments,
       hasData: activePts.length > 0,
       trendDeltaPct,
       accentColor,
@@ -312,6 +399,34 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
     return `${d.label} · ${d.doneCount} done · ${d.notDoneCount} not done`;
   });
 
+  const dayNotesMap = createMemo(() => {
+    const allowed = new Set(props.targetHabits.map((h) => h.id));
+    const map = new Map<number, string[]>();
+    for (const note of props.notes) {
+      if (!allowed.has(note.habitId)) continue;
+      const trimmed = note.text.trim();
+      if (!trimmed) continue;
+      if (
+        note.dayIndex < props.heatmapData.clampedStart ||
+        note.dayIndex > props.heatmapData.effectiveEnd
+      ) {
+        continue;
+      }
+      let list = map.get(note.dayIndex);
+      if (!list) {
+        list = [];
+        map.set(note.dayIndex, list);
+      }
+      list.push(trimmed);
+    }
+    return map;
+  });
+
+  const activeHeatmapDayNotes = createMemo(() => {
+    const day = hoveredCell()?.dayIndex ?? props.selectedDay;
+    return dayNotesMap().get(day) ?? [];
+  });
+
   return (
     <div class="space-y-6">
       {/* 4-Column KPI Strip */}
@@ -324,6 +439,11 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             {props.analyticsSummary.currentStreak}
             {props.analyticsSummary.currentStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
+          <Show when={props.perfectDays.longestPerfectStreak > 0}>
+            <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
+              {props.perfectDays.currentPerfectStreak}d perfect streak
+            </span>
+          </Show>
         </div>
 
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
@@ -332,10 +452,42 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             {props.analyticsSummary.longestStreak}
             {props.analyticsSummary.longestStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
+          <Show when={props.perfectDays.scheduledDaysWithHabits > 0}>
+            <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
+              {props.perfectDays.perfectDays}/{props.perfectDays.scheduledDaysWithHabits} perfect days (
+              {Math.round((props.perfectDays.perfectRate ?? 0) * 100)}%)
+            </span>
+          </Show>
         </div>
 
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">Habit Completion</span>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs text-[#8E95A5]">Habit Completion</span>
+            <Show
+              when={
+                props.prevComparison &&
+                props.prevComparison.habitRateDeltaPct !== null
+              }
+            >
+              {(() => {
+                const delta = props.prevComparison!.habitRateDeltaPct!;
+                return (
+                  <span
+                    title={`Compared to ${props.prevComparison!.prevLabel}`}
+                    class={`text-[11px] font-mono tabular-nums ${
+                      delta > 0
+                        ? 'text-[#60A5FA]'
+                        : delta < 0
+                          ? 'text-[#FCA5A5]'
+                          : 'text-[#8E95A5]'
+                    }`}
+                  >
+                    {delta > 0 ? `+${delta}%` : `${delta}%`} vs prev
+                  </span>
+                );
+              })()}
+            </Show>
+          </div>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {Math.round(props.analyticsSummary.completionRate * 100)}%
           </p>
@@ -346,7 +498,33 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
         </div>
 
         <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <span class="text-xs text-[#8E95A5]">Tasks Done</span>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs text-[#8E95A5]">Tasks Done</span>
+            <Show
+              when={
+                props.prevComparison &&
+                props.prevComparison.taskDoneDelta !== null
+              }
+            >
+              {(() => {
+                const delta = props.prevComparison!.taskDoneDelta!;
+                return (
+                  <span
+                    title={`Compared to ${props.prevComparison!.prevLabel}`}
+                    class={`text-[11px] font-mono tabular-nums ${
+                      delta > 0
+                        ? 'text-[#60A5FA]'
+                        : delta < 0
+                          ? 'text-[#FCA5A5]'
+                          : 'text-[#8E95A5]'
+                    }`}
+                  >
+                    {delta > 0 ? `+${delta}` : `${delta}`} vs prev
+                  </span>
+                );
+              })()}
+            </Show>
+          </div>
           <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {props.taskSummary.doneCount}
             <Show when={props.taskSummary.completionRate !== null}>
@@ -390,29 +568,41 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                   {(pt) => (
                     <span class="text-[#F5F7FA]">
                       {pt().label} · {pt().doneCount}/{pt().scheduledCount} scheduled (
-                      {pt().rate !== null ? `${Math.round(pt().rate! * 100)}%` : '—'})
+                      {pt().rate !== null ? `${Math.round(pt().rate! * 100)}%` : '—'}
+                      {pt().movingAvgRate !== null
+                        ? ` · ${Math.round(pt().movingAvgRate! * 100)}% MA`
+                        : ''}
+                      )
                     </span>
                   )}
                 </Show>
               </p>
             </div>
 
-            <Show when={trendChart().trendDeltaPct !== null}>
-              <span
-                class={`text-xs font-mono tabular-nums ${
-                  (trendChart().trendDeltaPct ?? 0) > 0
-                    ? 'text-[#60A5FA]'
-                    : (trendChart().trendDeltaPct ?? 0) < 0
-                      ? 'text-[#FCA5A5]'
-                      : 'text-[#8E95A5]'
-                }`}
-              >
-                {(trendChart().trendDeltaPct ?? 0) > 0
-                  ? `+${trendChart().trendDeltaPct}%`
-                  : `${trendChart().trendDeltaPct}%`}{' '}
-                vs start
-              </span>
-            </Show>
+            <div class="flex items-center gap-3">
+              <Show when={trendChart().maSegments.length > 0}>
+                <span class="inline-flex items-center gap-1.5 text-[11px] text-[#8E95A5]">
+                  <span class="w-3.5 border-t border-dashed border-[#93C5FD]/80" />
+                  <span>Moving avg</span>
+                </span>
+              </Show>
+              <Show when={trendChart().trendDeltaPct !== null}>
+                <span
+                  class={`text-xs font-mono tabular-nums ${
+                    (trendChart().trendDeltaPct ?? 0) > 0
+                      ? 'text-[#60A5FA]'
+                      : (trendChart().trendDeltaPct ?? 0) < 0
+                        ? 'text-[#FCA5A5]'
+                        : 'text-[#8E95A5]'
+                  }`}
+                >
+                  {(trendChart().trendDeltaPct ?? 0) > 0
+                    ? `+${trendChart().trendDeltaPct}%`
+                    : `${trendChart().trendDeltaPct}%`}{' '}
+                  vs start
+                </span>
+              </Show>
+            </div>
           </div>
 
           <Show
@@ -493,6 +683,21 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                         />
                       </Show>
                     </g>
+                  )}
+                </For>
+
+                {/* Moving average dashed overlay */}
+                <For each={trendChart().maSegments}>
+                  {(maPath) => (
+                    <path
+                      d={maPath}
+                      fill="none"
+                      stroke="rgba(147, 197, 253, 0.72)"
+                      stroke-width="1.6"
+                      stroke-dasharray="4 4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
                   )}
                 </For>
 
@@ -1025,6 +1230,188 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
         </section>
       </div>
 
+      {/* Row 2.5: Measured Volume Progression (shown when at least one measured habit is in view) */}
+      <Show when={volumeData()}>
+        {(vol) => {
+          const unitSuffix = () =>
+            vol().summary.unit ? ` ${vol().summary.unit}` : '';
+          const targetRangeLabel = () => {
+            const s = vol().summary.targetStart;
+            const e = vol().summary.targetEnd;
+            if (s !== null && e !== null && s !== e) {
+              return `Target ${HabitSchedule.formatNumericValue(s)} → ${HabitSchedule.formatNumericValue(e)}${unitSuffix()}/day`;
+            }
+            const t = e ?? s;
+            return t !== null
+              ? `Target ${HabitSchedule.formatNumericValue(t)}${unitSuffix()}/day`
+              : null;
+          };
+          return (
+            <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 space-y-0.5">
+                  <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
+                    Measured Volume
+                  </h2>
+                  <p class="text-xs text-[#8E95A5] font-mono tabular-nums break-words">
+                    <Show
+                      when={hoveredVolumeBucket()}
+                      fallback={
+                        <span>
+                          {HabitSchedule.formatNumericValue(vol().summary.totalVolume)}
+                          {unitSuffix()} total ·{' '}
+                          {HabitSchedule.formatNumericValue(
+                            vol().summary.averagePerActiveDay
+                          )}
+                          {unitSuffix()}/active day
+                          {targetRangeLabel() ? ` · ${targetRangeLabel()}` : ''}
+                        </span>
+                      }
+                    >
+                      {(b) => (
+                        <span class="text-[#F5F7FA]">
+                          {b().label} ·{' '}
+                          {HabitSchedule.formatNumericValue(b().actualTotal)}
+                          {unitSuffix()} logged
+                          {b().targetTotal > 0
+                            ? ` / ${HabitSchedule.formatNumericValue(b().targetTotal)}${unitSuffix()} target`
+                            : ''}
+                        </span>
+                      )}
+                    </Show>
+                  </p>
+                </div>
+
+                <div class="flex items-center gap-3 shrink-0">
+                  <Show
+                    when={measuredHabits().length > 1}
+                    fallback={
+                      <div class="flex items-center gap-2 text-xs text-[#C8CDD8]">
+                        <HabitBadge appearanceRaw={vol().habit.color} size="xs" />
+                        <span class="truncate max-w-[160px]">{vol().habit.name}</span>
+                      </div>
+                    }
+                  >
+                    <CustomSelect<number>
+                      ariaLabel="Select measured habit"
+                      value={vol().habit.id}
+                      options={measuredHabits().map(
+                        (h): SelectOption<number> => ({
+                          value: h.id,
+                          label: h.name,
+                          hint: h.unit ?? undefined,
+                          dotColor: h.color,
+                        })
+                      )}
+                      onChange={(id) => {
+                        setSelectedVolumeHabitId(id);
+                        setHoveredVolumeKey(null);
+                      }}
+                    />
+                  </Show>
+                </div>
+              </div>
+
+              <div class="flex items-end gap-2 h-40 pt-4">
+                <For each={vol().buckets}>
+                  {(bucket) => {
+                    const actualPct = () =>
+                      bucket.actualTotal <= 0
+                        ? 0
+                        : Math.max(8, Math.round((bucket.actualTotal / vol().maxVal) * 100));
+                    const targetPct = () =>
+                      bucket.targetTotal <= 0
+                        ? null
+                        : Math.min(100, Math.round((bucket.targetTotal / vol().maxVal) * 100));
+                    const metGoal = () =>
+                      bucket.targetTotal > 0 && bucket.actualTotal >= bucket.targetTotal;
+                    return (
+                      <div
+                        class="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5 cursor-pointer"
+                        onMouseEnter={() => setHoveredVolumeKey(bucket.key)}
+                        onMouseLeave={() => setHoveredVolumeKey(null)}
+                      >
+                        <span class="text-[10px] font-mono tabular-nums text-[#8E95A5] truncate max-w-full">
+                          {bucket.actualTotal > 0
+                            ? HabitSchedule.formatNumericValue(bucket.actualTotal)
+                            : ''}
+                        </span>
+                        <div class="relative w-full flex-1 flex items-end">
+                          <Show
+                            when={bucket.actualTotal > 0}
+                            fallback={
+                              <div class="w-full bg-white/[0.05] h-[3px] rounded-t-md" />
+                            }
+                          >
+                            <div
+                              class="w-full rounded-t-md transition-opacity"
+                              style={{
+                                height: `${actualPct()}%`,
+                                'background-color': vol().accentColor,
+                                opacity:
+                                  hoveredVolumeKey() && hoveredVolumeKey() !== bucket.key
+                                    ? 0.45
+                                    : metGoal() || bucket.targetTotal === 0
+                                      ? 1
+                                      : 0.55,
+                              }}
+                              title={`${bucket.label}: ${HabitSchedule.formatNumericValue(bucket.actualTotal)}${unitSuffix()}${
+                                bucket.targetTotal > 0
+                                  ? ` / ${HabitSchedule.formatNumericValue(bucket.targetTotal)}${unitSuffix()} target`
+                                  : ''
+                              }`}
+                            />
+                          </Show>
+
+                          <Show when={targetPct() !== null}>
+                            <div
+                              aria-hidden="true"
+                              class="absolute left-0 right-0 border-t border-dashed border-white/60 pointer-events-none"
+                              style={{ bottom: `${targetPct()}%` }}
+                            />
+                          </Show>
+                        </div>
+                        <span class="text-[10px] font-mono tabular-nums text-[#6B7280] truncate max-w-full">
+                          {bucket.shortLabel}
+                        </span>
+                      </div>
+                    );
+                  }}
+                </For>
+              </div>
+
+              <div class="pt-2 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#8E95A5]">
+                <span class="font-mono tabular-nums">
+                  {vol().summary.activeDaysLogged}{' '}
+                  {vol().summary.activeDaysLogged === 1 ? 'day' : 'days'} logged ·{' '}
+                  {HabitSchedule.formatNumericValue(vol().summary.averagePerScheduledDay)}
+                  {unitSuffix()}/scheduled day
+                  <Show when={vol().summary.volumeAchievementRate !== null}>
+                    {' '}
+                    · {Math.round(vol().summary.volumeAchievementRate! * 100)}% of{' '}
+                    {HabitSchedule.formatNumericValue(vol().summary.totalTargetVolume)}
+                    {unitSuffix()} target
+                  </Show>
+                </span>
+                <div class="flex items-center gap-3">
+                  <span class="inline-flex items-center gap-1.5">
+                    <span
+                      class="w-2.5 h-2.5 rounded-[2px]"
+                      style={{ 'background-color': vol().accentColor }}
+                    />
+                    <span>Logged</span>
+                  </span>
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="w-3 border-t border-dashed border-white/70" />
+                    <span>Target</span>
+                  </span>
+                </div>
+              </div>
+            </section>
+          );
+        }}
+      </Show>
+
       {/* Row 3: Full-Width Consistency Heatmap */}
       <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
         <div class="flex items-start sm:items-center justify-between flex-wrap gap-3">
@@ -1135,24 +1522,42 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
         </div>
 
         <div class="flex items-center justify-between flex-wrap gap-2 text-[11px] text-[#8E95A5] pt-1 border-t border-white/[0.06]">
-          <Show
-            when={hoveredCell()}
-            fallback={
-              <span class="font-mono tabular-nums">
-                Selected: {CivilCalendar.formatShortDate(props.selectedDay)}
-              </span>
-            }
-          >
-            {(cell) => (
-              <span class="font-mono tabular-nums text-[#F5F7FA]">
-                {CivilCalendar.formatShortDate(cell().dayIndex)} · {cell().done}/
-                {cell().scheduled} completed
-              </span>
-            )}
-          </Show>
+          <div class="min-w-0 flex-1 space-y-0.5">
+            <Show
+              when={hoveredCell()}
+              fallback={
+                <span class="font-mono tabular-nums block">
+                  Selected: {CivilCalendar.formatShortDate(props.selectedDay)}
+                  <Show when={activeHeatmapDayNotes().length > 0}>
+                    {' '}
+                    · {activeHeatmapDayNotes().length}{' '}
+                    {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:{' '}
+                    <span class="text-[#C8CDD8]">
+                      “{activeHeatmapDayNotes()[0]}”
+                    </span>
+                  </Show>
+                </span>
+              }
+            >
+              {(cell) => (
+                <span class="font-mono tabular-nums text-[#F5F7FA] block truncate">
+                  {CivilCalendar.formatShortDate(cell().dayIndex)} · {cell().done}/
+                  {cell().scheduled} completed
+                  <Show when={activeHeatmapDayNotes().length > 0}>
+                    {' '}
+                    · {activeHeatmapDayNotes().length}{' '}
+                    {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:{' '}
+                    <span class="text-[#93C5FD]">
+                      “{activeHeatmapDayNotes()[0]}”
+                    </span>
+                  </Show>
+                </span>
+              )}
+            </Show>
+          </div>
 
           <div
-            class="flex items-center gap-1.5"
+            class="flex items-center gap-1.5 shrink-0"
             title="Rest = unscheduled · Red = unclosed severity · Blue = 100% done"
           >
             <span>Rest</span>
@@ -1227,9 +1632,22 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                           <span>
                             {row.completedDays} done · {row.missedDays} missed
                           </span>
+                          <Show when={row.totalValue !== undefined}>
+                            <span aria-hidden="true">·</span>
+                            <span class="text-[#C8CDD8]">
+                              {HabitSchedule.formatNumericValue(row.totalValue!)}
+                              {row.unit ? ` ${row.unit}` : ''} total
+                            </span>
+                          </Show>
                           <Show when={row.habit.weeklyTarget !== null}>
                             <span aria-hidden="true">·</span>
                             <span>{row.habit.weeklyTarget}×/wk</span>
+                          </Show>
+                          <Show when={(props.habitTrends.get(row.habit.id)?.bonusCount ?? 0) > 0}>
+                            <span aria-hidden="true">·</span>
+                            <span class="text-[#60A5FA]">
+                              +{props.habitTrends.get(row.habit.id)!.bonusCount} bonus
+                            </span>
                           </Show>
                           <span aria-hidden="true">·</span>
                           <span>
@@ -1241,6 +1659,28 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                             {row.longestStreak}
                             {row.streakUnit === 'weeks' ? 'w' : 'd'} best
                           </span>
+                          <Show when={props.habitTrends.get(row.habit.id)?.deltaPct !== null && props.habitTrends.get(row.habit.id)?.deltaPct !== undefined}>
+                            {(() => {
+                              const d = props.habitTrends.get(row.habit.id)!.deltaPct!;
+                              return (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span
+                                    class={
+                                      d > 0
+                                        ? 'text-[#60A5FA]'
+                                        : d < 0
+                                          ? 'text-[#FCA5A5]'
+                                          : 'text-[#8E95A5]'
+                                    }
+                                    title="Second half vs first half of period"
+                                  >
+                                    {d > 0 ? `↗ +${d}%` : d < 0 ? `↘ ${d}%` : '→ 0%'}
+                                  </span>
+                                </>
+                              );
+                            })()}
+                          </Show>
                         </div>
                       </div>
 

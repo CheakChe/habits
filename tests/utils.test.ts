@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SnapshotCodec } from '../src/sync/snapshot-codec';
-import { Habit, HabitCheckin, Task } from '../src/types/domain';
+import {
+  DomainSnapshot,
+  Habit,
+  HabitCheckin,
+  HabitNote,
+  Task,
+  normalizeCheckinValue,
+  normalizeDailyTarget,
+  normalizeHabitUnit,
+} from '../src/types/domain';
+import { AdvancedAnalytics } from '../src/utils/advanced-analytics';
 import { ChartsAnalytics } from '../src/utils/charts-analytics';
 import { CivilCalendar } from '../src/utils/civil-calendar';
 import {
@@ -10,6 +20,7 @@ import {
   DayCellClassifier,
 } from '../src/utils/date-range';
 import { HabitAppearance } from '../src/utils/habit-appearance';
+import { HabitSchedule } from '../src/utils/habit-schedule';
 import { Helpers, NonRetryableError } from '../src/utils/helpers';
 import { StreakCalculator } from '../src/utils/streak-calculator';
 import { TaskAnalytics } from '../src/utils/task-analytics';
@@ -1329,6 +1340,760 @@ test('Flexible weekly target habits work across TodayBoard, StreakCalculator, Da
   assert.equal(trend[1].scheduledCount, 3);
   assert.ok(Math.abs(trend[1].rate! - 1 / 3) < 1e-9);
 });
+
+test('Flexible weekly habits with selected weekdays restrict TodayBoard & deficits to eligible days while counting off-schedule completions', () => {
+  assert.equal(CivilCalendar.countScheduledDays(0b0011111), 5);
+  assert.equal(CivilCalendar.countScheduledDays(0b1111111), 7);
+  assert.equal(CivilCalendar.countScheduledDays(0), 0);
+
+  // Week 1 starts Monday 2026-11-02; Habit starts Thursday of Week 0 (2026-10-29)
+  const w1Mon = CivilCalendar.fromLocalDate(2026, 11, 2);
+  const w0Thu = w1Mon - 4; // Thu, Fri eligible in Week 0 (2 eligible days)
+  const w0Fri = w1Mon - 3;
+  const w1Tue = w1Mon + 1;
+  const w1Thu = w1Mon + 3;
+  const w1Fri = w1Mon + 4;
+  const w1Sat = w1Mon + 5;
+  const w1Sun = w1Mon + 6;
+  const w2Mon = w1Mon + 7;
+  const w2Sun = w2Mon + 6;
+
+  // 3x/week planned on Mon–Fri (0b0011111)
+  const weekdayFlexHabit: Habit = {
+    id: 21,
+    name: 'Workday Focus 3x/wk',
+    color: '#3B82F6',
+    weekdays: 0b0011111,
+    weeklyTarget: 3,
+    startDay: w0Thu,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 100,
+  };
+
+  assert.equal(CivilCalendar.countScheduledInRange(0b0011111, w0Thu, w0Fri + 2), 2); // Thu, Fri only
+
+  // Week 0: Thu + Fri done -> 2/2 (clamped from 3 because only Thu, Fri eligible)
+  // Week 1: Mon + Sat (off-schedule!) done -> 2/3 toward quota (1 remaining miss goes to Fri)
+  // Week 2: Mon + Wed done -> 2/3, evaluating on Thu (Fri still ahead) -> pending streak preserved!
+  const checkins: HabitCheckin[] = [
+    { habitId: 21, dayIndex: w0Thu, done: true, updatedAt: 1 },
+    { habitId: 21, dayIndex: w0Fri, done: true, updatedAt: 1 },
+    { habitId: 21, dayIndex: w1Mon, done: true, updatedAt: 1 },
+    { habitId: 21, dayIndex: w1Sat, done: true, updatedAt: 1 }, // off-schedule Saturday counts toward quota
+    { habitId: 21, dayIndex: w2Mon, done: true, updatedAt: 1 },
+    { habitId: 21, dayIndex: w2Mon + 2, done: true, updatedAt: 1 },
+  ];
+
+  // 1. Week 0 weekly progress clamped to 2 eligible days
+  const wk0 = StreakCalculator.calculateWeeklyProgress(weekdayFlexHabit, checkins, w0Fri);
+  assert.equal(wk0.scheduledDays, 2);
+  assert.equal(wk0.completedDays, 2);
+  assert.equal(wk0.isComplete, true);
+
+  // 2. TodayBoard on Week 1:
+  // On Thu (Mon + Sat = 2/3 done in week, Thu & Fri = 2 eligible days remaining for 1 needed) -> mustDoToday = false
+  const thuStatus = TodayBoard.getFlexibleWeekStatus(weekdayFlexHabit, checkins, w1Thu);
+  assert.ok(thuStatus);
+  assert.equal(thuStatus.isEligibleDay, true);
+  assert.equal(thuStatus.doneInWeek, 2);
+  assert.equal(thuStatus.remainingDays, 2);
+  assert.equal(thuStatus.remainingNeeded, 1);
+  assert.equal(thuStatus.mustDoToday, false);
+  assert.equal(TodayBoard.getScheduledHabits([weekdayFlexHabit], w1Thu, checkins).length, 1);
+
+  // On Fri (still 2/3 done, only Fri left -> mustDoToday = true!)
+  const friStatus = TodayBoard.getFlexibleWeekStatus(weekdayFlexHabit, checkins, w1Fri);
+  assert.ok(friStatus);
+  assert.equal(friStatus.remainingDays, 1);
+  assert.equal(friStatus.remainingNeeded, 1);
+  assert.equal(friStatus.mustDoToday, true);
+
+  // On Sun (off-schedule and unchecked): hidden from Today & isEligibleDay = false
+  const sunStatus = TodayBoard.getFlexibleWeekStatus(weekdayFlexHabit, checkins, w1Sun);
+  assert.ok(sunStatus);
+  assert.equal(sunStatus.isEligibleDay, false);
+  assert.equal(sunStatus.doneInWeek, 2);
+  assert.equal(sunStatus.mustDoToday, false);
+  assert.equal(TodayBoard.getScheduledHabits([weekdayFlexHabit], w1Sun, checkins).length, 0);
+
+  // On Sat (off-schedule, checked via History): visible as done-today
+  assert.equal(TodayBoard.getScheduledHabits([weekdayFlexHabit], w1Sat, checkins).length, 1);
+
+  // 3. Period day stats for Week 1: Mon & Sat counted done, 1 remaining miss assigned to Fri; unchecked Sun gets none
+  const w1Stats = StreakCalculator.getPeriodDayStats(
+    [weekdayFlexHabit],
+    checkins,
+    w1Mon,
+    w1Sun,
+    w1Sun
+  );
+  assert.deepEqual(w1Stats.get(w1Mon), { scheduled: 1, done: 1 });
+  assert.equal(w1Stats.get(w1Tue), undefined);
+  assert.equal(w1Stats.get(w1Thu), undefined);
+  assert.deepEqual(w1Stats.get(w1Fri), { scheduled: 1, done: 0 });
+  assert.deepEqual(w1Stats.get(w1Sat), { scheduled: 1, done: 1 });
+  assert.equal(w1Stats.get(w1Sun), undefined); // Off-schedule unchecked Sunday not scheduled/counted
+
+  // 4. Weekday Rhythm chart: Sat reflects completion (1/1 = 100%), Sun has rate === null
+  const weekdayStats = ChartsAnalytics.weekdayHabitStats(
+    [weekdayFlexHabit],
+    checkins,
+    w1Mon,
+    w1Sun
+  );
+  assert.equal(weekdayStats[5].scheduledCount, 1);
+  assert.equal(weekdayStats[5].doneCount, 1);
+  assert.equal(weekdayStats[5].rate, 1);
+  assert.equal(weekdayStats[6].scheduledCount, 0);
+  assert.equal(weekdayStats[6].rate, null);
+
+  // 5. StreakCalculator: Week 0 passed (1w), Week 1 has 2/3 (Mon + Sat)
+  const w1Metrics = StreakCalculator.calculate(weekdayFlexHabit, checkins, w0Thu, w1Sun, false);
+  assert.equal(w1Metrics.longestStreak, 1);
+  assert.equal(w1Metrics.currentStreak, 0);
+  assert.equal(w1Metrics.scheduledDays, 5); // 2 in W0 + 3 in W1
+  assert.equal(w1Metrics.completedScheduledDays, 4); // 2 in W0 + 2 in W1 (Mon + Sat)
+
+  // Completing Week 1 with Sunday off-schedule too passes Week 1 (3/3 -> 2w streak)
+  const rescuedW1Checkins: HabitCheckin[] = [
+    ...checkins,
+    { habitId: 21, dayIndex: w1Sun, done: true, updatedAt: 2 },
+  ];
+  const w1Rescued = StreakCalculator.calculate(
+    weekdayFlexHabit,
+    rescuedW1Checkins,
+    w0Thu,
+    w1Sun,
+    false
+  );
+  assert.equal(w1Rescued.currentStreak, 2);
+  assert.equal(w1Rescued.completedScheduledDays, 5);
+  assert.equal(w1Rescued.completionRate, 1);
+
+  // Over-completion (Mon + Tue + Fri + Sat = 4 in W1) caps completionRate at 1.0 (3/3)
+  const overDoneCheckins: HabitCheckin[] = [
+    ...checkins,
+    { habitId: 21, dayIndex: w1Tue, done: true, updatedAt: 2 },
+    { habitId: 21, dayIndex: w1Fri, done: true, updatedAt: 2 },
+  ];
+  const overMetrics = StreakCalculator.calculate(
+    weekdayFlexHabit,
+    overDoneCheckins,
+    w0Thu,
+    w1Sun,
+    false
+  );
+  assert.equal(overMetrics.scheduledDays, 5);
+  assert.equal(overMetrics.completedScheduledDays, 5);
+  assert.equal(overMetrics.completionRate, 1);
+
+  // If Week 1 had 3 check-ins, evaluating on Week 2 Thu (Fri still ahead) preserves 2w streak!
+  const w2Thu = w2Mon + 3;
+  const w2ThuPending = StreakCalculator.calculate(
+    weekdayFlexHabit,
+    overDoneCheckins,
+    w0Thu,
+    w2Thu,
+    true
+  );
+  assert.equal(w2ThuPending.currentStreak, 2);
+
+  // Evaluating on Week 2 Sat (Mon-Fri ended, only 2/3 done, no Sat checkin) -> breaks to 0w; adding Sat checkin rescues to 3w!
+  const w2Sat = w2Mon + 5;
+  const w2SatBroken = StreakCalculator.calculate(
+    weekdayFlexHabit,
+    overDoneCheckins,
+    w0Thu,
+    w2Sat,
+    true
+  );
+  assert.equal(w2SatBroken.currentStreak, 0);
+
+  const w2SatRescued = StreakCalculator.calculate(
+    weekdayFlexHabit,
+    [...overDoneCheckins, { habitId: 21, dayIndex: w2Sat, done: true, updatedAt: 3 }],
+    w0Thu,
+    w2Sat,
+    true
+  );
+  assert.equal(w2SatRescued.currentStreak, 3);
+
+  // Ensure w2Sun referenced cleanly
+  assert.ok(w2Sun > w2Sat);
+});
+
+test('HabitSchedule and versioned schedules work across Fixed<->Flex cross-week and mid-week transitions', () => {
+  const w1Mon = CivilCalendar.fromLocalDate(2026, 11, 2); // Monday
+  const w1Wed = w1Mon + 2;
+  const w1Thu = w1Mon + 3;
+  const w1Fri = w1Mon + 4;
+  const w1Sun = w1Mon + 6;
+  const w2Mon = w1Mon + 7;
+  const w2Tue = w2Mon + 1;
+  const w2Wed = w2Mon + 2;
+  const w2Sun = w2Mon + 6;
+
+  // 1. Cross-week Fixed (Mon/Wed/Fri) -> Flex (2x/week Mon-Sun starting w2Mon)
+  const fixedToFlexHabit: Habit = {
+    id: 30,
+    name: 'Switch to Flex',
+    color: '#3B82F6',
+    weekdays: 0b1111111,
+    weeklyTarget: 2,
+    startDay: w1Mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+    scheduleHistory: [
+      { fromDay: w1Mon, weekdays: (1 << 0) | (1 << 2) | (1 << 4), weeklyTarget: null }, // Mon/Wed/Fri
+      { fromDay: w2Mon, weekdays: 0b1111111, weeklyTarget: 2 },
+    ],
+  };
+
+  assert.equal(HabitSchedule.getAtDay(fixedToFlexHabit, w1Wed).weeklyTarget, null);
+  assert.equal(HabitSchedule.getAtDay(fixedToFlexHabit, w2Mon).weeklyTarget, 2);
+
+  // Week 1: Mon, Wed, Fri all completed (3/3 fixed)
+  // Week 2: Tue completed (1/2 flex), Thu missed/pending -> evaluated on Wed (Tue done, Thu..Sun remaining)
+  const c1: HabitCheckin[] = [
+    { habitId: 30, dayIndex: w1Mon, done: true, updatedAt: 1 },
+    { habitId: 30, dayIndex: w1Wed, done: true, updatedAt: 1 },
+    { habitId: 30, dayIndex: w1Fri, done: true, updatedAt: 1 },
+    { habitId: 30, dayIndex: w2Tue, done: true, updatedAt: 1 },
+  ];
+
+  // StreakCalculator preserves 1w from completed fixed Week 1 while Week 2 is pending!
+  const metricsPendingW2 = StreakCalculator.calculate(fixedToFlexHabit, c1, w1Mon, w2Wed, true);
+  assert.equal(metricsPendingW2.streakUnit, 'weeks');
+  assert.equal(metricsPendingW2.currentStreak, 1);
+
+  // Complete 2nd flex day in Week 2 (Thu) -> streak becomes 2w, completionRate = (3+2)/(3+2) = 1.0
+  const c1Done: HabitCheckin[] = [
+    ...c1,
+    { habitId: 30, dayIndex: w2Mon + 3, done: true, updatedAt: 2 },
+  ];
+  const metricsDoneW2 = StreakCalculator.calculate(fixedToFlexHabit, c1Done, w1Mon, w2Sun, false);
+  assert.equal(metricsDoneW2.currentStreak, 2);
+  assert.equal(metricsDoneW2.scheduledDays, 5);
+  assert.equal(metricsDoneW2.completedScheduledDays, 5);
+  assert.equal(metricsDoneW2.completionRate, 1);
+
+  // PeriodDayStats & ChartsAnalytics respect Week 1 fixed days vs Week 2 flex days
+  const stats = StreakCalculator.getPeriodDayStats(
+    [fixedToFlexHabit],
+    c1Done,
+    w1Mon,
+    w2Sun,
+    w2Sun
+  );
+  assert.deepEqual(stats.get(w1Mon), { scheduled: 1, done: 1 });
+  assert.equal(stats.get(w1Mon + 1), undefined); // Week 1 Tue was off-schedule fixed
+  assert.deepEqual(stats.get(w2Tue), { scheduled: 1, done: 1 });
+  assert.deepEqual(stats.get(w2Mon + 3), { scheduled: 1, done: 1 });
+  assert.equal(stats.get(w2Mon + 5), undefined); // Week 2 quota met -> rest day
+
+  const weeklyTrend = ChartsAnalytics.habitTrendBuckets(
+    [fixedToFlexHabit],
+    c1Done,
+    w1Mon,
+    w2Sun,
+    4
+  );
+  assert.equal(weeklyTrend.length, 2);
+  assert.equal(weeklyTrend[0].scheduledCount, 3);
+  assert.equal(weeklyTrend[0].doneCount, 3);
+  assert.equal(weeklyTrend[1].scheduledCount, 2);
+  assert.equal(weeklyTrend[1].doneCount, 2);
+
+  // 2. Mid-week split: Mon-Wed Fixed (Mon & Wed), switching on Thu to Flex 3x/week!
+  // Mon & Wed were completed (donePriorInWeek = 2), so Thu..Sun only needs 1 more!
+  const midWeekSplit: Habit = {
+    id: 31,
+    name: 'Midweek Switch',
+    color: '#22C55E',
+    weekdays: 0b1111111,
+    weeklyTarget: 3,
+    startDay: w1Mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+    scheduleHistory: [
+      { fromDay: w1Mon, weekdays: (1 << 0) | (1 << 2) | (1 << 4), weeklyTarget: null },
+      { fromDay: w1Thu, weekdays: 0b1111111, weeklyTarget: 3 },
+    ],
+  };
+
+  const cMid: HabitCheckin[] = [
+    { habitId: 31, dayIndex: w1Mon, done: true, updatedAt: 1 },
+    { habitId: 31, dayIndex: w1Wed, done: true, updatedAt: 1 },
+  ];
+
+  // On Sunday (last day of Week 1), 2 done Mon-Wed -> 1 remaining needed -> mustDoToday = true!
+  const sunFlexStatus = TodayBoard.getFlexibleWeekStatus(midWeekSplit, cMid, w1Sun);
+  assert.ok(sunFlexStatus);
+  assert.equal(sunFlexStatus.doneInWeek, 2);
+  assert.equal(sunFlexStatus.effectiveTarget, 3);
+  assert.equal(sunFlexStatus.remainingNeeded, 1);
+  assert.equal(sunFlexStatus.remainingDays, 1);
+  assert.equal(sunFlexStatus.mustDoToday, true);
+
+  // If completed on Thu, Fri is already satisfied (3/3) and hidden from TodayBoard
+  const cMidDone = [...cMid, { habitId: 31, dayIndex: w1Thu, done: true, updatedAt: 2 }];
+  assert.equal(TodayBoard.getScheduledHabits([midWeekSplit], w1Fri, cMidDone).length, 0);
+  const wkProg = StreakCalculator.calculateWeeklyProgress(midWeekSplit, cMidDone, w1Fri);
+  assert.equal(wkProg.completedDays, 3);
+  assert.equal(wkProg.scheduledDays, 3);
+  assert.equal(wkProg.isComplete, true);
+
+  // 3. Flex -> Fixed: Week 1 Flex 2x/wk passed (Mon, Thu), Week 2 Fixed Mon/Wed/Fri
+  const flexToFixed: Habit = {
+    id: 32,
+    name: 'Flex to Fixed',
+    color: '#A855F7',
+    weekdays: (1 << 0) | (1 << 2) | (1 << 4),
+    weeklyTarget: null,
+    startDay: w1Mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+    scheduleHistory: [
+      { fromDay: w1Mon, weekdays: 0b1111111, weeklyTarget: 2 },
+      { fromDay: w2Mon, weekdays: (1 << 0) | (1 << 2) | (1 << 4), weeklyTarget: null },
+    ],
+  };
+  const cFlexToFixed: HabitCheckin[] = [
+    { habitId: 32, dayIndex: w1Mon, done: true, updatedAt: 1 },
+    { habitId: 32, dayIndex: w1Thu, done: true, updatedAt: 1 },
+    { habitId: 32, dayIndex: w2Mon, done: true, updatedAt: 1 },
+  ];
+  // Current streak is measured in 'days' (latest schedule is Fixed), carrying 2 done from passed Flex Week 1 + Mon Week 2 = 3d!
+  const mFlexToFixed = StreakCalculator.calculate(
+    flexToFixed,
+    cFlexToFixed,
+    w1Mon,
+    w2Wed,
+    true
+  );
+  assert.equal(mFlexToFixed.streakUnit, 'days');
+  assert.equal(mFlexToFixed.currentStreak, 3);
+  assert.equal(mFlexToFixed.scheduledDays, 4); // 2 in W1 + Mon & Wed in W2
+  assert.equal(mFlexToFixed.completedScheduledDays, 3);
+});
+
+test('Measured habits domain helpers, stepped dailyTarget discipline metrics, and ChartsAnalytics volume progression', () => {
+  // 1. Unit & value normalizers + minute-unit detection
+  assert.equal(normalizeDailyTarget(15), 15);
+  assert.equal(normalizeDailyTarget(1.236), 1.24);
+  assert.equal(normalizeDailyTarget(0), null);
+  assert.equal(normalizeDailyTarget(-5), null);
+  assert.equal(normalizeDailyTarget(Number.NaN), null);
+
+  assert.equal(normalizeHabitUnit('  min  '), 'min');
+  assert.equal(normalizeHabitUnit('   '), null);
+  assert.equal(normalizeHabitUnit(null), null);
+
+  assert.equal(normalizeCheckinValue(10.555), 10.56);
+  assert.equal(normalizeCheckinValue(0), undefined);
+  assert.equal(normalizeCheckinValue(-1), undefined);
+
+  // 2. Stepped habit: Week 1 (Mon-Sun) target = 15 min; Week 2 (Mon-Sun) target = 30 min
+  const w1Mon = CivilCalendar.fromLocalDate(2026, 11, 2); // Monday
+  const w2Mon = w1Mon + 7;
+  const w2Tue = w2Mon + 1;
+  const w2Wed = w2Mon + 2;
+
+  const steppedHabit: Habit = {
+    id: 40,
+    name: 'Deep Work',
+    color: '#3B82F6',
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: 30,
+    unit: 'min',
+    startDay: w1Mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+    scheduleHistory: [
+      { fromDay: w1Mon, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 15 },
+      { fromDay: w2Mon, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 30 },
+    ],
+  };
+
+  // Check-ins:
+  // W1: all 7 days done at 15 min (exact target)
+  // W2 Mon: 30 min (done), W2 Tue: 15 min even with stale done=true (15 < 30 -> NOT done!), W2 Wed: legacy done=true without value -> counts as activeTarget (30)
+  const checkins: HabitCheckin[] = [
+    ...Array.from({ length: 7 }, (_, i) => ({
+      habitId: 40,
+      dayIndex: w1Mon + i,
+      done: true,
+      value: 15,
+      updatedAt: 100 + i,
+    })),
+    { habitId: 40, dayIndex: w2Mon, done: true, value: 30, updatedAt: 200 },
+    { habitId: 40, dayIndex: w2Tue, done: true, value: 15, updatedAt: 201 },
+    { habitId: 40, dayIndex: w2Wed, done: true, updatedAt: 202 },
+  ];
+
+  assert.equal(HabitSchedule.isCheckinDoneForDay(steppedHabit, checkins[0], w1Mon), true);
+  assert.equal(HabitSchedule.isCheckinDoneForDay(steppedHabit, checkins[8], w2Tue), false);
+  assert.equal(HabitSchedule.isCheckinDoneForDay(steppedHabit, checkins[9], w2Wed), true);
+  assert.equal(HabitSchedule.getCheckinValueForDay(steppedHabit, checkins[9], w2Wed), 30);
+
+  // Streak across W1..W2 Wed: W2 Tue (15 < 30) broke the streak before W2 Wed!
+  const metrics = StreakCalculator.calculate(steppedHabit, checkins, w1Mon, w2Wed, true);
+  assert.equal(metrics.currentStreak, 1);
+  assert.equal(metrics.longestStreak, 8); // 7 in W1 + W2 Mon = 8
+  assert.equal(metrics.scheduledDays, 10);
+  assert.equal(metrics.completedScheduledDays, 9);
+
+  // Summary carries totalValue & unit for measured habit
+  const summaries = StreakCalculator.summarizeHabitsForRange(
+    [steppedHabit],
+    checkins,
+    w1Mon,
+    w2Wed,
+    w2Wed
+  );
+  assert.equal(summaries.length, 1);
+  // 7*15 + 30 + 15 + 30 = 105 + 75 = 180
+  assert.equal(summaries[0].totalValue, 180);
+  assert.equal(summaries[0].unit, 'min');
+
+  // Volume analytics buckets: Daily view for 10 days (w1Mon..w2Wed) -> each bucket shows target 15 in W1 and 30 in W2
+  const dailyVol = ChartsAnalytics.habitVolumeBuckets(steppedHabit, checkins, w1Mon, w2Wed, 14);
+  assert.equal(dailyVol.length, 10);
+  assert.equal(dailyVol[0].targetTotal, 15);
+  assert.equal(dailyVol[0].targetPerDay, 15);
+  assert.equal(dailyVol[0].actualTotal, 15);
+  assert.equal(dailyVol[7].targetTotal, 30); // w2Mon
+  assert.equal(dailyVol[7].actualTotal, 30);
+  assert.equal(dailyVol[8].targetTotal, 30); // w2Tue
+  assert.equal(dailyVol[8].actualTotal, 15);
+
+  const volSummary = ChartsAnalytics.summarizeHabitVolume(steppedHabit, checkins, w1Mon, w2Wed);
+  assert.equal(volSummary.totalVolume, 180);
+  assert.equal(volSummary.activeDaysLogged, 10);
+  assert.equal(volSummary.averagePerActiveDay, 18);
+  assert.equal(volSummary.averagePerScheduledDay, 18);
+  assert.equal(volSummary.targetStart, 15);
+  assert.equal(volSummary.targetEnd, 30);
+  assert.equal(volSummary.unit, 'min');
+
+  // 3. Flexible weekly measured habit: 3x/wk, 20 pages/day
+  const flexMeasured: Habit = {
+    id: 41,
+    name: 'Read',
+    color: '#22C55E',
+    weekdays: 0b1111111,
+    weeklyTarget: 3,
+    dailyTarget: 20,
+    unit: 'pages',
+    startDay: w2Mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+  };
+  const flexCheckins: HabitCheckin[] = [
+    { habitId: 41, dayIndex: w2Mon, done: true, value: 20, updatedAt: 1 },
+    { habitId: 41, dayIndex: w2Tue, done: false, value: 12, updatedAt: 2 }, // partial doesn't satisfy quota!
+  ];
+  const flexStatus = TodayBoard.getFlexibleWeekStatus(flexMeasured, flexCheckins, w2Wed);
+  assert.ok(flexStatus);
+  assert.equal(flexStatus.doneInWeek, 1);
+  assert.equal(flexStatus.remainingNeeded, 2);
+
+  // Flexible weekly volume bucket target over W2 (full week 7 days -> 3 * 20 = 60)
+  const flexVol = ChartsAnalytics.habitVolumeBuckets(flexMeasured, flexCheckins, w2Mon, w2Mon + 6, 4);
+  assert.equal(flexVol.length, 1);
+  assert.equal(flexVol[0].actualTotal, 32); // 20 + 12 actual pages logged
+  assert.equal(flexVol[0].targetTotal, 60); // 3 * 20
+});
+
+test('Primary analytics enhancements: previousPeriod, movingAvgRate, perfectDaysSummary, habitTrendDeltas, and volume target ratio', () => {
+  // 1. DateRangeResolver.previousPeriod
+  const prev7 = DateRangeResolver.previousPeriod('last_7', 100, 106);
+  assert.ok(prev7);
+  assert.equal(prev7.startDay, 93);
+  assert.equal(prev7.endDay, 99);
+
+  const novStart = CivilCalendar.fromLocalDate(2026, 11, 1);
+  const novEnd = CivilCalendar.fromLocalDate(2026, 11, 30);
+  const prevMonth = DateRangeResolver.previousPeriod('prev_month', novStart, novEnd);
+  assert.ok(prevMonth);
+  assert.equal(prevMonth.startDay, CivilCalendar.fromLocalDate(2026, 10, 1));
+  assert.equal(prevMonth.endDay, CivilCalendar.fromLocalDate(2026, 10, 31));
+
+  assert.equal(DateRangeResolver.previousPeriod('all_time', 0, 100), null);
+
+  // 2. ChartsAnalytics moving average, perfect days, trend deltas + bonus count, volume achievement
+  const mon = CivilCalendar.fromLocalDate(2026, 11, 2); // Monday
+  const dailyMeasured: Habit = {
+    id: 50,
+    name: 'Focus',
+    color: '#3B82F6',
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: 20,
+    unit: 'min',
+    startDay: mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+  };
+  const flexHabit: Habit = {
+    id: 51,
+    name: 'Workout',
+    color: '#22C55E',
+    weekdays: 0b1111111,
+    weeklyTarget: 2,
+    startDay: mon,
+    archivedAt: null,
+    createdAt: 100,
+    updatedAt: 200,
+  };
+
+  // Evaluate over 10 days (mon .. mon + 9):
+  // First 5 days: dailyMeasured missed days 0..2, done days 3..4 (and flex done days 0,1,2 -> +1 bonus in week 1)
+  // Second 5 days: dailyMeasured done days 5..9 (perfect streak ends at 5)
+  const checkins: HabitCheckin[] = [
+    { habitId: 50, dayIndex: mon + 3, done: true, value: 20, updatedAt: 1 },
+    { habitId: 50, dayIndex: mon + 4, done: true, value: 20, updatedAt: 2 },
+    { habitId: 50, dayIndex: mon + 5, done: true, value: 25, updatedAt: 3 },
+    { habitId: 50, dayIndex: mon + 6, done: true, value: 20, updatedAt: 4 },
+    { habitId: 50, dayIndex: mon + 7, done: true, value: 20, updatedAt: 5 },
+    { habitId: 50, dayIndex: mon + 8, done: true, value: 20, updatedAt: 6 },
+    { habitId: 50, dayIndex: mon + 9, done: true, value: 20, updatedAt: 7 },
+    { habitId: 51, dayIndex: mon + 0, done: true, updatedAt: 8 },
+    { habitId: 51, dayIndex: mon + 1, done: true, updatedAt: 9 },
+    { habitId: 51, dayIndex: mon + 2, done: true, updatedAt: 10 }, // +1 bonus over weeklyTarget 2
+  ];
+
+  const trend = ChartsAnalytics.habitTrendBuckets([dailyMeasured], checkins, mon, mon + 9, 14);
+  assert.equal(trend.length, 10);
+  assert.equal(trend[0].movingAvgRate, 0);
+  assert.equal(trend[4].movingAvgRate, 0.4); // 0,0,0,1,1 avg = 2/5 = 0.4
+  assert.equal(trend[9].movingAvgRate, 1);
+
+  const perfect = ChartsAnalytics.perfectDaysSummary(
+    [dailyMeasured],
+    checkins,
+    mon,
+    mon + 9,
+    mon + 9
+  );
+  assert.equal(perfect.perfectDays, 7);
+  assert.equal(perfect.scheduledDaysWithHabits, 10);
+  assert.equal(perfect.currentPerfectStreak, 7);
+  assert.equal(perfect.longestPerfectStreak, 7);
+
+  const deltas = ChartsAnalytics.habitTrendDeltas(
+    [dailyMeasured, flexHabit],
+    checkins,
+    mon,
+    mon + 9,
+    mon + 9
+  );
+  assert.equal(deltas.get(50)?.deltaPct, 60); // first 5d = 40%, second 5d = 100% -> +60%
+  assert.equal(deltas.get(51)?.bonusCount, 1);
+
+  const vol = ChartsAnalytics.summarizeHabitVolume(dailyMeasured, checkins, mon, mon + 9);
+  assert.equal(vol.totalVolume, 145);
+  assert.equal(vol.totalTargetVolume, 200);
+  assert.equal(vol.volumeAchievementRate, 0.725);
+});
+
+test('AdvancedAnalytics computes bounce-back, at-risk, matrix, flex/measured, schedule impact, logging discipline, backlog flow, velocity/aging, repeatable, forecast, cross-domain, heatmap, and notes', () => {
+  const w0Mon = CivilCalendar.fromLocalDate(2026, 11, 2); // Monday
+  const w1Mon = w0Mon + 7;
+  const w1Tue = w1Mon + 1;
+  const w1Wed = w1Mon + 2;
+  const w1Thu = w1Mon + 3;
+  const w1Fri = w1Mon + 4;
+  const w1Sat = w1Mon + 5;
+  const todayDay = w1Sat;
+
+  const fixedHabit: Habit = {
+    id: 101,
+    name: 'Morning Run',
+    color: '#3B82F6',
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: 5,
+    unit: 'km',
+    startDay: w0Mon,
+    archivedAt: null,
+    createdAt: 1000,
+    updatedAt: 2000,
+    scheduleHistory: [
+      { fromDay: w0Mon, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 3 },
+      { fromDay: w1Mon, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 5 },
+    ],
+  };
+
+  const flexHabit: Habit = {
+    id: 102,
+    name: 'Gym',
+    color: '#22C55E',
+    weekdays: 0b1111111,
+    weeklyTarget: 2,
+    startDay: w0Mon,
+    archivedAt: null,
+    createdAt: 1000,
+    updatedAt: 2000,
+  };
+
+  const dayMidUtcMs = (d: number, hourUtc: number) =>
+    Date.UTC(2026, 10, 2 + (d - w0Mon), hourUtc, 30, 0);
+
+  // w0Mon..w0Sun (7 days): fixedHabit (target 3km) all 7 done -> 100%
+  // w1Mon..todayDay (w1Sat, 6 days):
+  //   w1Mon: done (6km, same-day morning 08:30 UTC)
+  //   w1Tue: partial (2km, not done) -> miss #1
+  //   w1Wed: missed -> miss #2 (chained miss!)
+  //   w1Thu: missed -> miss #3 (chained miss!)
+  //   w1Fri: missed -> miss #4
+  //   todayDay (w1Sat): pending (not done yet)
+  const checkins: HabitCheckin[] = [
+    ...Array.from({ length: 7 }, (_, i) => ({
+      habitId: 101,
+      dayIndex: w0Mon + i,
+      done: true,
+      value: 3,
+      updatedAt: dayMidUtcMs(w0Mon + i, 9), // morning same-day
+    })),
+    { habitId: 101, dayIndex: w1Mon, done: true, value: 6, updatedAt: dayMidUtcMs(w1Mon, 8) },
+    { habitId: 101, dayIndex: w1Tue, done: false, value: 2, updatedAt: dayMidUtcMs(w1Tue, 18) },
+    // Flex habit: w0 done 3 times (bonus 1), w1 done 1 time (so pending in forecast)
+    { habitId: 102, dayIndex: w0Mon + 0, done: true, updatedAt: dayMidUtcMs(w0Mon, 19) }, // same-day evening
+    { habitId: 102, dayIndex: w0Mon + 2, done: true, updatedAt: dayMidUtcMs(w0Mon + 3, 14) }, // retroactive!
+    { habitId: 102, dayIndex: w0Mon + 4, done: true, updatedAt: dayMidUtcMs(w0Mon + 4, 20) },
+    { habitId: 102, dayIndex: w1Tue, done: true, updatedAt: dayMidUtcMs(w1Tue, 19) },
+  ];
+
+  const notes: HabitNote[] = [
+    { habitId: 101, dayIndex: w1Mon, text: 'Great #energy after sleep', updatedAt: 1 },
+    { habitId: 101, dayIndex: w1Wed, text: 'Too tired after work', updatedAt: 2 },
+    { habitId: 101, dayIndex: w1Thu, text: 'Still tired knees sore', updatedAt: 3 },
+  ];
+
+  const tasks: Task[] = [
+    // Heavy task day on w1Thu (4 tasks due/done)
+    { id: 1, title: 'T1', note: '', dueDay: w1Thu, done: true, status: 'done', completedDay: w1Thu, repeatable: false, createdAt: dayMidUtcMs(w1Mon, 10), updatedAt: dayMidUtcMs(w1Thu, 15), deletedAt: null },
+    { id: 2, title: 'T2', note: '', dueDay: w1Thu, done: true, status: 'done', completedDay: w1Fri, repeatable: false, createdAt: dayMidUtcMs(w1Tue, 10), updatedAt: dayMidUtcMs(w1Fri, 12), deletedAt: null }, // 1d late
+    { id: 3, title: 'T3', note: '', dueDay: w1Thu, done: false, status: 'not_done', completedDay: null, repeatable: false, createdAt: dayMidUtcMs(w1Wed, 10), updatedAt: dayMidUtcMs(w1Thu, 21), deletedAt: null },
+    { id: 4, title: 'T4', note: '', dueDay: w1Thu, done: false, status: 'open', completedDay: null, repeatable: false, createdAt: dayMidUtcMs(w1Wed, 10), updatedAt: dayMidUtcMs(w1Wed, 10), deletedAt: null }, // overdue by 2d on w1Sat
+    // Early finish & goal
+    { id: 5, title: 'Early Task', note: '', dueDay: todayDay + 2, done: true, status: 'done', completedDay: w1Fri, repeatable: false, createdAt: dayMidUtcMs(w1Thu, 10), updatedAt: dayMidUtcMs(w1Fri, 10), deletedAt: null }, // 3d early
+    { id: 6, title: 'Open Goal', note: '', dueDay: null, done: false, status: 'open', completedDay: null, repeatable: false, createdAt: dayMidUtcMs(w0Mon, 10), updatedAt: dayMidUtcMs(w0Mon, 10), deletedAt: null },
+    // Repeatable tasks
+    { id: 7, title: 'Pay bills', note: '', dueDay: w0Mon, done: true, status: 'done', completedDay: w0Mon, repeatable: true, createdAt: dayMidUtcMs(w0Mon, 9), updatedAt: dayMidUtcMs(w0Mon, 11), deletedAt: null },
+    { id: 8, title: 'Pay bills', note: '', dueDay: w1Mon, done: true, status: 'done', completedDay: w1Mon, repeatable: true, createdAt: dayMidUtcMs(w1Mon, 9), updatedAt: dayMidUtcMs(w1Mon, 11), deletedAt: null },
+  ];
+
+  const snapshot: DomainSnapshot = {
+    habits: [fixedHabit, flexHabit],
+    checkins,
+    notes,
+    tasks,
+  };
+
+  const report = AdvancedAnalytics.compute({
+    snapshot,
+    targetHabits: [fixedHabit, flexHabit],
+    startDay: w0Mon,
+    endDay: todayDay,
+    todayDay,
+    timeZone: 'UTC',
+  });
+
+  // 1. Bounce-back: fixedHabit missed Tue->Wed->Thu->Fri = 3 chained misses, 0 recovered
+  assert.equal(report.bounceBack.chainedMisses, 3);
+  assert.equal(report.bounceBack.recoveredMisses, 0);
+  assert.equal(report.bounceBack.bounceBackRate, 0);
+
+  // 2. At-risk: fixedHabit has 4 trailing misses & drop from 100% -> <25%
+  assert.equal(report.atRiskHabits.length, 1);
+  assert.equal(report.atRiskHabits[0].habit.id, 101);
+  assert.equal(report.atRiskHabits[0].consecutiveMisses, 4);
+  assert.equal(report.atRiskHabits[0].reason, 'both');
+
+  // 3. Habit x Weekday Matrix
+  assert.equal(report.habitWeekdayMatrix.length, 2);
+  assert.equal(report.habitWeekdayMatrix[0].cells.length, 7);
+
+  // 4. Flexible insight
+  assert.ok(report.flexibleInsight);
+  assert.equal(report.flexibleInsight.bonusCheckins, 1);
+  assert.equal(report.flexibleInsight.perfectWeeks, 1);
+
+  // 5. Measured intensity: 7 exact (w0) + 1 overachieved (6>5 on w1Mon) + 1 partial (2/5 = 40% on w1Tue)
+  assert.equal(report.measuredIntensity.length, 1);
+  assert.equal(report.measuredIntensity[0].exactDays, 7);
+  assert.equal(report.measuredIntensity[0].overachievedDays, 1);
+  assert.equal(report.measuredIntensity[0].partialDays, 1);
+  assert.equal(report.measuredIntensity[0].avgPartialPct, 40);
+  assert.equal(report.measuredIntensity[0].bestDayValue, 6);
+  assert.equal(report.measuredIntensity[0].bestDayIndex, w1Mon);
+
+  // 6. Schedule change impact: w0 (100%) -> w1 (low %)
+  assert.equal(report.scheduleImpacts.length, 1);
+  assert.equal(report.scheduleImpacts[0].beforeRate, 1);
+  assert.ok((report.scheduleImpacts[0].deltaPct ?? 0) < 0);
+
+  // 7. Logging discipline (only done check-ins counted: 8 fixed + 4 flex = 12, 1 retroactive on flex w0+2)
+  assert.equal(report.loggingDiscipline.totalDoneCheckins, 12);
+  assert.equal(report.loggingDiscipline.retroactiveCount, 1);
+  assert.equal(report.loggingDiscipline.sameDayCount, 11);
+
+  // 8. Task velocity & aging + backlog flow
+  assert.ok(report.backlogFlowBuckets.length >= 2);
+  assert.equal(report.taskVelocity.lateTasksCount, 1);
+  assert.equal(report.taskVelocity.maxLateDays, 1);
+  assert.equal(report.taskVelocity.earlyTasksCount, 1);
+  assert.equal(report.taskVelocity.avgDaysEarly, 3);
+  assert.equal(report.taskVelocity.openOverdueCount, 1);
+  assert.equal(report.taskVelocity.maxOverdueAgeDays, 2);
+  assert.equal(report.taskVelocity.oldestOverdueTitle, 'T4');
+  assert.equal(report.taskVelocity.openGoalsCount, 1);
+  assert.equal(report.taskVelocity.oldestGoalTitle, 'Open Goal');
+
+  // 9. Repeatable tasks
+  assert.equal(report.repeatableTasks.length, 1);
+  assert.equal(report.repeatableTasks[0].doneCount, 2);
+  assert.equal(report.repeatableTasks[0].avgGapDays, 7);
+
+  // 10. Forecast: next 7 days + 1 overdue carry-in
+  assert.equal(report.workloadForecast.length, 7);
+  assert.equal(report.overdueBacklogCount, 1);
+  // Day 1 ahead is Sunday of w1 (todayDay + 1): fixedHabit (1) + flexHabit pending (1) = 2
+  assert.equal(report.workloadForecast[0].fixedHabitsCount, 1);
+  assert.equal(report.workloadForecast[0].flexHabitsPendingCount, 1);
+
+  // 11. Cross-domain load: w1Thu had 4 tasks (heavy bucket)
+  const heavy = report.crossDomainLoad.find((b) => b.id === 'heavy');
+  assert.ok(heavy);
+  assert.equal(heavy.daysCount, 1);
+
+  // 12. Multi-mode heatmap
+  assert.equal(report.multiHeatmap.totalTaskDone, 5);
+  assert.equal(report.multiHeatmap.totalHabitDone, 12);
+
+  // 13. Notes insights: 1 on done (w1Mon), 2 on missed (w1Wed, w1Thu), keyword 'tired' appears twice on missed days
+  assert.equal(report.notesInsights.totalNotes, 3);
+  assert.equal(report.notesInsights.notesOnDoneDays, 1);
+  assert.equal(report.notesInsights.notesOnMissedDays, 2);
+  const tiredKw = report.notesInsights.topKeywords.find((k) => k.word === 'tired');
+  assert.ok(tiredKw);
+  assert.equal(tiredKw.count, 2);
+  assert.equal(tiredKw.missedCount, 2);
+});
+
+
+
+
 
 
 

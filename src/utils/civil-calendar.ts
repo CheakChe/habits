@@ -115,6 +115,35 @@ export class CivilCalendar {
     return (weekdaysMask & (1 << bit)) !== 0;
   }
 
+  public static countScheduledDays(weekdaysMask: number): number {
+    const mask = weekdaysMask & 0x7f;
+    let count = 0;
+    for (let bit = 0; bit < 7; bit++) {
+      if ((mask & (1 << bit)) !== 0) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  public static countScheduledInRange(
+    weekdaysMask: number,
+    startDay: number,
+    endDay: number
+  ): number {
+    if (endDay < startDay) return 0;
+    const mask = weekdaysMask & 0x7f;
+    if (mask === 0) return 0;
+    if (mask === 0x7f) return endDay - startDay + 1;
+    let count = 0;
+    for (let d = startDay; d <= endDay; d++) {
+      if (CivilCalendar.isScheduled(mask, d)) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   public static weekdayShortLabel(bit: number): string {
     return WEEKDAY_NAMES_SHORT[bit] ?? '';
   }

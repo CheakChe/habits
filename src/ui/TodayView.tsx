@@ -1,9 +1,11 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot, Habit, Task } from '../types/domain';
+import { DomainSnapshot, Habit, HabitCheckin, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitAppearance } from '../utils/habit-appearance';
+import { HabitSchedule } from '../utils/habit-schedule';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { TodayBoard } from '../utils/today-board';
+import { MeasuredQuickControls } from './CustomControls';
 import { HabitBadge } from './HabitBadge';
 import {
   AlertIcon,
@@ -20,6 +22,8 @@ interface TodayViewProps {
   goalsExpanded: boolean;
   onToggleGoalsExpanded: () => void;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
+  onSetCheckinValue: (habitId: number, dayIndex: number, value: number) => Promise<void>;
+  onIncrementCheckinValue: (habitId: number, dayIndex: number, delta: number) => Promise<void>;
   onSaveNote: (habitId: number, dayIndex: number, text: string) => Promise<void>;
   onToggleTask: (task: Task) => Promise<void>;
   onQuickAddTask: (title: string, dueDay: number | null) => Promise<void>;
@@ -53,10 +57,10 @@ export function TodayView(props: TodayViewProps): JSX.Element {
   );
 
   const checkinMap = createMemo(() => {
-    const map = new Map<number, boolean>();
+    const map = new Map<number, HabitCheckin>();
     for (const c of props.snapshot.checkins) {
       if (c.dayIndex === props.todayDay) {
-        map.set(c.habitId, c.done);
+        map.set(c.habitId, c);
       }
     }
     return map;
@@ -74,7 +78,9 @@ export function TodayView(props: TodayViewProps): JSX.Element {
 
   const completedHabitsCount = createMemo(() => {
     const cMap = checkinMap();
-    return scheduledHabits().filter((h) => cMap.get(h.id) === true).length;
+    return scheduledHabits().filter((h) =>
+      HabitSchedule.isCheckinDoneForDay(h, cMap.get(h.id), props.todayDay)
+    ).length;
   });
 
   const openNoteEditor = (habit: Habit) => {
@@ -184,7 +190,31 @@ export function TodayView(props: TodayViewProps): JSX.Element {
             <ul class="divide-y divide-white/[0.06]">
               <For each={scheduledHabits()}>
                 {(habit) => {
-                  const isDone = () => checkinMap().get(habit.id) === true;
+                  const checkinEntry = () => checkinMap().get(habit.id);
+                  const activeTarget = () =>
+                    HabitSchedule.getAtDay(habit, props.todayDay).dailyTarget;
+                  const currentValue = () =>
+                    HabitSchedule.getCheckinValueForDay(
+                      habit,
+                      checkinEntry(),
+                      props.todayDay
+                    );
+                  const isDone = () =>
+                    HabitSchedule.isCheckinDoneForDay(
+                      habit,
+                      checkinEntry(),
+                      props.todayDay
+                    );
+                  const isPartial = () => {
+                    const target = activeTarget();
+                    return target !== null && !isDone() && currentValue() > 0;
+                  };
+                  const partialPct = () => {
+                    const target = activeTarget();
+                    if (target === null || target <= 0) return 0;
+                    return Math.min(100, Math.round((currentValue() / target) * 100));
+                  };
+                  const accentColor = () => HabitAppearance.getColor(habit.color);
                   const existingNote = () => noteMap().get(habit.id) ?? '';
                   const isNoteOpen = () => expandedNoteHabitId() === habit.id;
                   const metrics = createMemo(() =>
@@ -240,24 +270,40 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             void props.onToggleCheckin(habit.id, props.todayDay, !isDone())
                           }
                           aria-pressed={isDone()}
-                          aria-label={`Mark ${habit.name} as ${isDone() ? 'not done' : 'done'}`}
-                          class={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-all duration-150 cursor-pointer border ${
+                          aria-label={
+                            activeTarget() !== null
+                              ? isDone()
+                                ? `Reset ${habit.name} to 0`
+                                : `Complete ${habit.name} (${HabitSchedule.formatNumericValue(activeTarget()!)}${habit.unit ? ` ${habit.unit}` : ''})`
+                              : `Mark ${habit.name} as ${isDone() ? 'not done' : 'done'}`
+                          }
+                          class={`relative overflow-hidden w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-all duration-150 cursor-pointer border ${
                             isDone()
                               ? 'border-transparent'
-                              : 'bg-[#0A0B0E] border-white/[0.12] text-transparent hover:border-white/30'
+                              : isPartial()
+                                ? 'bg-[#0A0B0E] border-white/[0.22] text-[#C8CDD8] hover:border-white/40'
+                                : 'bg-[#0A0B0E] border-white/[0.12] text-transparent hover:border-white/30'
                           }`}
                           style={
                             isDone()
                               ? {
-                                  'background-color': HabitAppearance.getColor(habit.color),
-                                  color: HabitAppearance.getContrastTextColor(
-                                    HabitAppearance.getColor(habit.color)
-                                  ),
+                                  'background-color': accentColor(),
+                                  color: HabitAppearance.getContrastTextColor(accentColor()),
                                 }
                               : undefined
                           }
                         >
-                          <CheckIcon class="w-5 h-5" />
+                          <Show when={isPartial()}>
+                            <span
+                              aria-hidden="true"
+                              class="absolute inset-x-0 bottom-0 opacity-25 transition-all"
+                              style={{
+                                height: `${partialPct()}%`,
+                                'background-color': accentColor(),
+                              }}
+                            />
+                          </Show>
+                          <CheckIcon class="w-5 h-5 relative z-10" />
                         </button>
 
                         <div class="min-w-0 flex-1">
@@ -273,6 +319,18 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             </p>
                           </div>
                           <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-xs text-[#8E95A5]">
+                            <Show when={activeTarget() !== null}>
+                              <span
+                                class={`font-mono tabular-nums ${
+                                  isDone() ? 'text-[#60A5FA]' : 'text-[#C8CDD8]'
+                                }`}
+                              >
+                                {HabitSchedule.formatNumericValue(currentValue())}/
+                                {HabitSchedule.formatNumericValue(activeTarget()!)}
+                                {habit.unit ? ` ${habit.unit}` : ''}
+                              </span>
+                              <span aria-hidden="true">·</span>
+                            </Show>
                             <span
                               class={`font-mono tabular-nums ${streakToneClass()}`}
                               title={
@@ -341,6 +399,24 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           <NoteIcon class="w-4 h-4" />
                         </button>
                       </div>
+
+                      <Show when={activeTarget() !== null}>
+                        <div class="px-5 pb-3.5 pl-[4.75rem]">
+                          <MeasuredQuickControls
+                            habitName={habit.name}
+                            accentColor={accentColor()}
+                            unit={habit.unit}
+                            value={currentValue()}
+                            target={activeTarget()!}
+                            onIncrement={(delta) =>
+                              props.onIncrementCheckinValue(habit.id, props.todayDay, delta)
+                            }
+                            onSetValue={(val) =>
+                              props.onSetCheckinValue(habit.id, props.todayDay, val)
+                            }
+                          />
+                        </div>
+                      </Show>
 
                       <Show when={isNoteOpen()}>
                         <div class="px-5 pb-4 pt-1 flex items-center gap-2.5">

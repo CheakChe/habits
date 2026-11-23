@@ -1,5 +1,6 @@
 import { Habit, HabitCheckin, normalizeWeeklyTarget } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
+import { HabitSchedule } from './habit-schedule';
 
 export const STREAK_MILESTONES = [7, 30, 100] as const;
 export type StreakMilestone = (typeof STREAK_MILESTONES)[number];
@@ -31,6 +32,8 @@ export interface HabitPeriodSummary {
   scheduledDays: number;
   completedDays: number;
   missedDays: number;
+  totalValue?: number;
+  unit?: string | null;
 }
 
 export interface DayHabitCounts {
@@ -38,34 +41,46 @@ export interface DayHabitCounts {
   done: number;
 }
 
-function buildHabitDoneSet(habitId: number, checkins: HabitCheckin[]): Set<number> {
+function buildHabitDoneSet(habit: Habit, checkins: HabitCheckin[]): Set<number> {
   const doneSet = new Set<number>();
   for (const entry of checkins) {
-    if (entry.habitId === habitId && entry.done) {
+    if (
+      entry.habitId === habit.id &&
+      HabitSchedule.isCheckinDoneForDay(habit, entry, entry.dayIndex)
+    ) {
       doneSet.add(entry.dayIndex);
     }
   }
   return doneSet;
 }
 
-function countDoneInRange(doneSet: Set<number>, startDay: number, endDay: number): number {
+function countDoneInRange(
+  doneSet: Set<number>,
+  startDay: number,
+  endDay: number,
+  weekdaysMask: number = 0x7f
+): number {
   if (endDay < startDay) return 0;
   let count = 0;
   for (let d = startDay; d <= endDay; d++) {
-    if (doneSet.has(d)) count += 1;
+    if (CivilCalendar.isScheduled(weekdaysMask, d) && doneSet.has(d)) {
+      count += 1;
+    }
   }
   return count;
 }
 
 function effectiveFlexibleWeekTarget(
   habitStartDay: number,
+  weekdays: number,
   weekStart: number,
   target: number
 ): number {
   const wStart = Math.max(habitStartDay, weekStart);
   const wEnd = weekStart + 6;
   if (wEnd < wStart) return 0;
-  return Math.min(target, wEnd - wStart + 1);
+  const eligibleDays = CivilCalendar.countScheduledInRange(weekdays, wStart, wEnd);
+  return Math.min(target, eligibleDays);
 }
 
 export class StreakCalculator {
@@ -94,9 +109,17 @@ export class StreakCalculator {
       }
     };
 
+    const habitById = new Map<number, Habit>();
+    for (const h of habits) {
+      habitById.set(h.id, h);
+    }
+
     const doneByHabit = new Map<number, Set<number>>();
     for (const c of checkins) {
-      if (!c.done) continue;
+      const habit = habitById.get(c.habitId);
+      if (!habit || !HabitSchedule.isCheckinDoneForDay(habit, c, c.dayIndex)) {
+        continue;
+      }
       let set = doneByHabit.get(c.habitId);
       if (!set) {
         set = new Set<number>();
@@ -109,17 +132,81 @@ export class StreakCalculator {
       const hStart = Math.max(habit.startDay, s);
       if (e < hStart) continue;
       const doneSet = doneByHabit.get(habit.id) ?? new Set<number>();
-      const weeklyTarget = normalizeWeeklyTarget(habit.weeklyTarget);
 
-      if (weeklyTarget === null) {
-        for (let d = hStart; d <= e; d++) {
-          if (CivilCalendar.isScheduled(habit.weekdays, d)) {
-            add(d, 1, doneSet.has(d) ? 1 : 0);
+      if (!habit.scheduleHistory || habit.scheduleHistory.length <= 1) {
+        const weeklyTarget = normalizeWeeklyTarget(habit.weeklyTarget);
+
+        if (weeklyTarget === null) {
+          for (let d = hStart; d <= e; d++) {
+            if (CivilCalendar.isScheduled(habit.weekdays, d)) {
+              add(d, 1, doneSet.has(d) ? 1 : 0);
+            }
+          }
+          continue;
+        }
+
+        const eligibleMask = (habit.weekdays & 0x7f) || 0x7f;
+        const firstWs = CivilCalendar.startOfWeek(hStart);
+        const lastWs = CivilCalendar.startOfWeek(e);
+        for (let ws = firstWs; ws <= lastWs; ws += 7) {
+          const wFullStart = Math.max(habit.startDay, ws);
+          const wFullEnd = ws + 6;
+          const evalEnd = Math.min(wFullEnd, todayDay);
+          if (evalEnd < wFullStart) continue;
+
+          const effTarget = effectiveFlexibleWeekTarget(
+            habit.startDay,
+            eligibleMask,
+            ws,
+            weeklyTarget
+          );
+          if (effTarget <= 0) continue;
+
+          const uncheckedDays: number[] = [];
+          let doneCount = 0;
+
+          for (let d = wFullStart; d <= evalEnd; d++) {
+            const isEligible = CivilCalendar.isScheduled(eligibleMask, d);
+            if (doneSet.has(d)) {
+              doneCount += 1;
+              add(d, 1, 1);
+            } else if (isEligible) {
+              uncheckedDays.push(d);
+            }
+          }
+
+          if (doneCount < effTarget) {
+            const remainingFutureDaysInWeek = CivilCalendar.countScheduledInRange(
+              eligibleMask,
+              evalEnd + 1,
+              wFullEnd
+            );
+            const stillAchievable =
+              evalEnd === todayDay &&
+              todayDay < wFullEnd &&
+              doneCount + remainingFutureDaysInWeek >= effTarget;
+
+            if (stillAchievable) {
+              if (
+                !doneSet.has(todayDay) &&
+                todayDay >= wFullStart &&
+                CivilCalendar.isScheduled(eligibleMask, todayDay)
+              ) {
+                add(todayDay, 1, 0);
+              }
+            } else {
+              const shortfall = Math.min(effTarget - doneCount, uncheckedDays.length);
+              const firstMissIdx = uncheckedDays.length - shortfall;
+              for (let idx = firstMissIdx; idx < uncheckedDays.length; idx++) {
+                add(uncheckedDays[idx], 1, 0);
+              }
+            }
           }
         }
         continue;
       }
 
+      // Versioned schedule history path
       const firstWs = CivilCalendar.startOfWeek(hStart);
       const lastWs = CivilCalendar.startOfWeek(e);
       for (let ws = firstWs; ws <= lastWs; ws += 7) {
@@ -128,35 +215,84 @@ export class StreakCalculator {
         const evalEnd = Math.min(wFullEnd, todayDay);
         if (evalEnd < wFullStart) continue;
 
-        const effTarget = effectiveFlexibleWeekTarget(habit.startDay, ws, weeklyTarget);
-        const uncheckedDays: number[] = [];
-        let doneCount = 0;
+        const segs = HabitSchedule.getSegmentsInRange(habit, wFullStart, wFullEnd);
+        let donePriorInWeek = 0;
 
-        for (let d = wFullStart; d <= evalEnd; d++) {
-          if (doneSet.has(d)) {
-            doneCount += 1;
-            add(d, 1, 1);
-          } else {
-            uncheckedDays.push(d);
-          }
-        }
+        for (let idx = 0; idx < segs.length; idx++) {
+          const seg = segs[idx];
+          const segEvalEnd = Math.min(seg.end, evalEnd);
+          if (segEvalEnd < seg.start) continue;
 
-        if (doneCount < effTarget) {
-          const remainingFutureDaysInWeek = Math.max(0, wFullEnd - evalEnd);
-          const stillAchievable =
-            evalEnd === todayDay &&
-            todayDay < wFullEnd &&
-            doneCount + remainingFutureDaysInWeek >= effTarget;
-
-          if (stillAchievable) {
-            if (!doneSet.has(todayDay) && todayDay >= wFullStart) {
-              add(todayDay, 1, 0);
+          if (seg.weeklyTarget === null) {
+            for (let d = seg.start; d <= segEvalEnd; d++) {
+              if (CivilCalendar.isScheduled(seg.weekdays, d)) {
+                const isDone = doneSet.has(d);
+                add(d, 1, isDone ? 1 : 0);
+                if (isDone) donePriorInWeek += 1;
+              }
             }
-          } else {
-            const shortfall = Math.min(effTarget - doneCount, uncheckedDays.length);
-            const firstMissIdx = uncheckedDays.length - shortfall;
-            for (let idx = firstMissIdx; idx < uncheckedDays.length; idx++) {
-              add(uncheckedDays[idx], 1, 0);
+            continue;
+          }
+
+          const eligibleMask = (seg.weekdays & 0x7f) || 0x7f;
+          if (idx < segs.length - 1) {
+            for (let d = seg.start; d <= segEvalEnd; d++) {
+              if (doneSet.has(d)) {
+                add(d, 1, 1);
+                donePriorInWeek += 1;
+              }
+            }
+            continue;
+          }
+
+          const remainingQuota = Math.max(0, seg.weeklyTarget - donePriorInWeek);
+          const eligibleInSeg = CivilCalendar.countScheduledInRange(
+            eligibleMask,
+            seg.start,
+            seg.end
+          );
+          const effTarget = Math.min(remainingQuota, eligibleInSeg);
+          if (effTarget <= 0) continue;
+
+          const uncheckedDays: number[] = [];
+          let doneCount = 0;
+
+          for (let d = seg.start; d <= segEvalEnd; d++) {
+            const isEligible = CivilCalendar.isScheduled(eligibleMask, d);
+            if (doneSet.has(d)) {
+              doneCount += 1;
+              add(d, 1, 1);
+            } else if (isEligible) {
+              uncheckedDays.push(d);
+            }
+          }
+
+          if (doneCount < effTarget) {
+            const remainingFutureDaysInWeek = CivilCalendar.countScheduledInRange(
+              eligibleMask,
+              segEvalEnd + 1,
+              seg.end
+            );
+            const stillAchievable =
+              evalEnd === todayDay &&
+              todayDay < seg.end &&
+              doneCount + remainingFutureDaysInWeek >= effTarget;
+
+            if (stillAchievable) {
+              if (
+                !doneSet.has(todayDay) &&
+                todayDay >= seg.start &&
+                todayDay <= segEvalEnd &&
+                CivilCalendar.isScheduled(eligibleMask, todayDay)
+              ) {
+                add(todayDay, 1, 0);
+              }
+            } else {
+              const shortfall = Math.min(effTarget - doneCount, uncheckedDays.length);
+              const firstMissIdx = uncheckedDays.length - shortfall;
+              for (let k = firstMissIdx; k < uncheckedDays.length; k++) {
+                add(uncheckedDays[k], 1, 0);
+              }
             }
           }
         }
@@ -185,7 +321,7 @@ export class StreakCalculator {
         effectiveEnd,
         allowPending
       );
-      return {
+      const baseSummary: HabitPeriodSummary = {
         habit,
         currentStreak: metrics.currentStreak,
         longestStreak: metrics.longestStreak,
@@ -195,6 +331,21 @@ export class StreakCalculator {
         completedDays: metrics.completedScheduledDays,
         missedDays: Math.max(0, metrics.scheduledDays - metrics.completedScheduledDays),
       };
+      if (HabitSchedule.hasAnyDailyTarget(habit) && effectiveEnd >= effectiveStart) {
+        let totalValue = 0;
+        for (const c of checkins) {
+          if (
+            c.habitId === habit.id &&
+            c.dayIndex >= effectiveStart &&
+            c.dayIndex <= effectiveEnd
+          ) {
+            totalValue += HabitSchedule.getCheckinValueForDay(habit, c, c.dayIndex);
+          }
+        }
+        baseSummary.totalValue = Math.round(totalValue * 100) / 100;
+        baseSummary.unit = habit.unit ?? null;
+      }
+      return baseSummary;
     });
 
     return rows.sort((a, b) => {
@@ -251,29 +402,94 @@ export class StreakCalculator {
     const weekStart = CivilCalendar.startOfWeek(todayDay);
     const weekEnd = weekStart + 6;
     const effectiveStart = Math.max(weekStart, habit.startDay);
-    const doneSet = buildHabitDoneSet(habit.id, checkins);
-    const weeklyTarget = normalizeWeeklyTarget(habit.weeklyTarget);
+    const doneSet = buildHabitDoneSet(habit, checkins);
 
-    if (weeklyTarget !== null) {
-      if (weekEnd < effectiveStart) {
+    if (weekEnd < effectiveStart) {
+      return {
+        weekStart,
+        weekEnd,
+        completedDays: 0,
+        scheduledDays: 0,
+        isComplete: false,
+      };
+    }
+
+    const activeSched = HabitSchedule.getAtDay(habit, todayDay);
+    const segs = HabitSchedule.getSegmentsInRange(habit, effectiveStart, weekEnd);
+
+    if (segs.length === 1) {
+      const weeklyTarget = activeSched.weeklyTarget;
+      if (weeklyTarget !== null) {
+        const eligibleMask = (activeSched.weekdays & 0x7f) || 0x7f;
+        const scheduledDays = effectiveFlexibleWeekTarget(
+          habit.startDay,
+          eligibleMask,
+          weekStart,
+          weeklyTarget
+        );
+        const completedDays = countDoneInRange(
+          doneSet,
+          effectiveStart,
+          Math.min(weekEnd, todayDay),
+          0x7f
+        );
         return {
           weekStart,
           weekEnd,
-          completedDays: 0,
-          scheduledDays: 0,
-          isComplete: false,
+          completedDays,
+          scheduledDays,
+          isComplete: scheduledDays > 0 && completedDays >= scheduledDays,
         };
       }
-      const scheduledDays = effectiveFlexibleWeekTarget(
-        habit.startDay,
+
+      let scheduledDays = 0;
+      let completedDays = 0;
+      for (let d = effectiveStart; d <= weekEnd; d++) {
+        if (!CivilCalendar.isScheduled(activeSched.weekdays, d)) {
+          continue;
+        }
+        scheduledDays += 1;
+        if (d <= todayDay && doneSet.has(d)) {
+          completedDays += 1;
+        }
+      }
+      return {
         weekStart,
-        weeklyTarget
+        weekEnd,
+        completedDays,
+        scheduledDays,
+        isComplete: scheduledDays > 0 && completedDays >= scheduledDays,
+      };
+    }
+
+    // Split week across multiple schedule versions
+    if (activeSched.weeklyTarget !== null) {
+      const activeSeg =
+        segs.find((s) => todayDay >= s.start && todayDay <= s.end) ??
+        segs[segs.length - 1];
+      let donePriorInWeek = 0;
+      for (const seg of segs) {
+        if (seg.start >= activeSeg.start) break;
+        const mask = seg.weeklyTarget === null ? seg.weekdays : 0x7f;
+        donePriorInWeek += countDoneInRange(doneSet, seg.start, seg.end, mask);
+      }
+      const eligibleMask = (activeSeg.weekdays & 0x7f) || 0x7f;
+      const availableInSeg = CivilCalendar.countScheduledInRange(
+        eligibleMask,
+        activeSeg.start,
+        activeSeg.end
       );
-      const completedDays = countDoneInRange(
+      const scheduledDays = Math.min(
+        activeSched.weeklyTarget,
+        donePriorInWeek + availableInSeg
+      );
+      const doneInSeg = countDoneInRange(
         doneSet,
-        effectiveStart,
-        Math.min(weekEnd, todayDay)
+        activeSeg.start,
+        Math.min(activeSeg.end, todayDay),
+        0x7f
       );
+      const completedDays = donePriorInWeek + doneInSeg;
       return {
         weekStart,
         weekEnd,
@@ -285,14 +501,22 @@ export class StreakCalculator {
 
     let scheduledDays = 0;
     let completedDays = 0;
-    if (weekEnd >= effectiveStart) {
-      for (let d = effectiveStart; d <= weekEnd; d++) {
-        if (!CivilCalendar.isScheduled(habit.weekdays, d)) {
-          continue;
+    for (const seg of segs) {
+      if (seg.weeklyTarget === null) {
+        for (let d = seg.start; d <= seg.end; d++) {
+          if (!CivilCalendar.isScheduled(seg.weekdays, d)) continue;
+          scheduledDays += 1;
+          if (d <= todayDay && doneSet.has(d)) {
+            completedDays += 1;
+          }
         }
-        scheduledDays += 1;
-        if (d <= todayDay && doneSet.has(d)) {
-          completedDays += 1;
+      } else {
+        const cap = Math.min(seg.end, todayDay);
+        for (let d = seg.start; d <= cap; d++) {
+          if (doneSet.has(d)) {
+            scheduledDays += 1;
+            completedDays += 1;
+          }
         }
       }
     }
@@ -313,102 +537,181 @@ export class StreakCalculator {
     periodEndDay: number,
     allowPendingEndDay: boolean = true
   ): StreakMetrics {
-    const doneSet = buildHabitDoneSet(habit.id, checkins);
+    const doneSet = buildHabitDoneSet(habit, checkins);
     const effectiveEnd = periodEndDay;
     const effectiveStart = Math.max(habit.startDay, periodStartDay);
-    const weeklyTarget = normalizeWeeklyTarget(habit.weeklyTarget);
 
-    if (weeklyTarget !== null) {
-      let currentStreak = 0;
-      let longestStreak = 0;
+    if (!habit.scheduleHistory || habit.scheduleHistory.length <= 1) {
+      const weeklyTarget = normalizeWeeklyTarget(habit.weeklyTarget);
 
-      if (effectiveEnd >= habit.startDay) {
-        const firstWeekStart = CivilCalendar.startOfWeek(habit.startDay);
-        const endWeekStart = CivilCalendar.startOfWeek(effectiveEnd);
+      if (weeklyTarget !== null) {
+        const eligibleMask = (habit.weekdays & 0x7f) || 0x7f;
+        let currentStreak = 0;
+        let longestStreak = 0;
 
-        // 1. Current streak measured in consecutive successful weeks
-        for (let ws = endWeekStart; ws >= firstWeekStart; ws -= 7) {
-          const wStart = Math.max(habit.startDay, ws);
-          const wFullEnd = ws + 6;
-          const reqTarget = effectiveFlexibleWeekTarget(
-            habit.startDay,
-            ws,
-            weeklyTarget
-          );
-          if (ws === endWeekStart) {
-            const evalEnd = Math.min(wFullEnd, effectiveEnd);
-            const doneSoFar = countDoneInRange(doneSet, wStart, evalEnd);
-            if (reqTarget > 0 && doneSoFar >= reqTarget) {
-              currentStreak += 1;
-            } else if (allowPendingEndDay) {
-              const remainingDaysInWeek = Math.max(0, wFullEnd - effectiveEnd);
-              if (doneSoFar + remainingDaysInWeek < reqTarget) {
+        if (effectiveEnd >= habit.startDay) {
+          const firstWeekStart = CivilCalendar.startOfWeek(habit.startDay);
+          const endWeekStart = CivilCalendar.startOfWeek(effectiveEnd);
+
+          for (let ws = endWeekStart; ws >= firstWeekStart; ws -= 7) {
+            const wStart = Math.max(habit.startDay, ws);
+            const wFullEnd = ws + 6;
+            const reqTarget = effectiveFlexibleWeekTarget(
+              habit.startDay,
+              eligibleMask,
+              ws,
+              weeklyTarget
+            );
+            if (ws === endWeekStart) {
+              const evalEnd = Math.min(wFullEnd, effectiveEnd);
+              const doneSoFar = countDoneInRange(doneSet, wStart, evalEnd, 0x7f);
+              if (reqTarget > 0 && doneSoFar >= reqTarget) {
+                currentStreak += 1;
+              } else if (allowPendingEndDay) {
+                const remainingDaysInWeek = CivilCalendar.countScheduledInRange(
+                  eligibleMask,
+                  effectiveEnd + 1,
+                  wFullEnd
+                );
+                if (doneSoFar + remainingDaysInWeek < reqTarget) {
+                  break;
+                }
+              } else {
                 break;
               }
             } else {
-              break;
+              const doneInWeek = countDoneInRange(doneSet, wStart, wFullEnd, 0x7f);
+              if (reqTarget > 0 && doneInWeek >= reqTarget) {
+                currentStreak += 1;
+              } else {
+                break;
+              }
             }
-          } else {
-            const doneInWeek = countDoneInRange(doneSet, wStart, wFullEnd);
+          }
+
+          let runningStreak = 0;
+          for (let ws = firstWeekStart; ws <= endWeekStart; ws += 7) {
+            const wStart = Math.max(habit.startDay, ws);
+            const wEvalEnd = Math.min(ws + 6, effectiveEnd);
+            const reqTarget = effectiveFlexibleWeekTarget(
+              habit.startDay,
+              eligibleMask,
+              ws,
+              weeklyTarget
+            );
+            const doneInWeek = countDoneInRange(doneSet, wStart, wEvalEnd, 0x7f);
             if (reqTarget > 0 && doneInWeek >= reqTarget) {
-              currentStreak += 1;
+              runningStreak += 1;
+              if (runningStreak > longestStreak) {
+                longestStreak = runningStreak;
+              }
             } else {
-              break;
+              runningStreak = 0;
             }
           }
         }
 
-        // 2. Longest streak across full habit lifespan weeks up to effectiveEnd
-        let runningStreak = 0;
-        for (let ws = firstWeekStart; ws <= endWeekStart; ws += 7) {
-          const wStart = Math.max(habit.startDay, ws);
-          const wEvalEnd = Math.min(ws + 6, effectiveEnd);
-          const reqTarget = effectiveFlexibleWeekTarget(
-            habit.startDay,
-            ws,
-            weeklyTarget
-          );
-          const doneInWeek = countDoneInRange(doneSet, wStart, wEvalEnd);
-          if (reqTarget > 0 && doneInWeek >= reqTarget) {
-            runningStreak += 1;
-            if (runningStreak > longestStreak) {
-              longestStreak = runningStreak;
-            }
-          } else {
-            runningStreak = 0;
+        let scheduledDays = 0;
+        let completedScheduledDays = 0;
+        if (effectiveEnd >= effectiveStart) {
+          const firstPeriodWeek = CivilCalendar.startOfWeek(effectiveStart);
+          const lastPeriodWeek = CivilCalendar.startOfWeek(effectiveEnd);
+          for (let ws = firstPeriodWeek; ws <= lastPeriodWeek; ws += 7) {
+            const wFullStart = Math.max(habit.startDay, ws);
+            const wFullEnd = ws + 6;
+            const fullWeekTarget = effectiveFlexibleWeekTarget(
+              habit.startDay,
+              eligibleMask,
+              ws,
+              weeklyTarget
+            );
+            const sliceStart = Math.max(effectiveStart, ws);
+            const sliceEnd = Math.min(effectiveEnd, wFullEnd);
+            if (sliceEnd < sliceStart) continue;
+
+            const donePrior =
+              sliceStart > wFullStart
+                ? countDoneInRange(doneSet, wFullStart, sliceStart - 1, 0x7f)
+                : 0;
+            const remainingQuota = Math.max(0, fullWeekTarget - donePrior);
+            const sliceDays = CivilCalendar.countScheduledInRange(
+              eligibleMask,
+              sliceStart,
+              sliceEnd
+            );
+            const doneInSlice = countDoneInRange(doneSet, sliceStart, sliceEnd, 0x7f);
+            const sliceTarget = Math.min(
+              remainingQuota,
+              Math.max(sliceDays, doneInSlice)
+            );
+
+            scheduledDays += sliceTarget;
+            completedScheduledDays += Math.min(doneInSlice, sliceTarget);
           }
+        }
+
+        const completionRate =
+          scheduledDays === 0 ? 0 : completedScheduledDays / scheduledDays;
+
+        return {
+          currentStreak,
+          longestStreak,
+          streakUnit: 'weeks',
+          completionRate,
+          scheduledDays,
+          completedScheduledDays,
+        };
+      }
+
+      // Fixed-weekday schedule metrics
+      let currentStreak = 0;
+      let cursor = effectiveEnd;
+      if (allowPendingEndDay && cursor >= habit.startDay) {
+        if (CivilCalendar.isScheduled(habit.weekdays, cursor) && !doneSet.has(cursor)) {
+          cursor -= 1;
         }
       }
 
-      // 3. Period completion rate capped per weekly quota across active weeks
+      while (cursor >= habit.startDay) {
+        if (!CivilCalendar.isScheduled(habit.weekdays, cursor)) {
+          cursor -= 1;
+          continue;
+        }
+        if (doneSet.has(cursor)) {
+          currentStreak += 1;
+          cursor -= 1;
+        } else {
+          break;
+        }
+      }
+
+      let longestStreak = 0;
+      let runningStreak = 0;
+      for (let d = habit.startDay; d <= effectiveEnd; d++) {
+        if (!CivilCalendar.isScheduled(habit.weekdays, d)) {
+          continue;
+        }
+        if (doneSet.has(d)) {
+          runningStreak += 1;
+          if (runningStreak > longestStreak) {
+            longestStreak = runningStreak;
+          }
+        } else {
+          runningStreak = 0;
+        }
+      }
+
       let scheduledDays = 0;
       let completedScheduledDays = 0;
       if (effectiveEnd >= effectiveStart) {
-        const firstPeriodWeek = CivilCalendar.startOfWeek(effectiveStart);
-        const lastPeriodWeek = CivilCalendar.startOfWeek(effectiveEnd);
-        for (let ws = firstPeriodWeek; ws <= lastPeriodWeek; ws += 7) {
-          const wFullStart = Math.max(habit.startDay, ws);
-          const wFullEnd = ws + 6;
-          const fullWeekTarget = effectiveFlexibleWeekTarget(
-            habit.startDay,
-            ws,
-            weeklyTarget
-          );
-          const sliceStart = Math.max(effectiveStart, ws);
-          const sliceEnd = Math.min(effectiveEnd, wFullEnd);
-          if (sliceEnd < sliceStart) continue;
-
-          const donePrior =
-            sliceStart > wFullStart
-              ? countDoneInRange(doneSet, wFullStart, sliceStart - 1)
-              : 0;
-          const remainingQuota = Math.max(0, fullWeekTarget - donePrior);
-          const sliceDays = sliceEnd - sliceStart + 1;
-          const sliceTarget = Math.min(remainingQuota, sliceDays);
-          const doneInSlice = countDoneInRange(doneSet, sliceStart, sliceEnd);
-
-          scheduledDays += sliceTarget;
-          completedScheduledDays += Math.min(doneInSlice, sliceTarget);
+        for (let d = effectiveStart; d <= effectiveEnd; d++) {
+          if (!CivilCalendar.isScheduled(habit.weekdays, d)) {
+            continue;
+          }
+          scheduledDays += 1;
+          if (doneSet.has(d)) {
+            completedScheduledDays += 1;
+          }
         }
       }
 
@@ -418,74 +721,360 @@ export class StreakCalculator {
       return {
         currentStreak,
         longestStreak,
-        streakUnit: 'weeks',
+        streakUnit: 'days',
         completionRate,
         scheduledDays,
         completedScheduledDays,
       };
     }
 
-    // Fixed-weekday schedule metrics
-    // 1. Current streak walking backwards from effectiveEnd down to habit.startDay
-    let currentStreak = 0;
-    let cursor = effectiveEnd;
-    if (allowPendingEndDay && cursor >= habit.startDay) {
-      if (CivilCalendar.isScheduled(habit.weekdays, cursor) && !doneSet.has(cursor)) {
-        cursor -= 1;
-      }
-    }
+    // Versioned scheduleHistory path
+    const latestSchedule = HabitSchedule.getAtDay(
+      habit,
+      Math.max(habit.startDay, effectiveEnd)
+    );
+    const streakUnit: StreakUnit =
+      latestSchedule.weeklyTarget !== null ? 'weeks' : 'days';
 
-    while (cursor >= habit.startDay) {
-      if (!CivilCalendar.isScheduled(habit.weekdays, cursor)) {
-        cursor -= 1;
-        continue;
-      }
-      if (doneSet.has(cursor)) {
-        currentStreak += 1;
-        cursor -= 1;
-      } else {
-        break;
-      }
-    }
-
-    // 2. Longest streak across full habit lifespan up to effectiveEnd
-    let longestStreak = 0;
-    let runningStreak = 0;
-    for (let d = habit.startDay; d <= effectiveEnd; d++) {
-      if (!CivilCalendar.isScheduled(habit.weekdays, d)) {
-        continue;
-      }
-      if (doneSet.has(d)) {
-        runningStreak += 1;
-        if (runningStreak > longestStreak) {
-          longestStreak = runningStreak;
-        }
-      } else {
-        runningStreak = 0;
-      }
-    }
-
-    // 3. Period completion rate
+    // 1. Period completion rate across [effectiveStart .. effectiveEnd]
     let scheduledDays = 0;
     let completedScheduledDays = 0;
     if (effectiveEnd >= effectiveStart) {
-      for (let d = effectiveStart; d <= effectiveEnd; d++) {
-        if (!CivilCalendar.isScheduled(habit.weekdays, d)) {
-          continue;
-        }
-        scheduledDays += 1;
-        if (doneSet.has(d)) {
-          completedScheduledDays += 1;
+      const firstPeriodWeek = CivilCalendar.startOfWeek(effectiveStart);
+      const lastPeriodWeek = CivilCalendar.startOfWeek(effectiveEnd);
+      for (let ws = firstPeriodWeek; ws <= lastPeriodWeek; ws += 7) {
+        const wFullStart = Math.max(habit.startDay, ws);
+        const wFullEnd = ws + 6;
+        const segs = HabitSchedule.getSegmentsInRange(habit, wFullStart, wFullEnd);
+        let donePriorInWeek = 0;
+
+        for (let idx = 0; idx < segs.length; idx++) {
+          const seg = segs[idx];
+          if (seg.weeklyTarget === null) {
+            for (let d = seg.start; d <= seg.end; d++) {
+              if (!CivilCalendar.isScheduled(seg.weekdays, d)) continue;
+              const isDone = doneSet.has(d);
+              if (isDone) donePriorInWeek += 1;
+              if (d >= effectiveStart && d <= effectiveEnd) {
+                scheduledDays += 1;
+                if (isDone) completedScheduledDays += 1;
+              }
+            }
+            continue;
+          }
+
+          const eligibleMask = (seg.weekdays & 0x7f) || 0x7f;
+          if (idx < segs.length - 1) {
+            for (let d = seg.start; d <= seg.end; d++) {
+              if (doneSet.has(d)) {
+                donePriorInWeek += 1;
+                if (d >= effectiveStart && d <= effectiveEnd) {
+                  scheduledDays += 1;
+                  completedScheduledDays += 1;
+                }
+              }
+            }
+            continue;
+          }
+
+          const remainingQuota = Math.max(0, seg.weeklyTarget - donePriorInWeek);
+          const eligibleInFullSeg = CivilCalendar.countScheduledInRange(
+            eligibleMask,
+            seg.start,
+            seg.end
+          );
+          const fullSegTarget = Math.min(remainingQuota, eligibleInFullSeg);
+          const sliceStart = Math.max(effectiveStart, seg.start);
+          const sliceEnd = Math.min(effectiveEnd, seg.end);
+          if (sliceEnd < sliceStart) continue;
+
+          const donePriorInSlice =
+            sliceStart > seg.start
+              ? countDoneInRange(doneSet, seg.start, sliceStart - 1, 0x7f)
+              : 0;
+          const sliceRemainingQuota = Math.max(0, fullSegTarget - donePriorInSlice);
+          const sliceDays = CivilCalendar.countScheduledInRange(
+            eligibleMask,
+            sliceStart,
+            sliceEnd
+          );
+          const doneInSlice = countDoneInRange(
+            doneSet,
+            sliceStart,
+            sliceEnd,
+            0x7f
+          );
+          const sliceTarget = Math.min(
+            sliceRemainingQuota,
+            Math.max(sliceDays, doneInSlice)
+          );
+
+          scheduledDays += sliceTarget;
+          completedScheduledDays += Math.min(doneInSlice, sliceTarget);
         }
       }
     }
 
-    const completionRate = scheduledDays === 0 ? 0 : completedScheduledDays / scheduledDays;
+    let currentStreak = 0;
+    let longestStreak = 0;
+
+    if (effectiveEnd >= habit.startDay) {
+      const firstWeekStart = CivilCalendar.startOfWeek(habit.startDay);
+      const endWeekStart = CivilCalendar.startOfWeek(effectiveEnd);
+
+      if (streakUnit === 'weeks') {
+        const evaluateWeekStatus = (
+          ws: number,
+          allowPendingThisWeek: boolean
+        ): 'passed' | 'failed' | 'pending' | 'neutral' => {
+          const wFullStart = Math.max(habit.startDay, ws);
+          const wFullEnd = ws + 6;
+          const wEvalEnd = Math.min(wFullEnd, effectiveEnd);
+          const segs = HabitSchedule.getSegmentsInRange(habit, wFullStart, wFullEnd);
+          let donePriorInWeek = 0;
+          let anyFixedScheduled = false;
+          let allFixedPassed = true;
+          let flexOutcome: 'none' | 'passed' | 'pending' | 'failed' = 'none';
+
+          for (let idx = 0; idx < segs.length; idx++) {
+            const seg = segs[idx];
+            const segEvalEnd = Math.min(seg.end, wEvalEnd);
+            if (seg.weeklyTarget === null) {
+              for (let d = seg.start; d <= segEvalEnd; d++) {
+                if (!CivilCalendar.isScheduled(seg.weekdays, d)) continue;
+                anyFixedScheduled = true;
+                if (doneSet.has(d)) {
+                  donePriorInWeek += 1;
+                } else if (!(allowPendingThisWeek && d === effectiveEnd)) {
+                  allFixedPassed = false;
+                }
+              }
+              continue;
+            }
+
+            const eligibleMask = (seg.weekdays & 0x7f) || 0x7f;
+            if (idx < segs.length - 1) {
+              for (let d = seg.start; d <= segEvalEnd; d++) {
+                if (doneSet.has(d)) {
+                  donePriorInWeek += 1;
+                }
+              }
+              continue;
+            }
+
+            const remainingQuota = Math.max(0, seg.weeklyTarget - donePriorInWeek);
+            const eligibleInSeg = CivilCalendar.countScheduledInRange(
+              eligibleMask,
+              seg.start,
+              seg.end
+            );
+            const segTarget = Math.min(remainingQuota, eligibleInSeg);
+            const doneInSeg = countDoneInRange(
+              doneSet,
+              seg.start,
+              segEvalEnd,
+              0x7f
+            );
+            if (segTarget === 0 || doneInSeg >= segTarget) {
+              flexOutcome = 'passed';
+            } else if (allowPendingThisWeek) {
+              const remainingDaysInSeg = CivilCalendar.countScheduledInRange(
+                eligibleMask,
+                wEvalEnd + 1,
+                seg.end
+              );
+              flexOutcome =
+                doneInSeg + remainingDaysInSeg >= segTarget ? 'pending' : 'failed';
+            } else {
+              flexOutcome = 'failed';
+            }
+          }
+
+          if (!allFixedPassed || flexOutcome === 'failed') return 'failed';
+          if (flexOutcome === 'pending') return 'pending';
+          if (flexOutcome === 'passed' || anyFixedScheduled) return 'passed';
+          return 'neutral';
+        };
+
+        for (let ws = endWeekStart; ws >= firstWeekStart; ws -= 7) {
+          const outcome = evaluateWeekStatus(
+            ws,
+            allowPendingEndDay && ws === endWeekStart
+          );
+          if (outcome === 'passed') {
+            currentStreak += 1;
+          } else if (outcome === 'pending' || outcome === 'neutral') {
+            continue;
+          } else {
+            break;
+          }
+        }
+
+        let runningStreak = 0;
+        for (let ws = firstWeekStart; ws <= endWeekStart; ws += 7) {
+          const outcome = evaluateWeekStatus(ws, false);
+          if (outcome === 'passed') {
+            runningStreak += 1;
+            if (runningStreak > longestStreak) {
+              longestStreak = runningStreak;
+            }
+          } else if (outcome === 'failed') {
+            runningStreak = 0;
+          }
+        }
+      } else {
+        // streakUnit === 'days'
+        let runningStreak = 0;
+        for (let ws = firstWeekStart; ws <= endWeekStart; ws += 7) {
+          const wFullStart = Math.max(habit.startDay, ws);
+          const wFullEnd = ws + 6;
+          const wEvalEnd = Math.min(wFullEnd, effectiveEnd);
+          const segs = HabitSchedule.getSegmentsInRange(habit, wFullStart, wFullEnd);
+          let donePriorInWeek = 0;
+
+          for (let idx = 0; idx < segs.length; idx++) {
+            const seg = segs[idx];
+            const segEvalEnd = Math.min(seg.end, wEvalEnd);
+            if (segEvalEnd < seg.start) continue;
+
+            if (seg.weeklyTarget === null) {
+              for (let d = seg.start; d <= segEvalEnd; d++) {
+                if (!CivilCalendar.isScheduled(seg.weekdays, d)) continue;
+                if (doneSet.has(d)) {
+                  donePriorInWeek += 1;
+                  runningStreak += 1;
+                  if (runningStreak > longestStreak) {
+                    longestStreak = runningStreak;
+                  }
+                } else {
+                  runningStreak = 0;
+                }
+              }
+              continue;
+            }
+
+            const eligibleMask = (seg.weekdays & 0x7f) || 0x7f;
+            const doneInSeg = countDoneInRange(
+              doneSet,
+              seg.start,
+              segEvalEnd,
+              0x7f
+            );
+            if (idx < segs.length - 1) {
+              donePriorInWeek += doneInSeg;
+              runningStreak += doneInSeg;
+              if (runningStreak > longestStreak) {
+                longestStreak = runningStreak;
+              }
+              continue;
+            }
+
+            const remainingQuota = Math.max(0, seg.weeklyTarget - donePriorInWeek);
+            const eligibleInSeg = CivilCalendar.countScheduledInRange(
+              eligibleMask,
+              seg.start,
+              seg.end
+            );
+            const segTarget = Math.min(remainingQuota, eligibleInSeg);
+            if (segTarget === 0 || doneInSeg >= segTarget) {
+              runningStreak += doneInSeg;
+              if (runningStreak > longestStreak) {
+                longestStreak = runningStreak;
+              }
+            } else {
+              runningStreak = 0;
+            }
+          }
+        }
+
+        let broken = false;
+        for (let ws = endWeekStart; ws >= firstWeekStart && !broken; ws -= 7) {
+          const wFullStart = Math.max(habit.startDay, ws);
+          const wFullEnd = ws + 6;
+          const wEvalEnd = Math.min(wFullEnd, effectiveEnd);
+          const segs = HabitSchedule.getSegmentsInRange(habit, wFullStart, wFullEnd);
+
+          const donePriorBeforeIdx: number[] = new Array(segs.length).fill(0);
+          let runningPrior = 0;
+          for (let idx = 0; idx < segs.length; idx++) {
+            donePriorBeforeIdx[idx] = runningPrior;
+            const seg = segs[idx];
+            const segEvalEnd = Math.min(seg.end, wEvalEnd);
+            if (segEvalEnd < seg.start) continue;
+            const mask = seg.weeklyTarget === null ? seg.weekdays : 0x7f;
+            runningPrior += countDoneInRange(doneSet, seg.start, segEvalEnd, mask);
+          }
+
+          for (let idx = segs.length - 1; idx >= 0 && !broken; idx--) {
+            const seg = segs[idx];
+            const segEvalEnd = Math.min(seg.end, wEvalEnd);
+            if (segEvalEnd < seg.start) continue;
+
+            if (seg.weeklyTarget === null) {
+              for (let d = segEvalEnd; d >= seg.start; d--) {
+                if (!CivilCalendar.isScheduled(seg.weekdays, d)) continue;
+                if (doneSet.has(d)) {
+                  currentStreak += 1;
+                } else if (allowPendingEndDay && d === effectiveEnd) {
+                  continue;
+                } else {
+                  broken = true;
+                  break;
+                }
+              }
+              continue;
+            }
+
+            const eligibleMask = (seg.weekdays & 0x7f) || 0x7f;
+            const doneInSeg = countDoneInRange(
+              doneSet,
+              seg.start,
+              segEvalEnd,
+              0x7f
+            );
+            if (idx < segs.length - 1) {
+              currentStreak += doneInSeg;
+              continue;
+            }
+
+            const remainingQuota = Math.max(
+              0,
+              seg.weeklyTarget - donePriorBeforeIdx[idx]
+            );
+            const eligibleInSeg = CivilCalendar.countScheduledInRange(
+              eligibleMask,
+              seg.start,
+              seg.end
+            );
+            const segTarget = Math.min(remainingQuota, eligibleInSeg);
+            if (segTarget === 0 || doneInSeg >= segTarget) {
+              currentStreak += doneInSeg;
+            } else if (ws === endWeekStart && allowPendingEndDay) {
+              const remainingDaysInSeg = CivilCalendar.countScheduledInRange(
+                eligibleMask,
+                wEvalEnd + 1,
+                seg.end
+              );
+              if (doneInSeg + remainingDaysInSeg >= segTarget) {
+                currentStreak += doneInSeg;
+              } else {
+                broken = true;
+              }
+            } else {
+              broken = true;
+            }
+          }
+        }
+      }
+    }
+
+    const completionRate =
+      scheduledDays === 0 ? 0 : completedScheduledDays / scheduledDays;
 
     return {
       currentStreak,
       longestStreak,
-      streakUnit: 'days',
+      streakUnit,
       completionRate,
       scheduledDays,
       completedScheduledDays,

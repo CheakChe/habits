@@ -1,4 +1,4 @@
-import { For, JSX, Show, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { For, JSX, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { CivilCalendar } from '../utils/civil-calendar';
 import {
@@ -7,6 +7,7 @@ import {
   DateRangeResolver,
   ResolvedDateRange,
 } from '../utils/date-range';
+import { HabitSchedule } from '../utils/habit-schedule';
 import { ReminderPlanner } from '../utils/reminder-planner';
 import { HabitBadge } from './HabitBadge';
 import {
@@ -1712,6 +1713,181 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
           </Show>
         </Portal>
       </Show>
+    </div>
+  );
+}
+
+interface MeasuredQuickControlsProps {
+  habitName: string;
+  accentColor: string;
+  unit?: string | null;
+  value: number;
+  target: number;
+  onIncrement: (delta: number) => Promise<void>;
+  onSetValue: (value: number) => Promise<void>;
+}
+
+export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.Element {
+  const formattedPropValue = () =>
+    props.value > 0 ? HabitSchedule.formatNumericValue(props.value) : '';
+
+  const [draft, setDraft] = createSignal(formattedPropValue());
+  const [focused, setFocused] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  let inputRef: HTMLInputElement | undefined;
+
+  // Only sync draft when props.value itself changes externally — never overwrite
+  // typed input merely because `focused` flipped to false before commitDraft ran.
+  createEffect(
+    on(formattedPropValue, (next) => {
+      if (!untrack(focused) && !untrack(busy)) {
+        setDraft(next);
+      }
+    })
+  );
+
+  const progressPct = () => {
+    if (props.target <= 0) return 0;
+    return Math.min(100, Math.max(0, Math.round((props.value / props.target) * 100)));
+  };
+
+  const parsedDraft = (): number | null => {
+    const clean = draft().trim().replace(',', '.');
+    if (clean === '') return 0;
+    const n = Number(clean);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return Math.round(n * 100) / 100;
+  };
+
+  const isDirty = () => {
+    const parsed = parsedDraft();
+    return parsed !== null && parsed !== props.value;
+  };
+
+  const commitDraft = async () => {
+    if (busy()) return;
+    const parsed = parsedDraft();
+    if (parsed === null) {
+      setDraft(formattedPropValue());
+      return;
+    }
+    if (parsed === props.value) {
+      setDraft(formattedPropValue());
+      return;
+    }
+    setBusy(true);
+    try {
+      await props.onSetValue(parsed);
+    } finally {
+      setBusy(false);
+      if (!focused()) {
+        setDraft(formattedPropValue());
+      }
+    }
+  };
+
+  const handleIncrement = async (delta: number) => {
+    if (busy()) return;
+    const pendingVal = isDirty() ? parsedDraft() : null;
+    setBusy(true);
+    try {
+      if (pendingVal !== null) {
+        await props.onSetValue(Math.round((pendingVal + delta) * 100) / 100);
+      } else {
+        await props.onIncrement(delta);
+      }
+    } finally {
+      setBusy(false);
+      setDraft(formattedPropValue());
+    }
+  };
+
+  return (
+    <div class="space-y-2">
+      <div class="h-1 w-full rounded-full bg-[#0A0B0E] border border-white/[0.05] overflow-hidden">
+        <div
+          class="h-full rounded-full transition-all duration-200"
+          style={{
+            width: `${progressPct()}%`,
+            'background-color': props.accentColor,
+          }}
+        />
+      </div>
+
+      <div class="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          disabled={busy()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => void handleIncrement(1)}
+          aria-label={`Add 1${props.unit ? ` ${props.unit}` : ''} to ${props.habitName}`}
+          class="min-h-[38px] px-3 rounded-xl bg-[#0A0B0E] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-mono tabular-nums font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+        >
+          +1
+        </button>
+
+        <button
+          type="button"
+          disabled={busy()}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => void handleIncrement(5)}
+          aria-label={`Add 5${props.unit ? ` ${props.unit}` : ''} to ${props.habitName}`}
+          class="min-h-[38px] px-3 rounded-xl bg-[#0A0B0E] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-mono tabular-nums font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+        >
+          +5
+        </button>
+
+        <div class="flex items-center gap-1.5">
+          <div class="relative flex items-center">
+            <input
+              ref={inputRef}
+              type="text"
+              inputmode="decimal"
+              aria-label={`Set ${props.habitName} value${props.unit ? ` (${props.unit})` : ''}`}
+              placeholder="0"
+              value={draft()}
+              onFocus={() => setFocused(true)}
+              onInput={(e) => setDraft(e.currentTarget.value)}
+              onBlur={() => {
+                setFocused(false);
+                void commitDraft();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  setFocused(false);
+                  void commitDraft().then(() => inputRef?.blur());
+                } else if (e.key === 'Escape') {
+                  setDraft(formattedPropValue());
+                  setFocused(false);
+                  e.currentTarget.blur();
+                }
+              }}
+              class="w-20 min-h-[38px] rounded-xl bg-[#0A0B0E] border border-white/[0.1] px-2.5 text-xs font-mono tabular-nums text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+            />
+          </div>
+
+          <Show when={props.unit}>
+            <span class="text-[11px] text-[#8E95A5] shrink-0">{props.unit}</span>
+          </Show>
+
+          <Show when={isDirty()}>
+            <button
+              type="button"
+              disabled={busy()}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setFocused(false);
+                void commitDraft().then(() => inputRef?.blur());
+              }}
+              aria-label={`Apply value for ${props.habitName}`}
+              class="min-h-[38px] px-2.5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center justify-center cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <CheckIcon class="w-3.5 h-3.5" />
+            </button>
+          </Show>
+        </div>
+      </div>
     </div>
   );
 }

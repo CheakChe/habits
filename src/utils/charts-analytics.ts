@@ -1,11 +1,6 @@
-import {
-  Habit,
-  HabitCheckin,
-  Task,
-  TaskStatus,
-  normalizeWeeklyTarget,
-} from '../types/domain';
+import { Habit, HabitCheckin, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
+import { HabitSchedule } from './habit-schedule';
 import { StreakCalculator } from './streak-calculator';
 
 export interface HabitTrendBucket {
@@ -17,6 +12,43 @@ export interface HabitTrendBucket {
   scheduledCount: number;
   doneCount: number;
   rate: number | null;
+  movingAvgRate: number | null;
+}
+
+export interface PerfectDaysSummary {
+  perfectDays: number;
+  scheduledDaysWithHabits: number;
+  perfectRate: number | null;
+  currentPerfectStreak: number;
+  longestPerfectStreak: number;
+}
+
+export interface HabitRowTrendInfo {
+  deltaPct: number | null;
+  bonusCount: number;
+}
+
+export interface HabitVolumeBucket {
+  key: string;
+  label: string;
+  shortLabel: string;
+  startDay: number;
+  endDay: number;
+  actualTotal: number;
+  targetTotal: number;
+  targetPerDay: number | null;
+}
+
+export interface HabitVolumeSummary {
+  totalVolume: number;
+  totalTargetVolume: number;
+  volumeAchievementRate: number | null;
+  activeDaysLogged: number;
+  averagePerActiveDay: number;
+  averagePerScheduledDay: number;
+  targetStart: number | null;
+  targetEnd: number | null;
+  unit: string | null;
 }
 
 export interface WeekdayHabitStat {
@@ -66,41 +98,9 @@ function countHabitRange(
     }
   } else {
     for (const h of habits) {
-      if (normalizeWeeklyTarget(h.weeklyTarget) !== null) {
-        const m = StreakCalculator.calculate(h, checkins, startDay, endDay, false);
-        scheduledCount += m.scheduledDays;
-        doneCount += m.completedScheduledDays;
-      } else {
-        const effStart = Math.max(startDay, h.startDay);
-        for (let d = effStart; d <= endDay; d++) {
-          if (CivilCalendar.isScheduled(h.weekdays, d)) {
-            scheduledCount += 1;
-          }
-        }
-      }
-    }
-    // For fixed habits' doneCount in multi-day buckets, derive from checkins directly
-    const fixedIds = new Set(
-      habits
-        .filter((h) => normalizeWeeklyTarget(h.weeklyTarget) === null)
-        .map((h) => h.id)
-    );
-    if (fixedIds.size > 0) {
-      const doneLookup = new Set<string>();
-      for (const c of checkins) {
-        if (c.done && fixedIds.has(c.habitId) && c.dayIndex >= startDay && c.dayIndex <= endDay) {
-          doneLookup.add(`${c.habitId}:${c.dayIndex}`);
-        }
-      }
-      for (const h of habits) {
-        if (!fixedIds.has(h.id)) continue;
-        const effStart = Math.max(startDay, h.startDay);
-        for (let d = effStart; d <= endDay; d++) {
-          if (CivilCalendar.isScheduled(h.weekdays, d) && doneLookup.has(`${h.id}:${d}`)) {
-            doneCount += 1;
-          }
-        }
-      }
+      const m = StreakCalculator.calculate(h, checkins, startDay, endDay, false);
+      scheduledCount += m.scheduledDays;
+      doneCount += m.completedScheduledDays;
     }
   }
 
@@ -112,6 +112,26 @@ function countHabitRange(
 }
 
 export class ChartsAnalytics {
+  private static attachMovingAverage(
+    buckets: Omit<HabitTrendBucket, 'movingAvgRate'>[],
+    windowSize: number
+  ): HabitTrendBucket[] {
+    const w = Math.max(2, windowSize);
+    const recentRates: number[] = [];
+    return buckets.map((bucket) => {
+      if (bucket.rate === null) {
+        return { ...bucket, movingAvgRate: null };
+      }
+      recentRates.push(bucket.rate);
+      if (recentRates.length > w) {
+        recentRates.shift();
+      }
+      const avg =
+        recentRates.reduce((acc, val) => acc + val, 0) / recentRates.length;
+      return { ...bucket, movingAvgRate: avg };
+    });
+  }
+
   public static habitTrendBuckets(
     habits: Habit[],
     checkins: HabitCheckin[],
@@ -129,7 +149,7 @@ export class ChartsAnalytics {
         : new Map<number, { scheduled: number; done: number }>();
 
     if (totalDays <= cap) {
-      const out: HabitTrendBucket[] = [];
+      const out: Omit<HabitTrendBucket, 'movingAvgRate'>[] = [];
       for (let d = s; d <= e; d++) {
         const formatted = CivilCalendar.formatShortDate(d);
         const counts = countHabitRange(habits, checkins, dayStats, d, d);
@@ -142,7 +162,7 @@ export class ChartsAnalytics {
           ...counts,
         });
       }
-      return out;
+      return ChartsAnalytics.attachMovingAverage(out, 5);
     }
 
     const firstWeek = CivilCalendar.startOfWeek(s);
@@ -150,7 +170,7 @@ export class ChartsAnalytics {
     const weekCount = Math.floor((lastWeek - firstWeek) / 7) + 1;
 
     if (weekCount <= cap) {
-      const out: HabitTrendBucket[] = [];
+      const out: Omit<HabitTrendBucket, 'movingAvgRate'>[] = [];
       for (let w = 0; w < weekCount; w++) {
         const ws = firstWeek + w * 7;
         const bucketStart = Math.max(s, ws);
@@ -166,7 +186,7 @@ export class ChartsAnalytics {
           ...counts,
         });
       }
-      return out;
+      return ChartsAnalytics.attachMovingAverage(out, 3);
     }
 
     const startLocal = CivilCalendar.toLocalDate(s);
@@ -175,7 +195,7 @@ export class ChartsAnalytics {
       (endLocal.year - startLocal.year) * 12 + (endLocal.month - startLocal.month) + 1;
 
     if (monthCount <= cap) {
-      const out: HabitTrendBucket[] = [];
+      const out: Omit<HabitTrendBucket, 'movingAvgRate'>[] = [];
       for (let m = 0; m < monthCount; m++) {
         const total = startLocal.year * 12 + (startLocal.month - 1) + m;
         const year = Math.floor(total / 12);
@@ -195,11 +215,11 @@ export class ChartsAnalytics {
           ...counts,
         });
       }
-      return out;
+      return ChartsAnalytics.attachMovingAverage(out, 3);
     }
 
     const step = Math.ceil(totalDays / cap);
-    const out: HabitTrendBucket[] = [];
+    const out: Omit<HabitTrendBucket, 'movingAvgRate'>[] = [];
     for (let cursor = s; cursor <= e; cursor += step) {
       const bucketEnd = Math.min(e, cursor + step - 1);
       const counts = countHabitRange(habits, checkins, dayStats, cursor, bucketEnd);
@@ -212,7 +232,144 @@ export class ChartsAnalytics {
         ...counts,
       });
     }
-    return out;
+    return ChartsAnalytics.attachMovingAverage(out, 3);
+  }
+
+  public static perfectDaysSummary(
+    habits: Habit[],
+    checkins: HabitCheckin[],
+    startDay: number,
+    endDay: number,
+    todayDay: number
+  ): PerfectDaysSummary {
+    const s = Math.min(startDay, endDay);
+    const e = Math.min(Math.max(startDay, endDay), todayDay);
+    if (e < s || habits.length === 0) {
+      return {
+        perfectDays: 0,
+        scheduledDaysWithHabits: 0,
+        perfectRate: null,
+        currentPerfectStreak: 0,
+        longestPerfectStreak: 0,
+      };
+    }
+
+    const dayStats = StreakCalculator.getPeriodDayStats(habits, checkins, s, e, todayDay);
+    let perfectDays = 0;
+    let scheduledDaysWithHabits = 0;
+    let longestPerfectStreak = 0;
+    let running = 0;
+
+    for (let d = s; d <= e; d++) {
+      const entry = dayStats.get(d);
+      if (!entry || entry.scheduled <= 0) continue;
+      scheduledDaysWithHabits += 1;
+      if (entry.done >= entry.scheduled) {
+        perfectDays += 1;
+        running += 1;
+        if (running > longestPerfectStreak) {
+          longestPerfectStreak = running;
+        }
+      } else {
+        running = 0;
+      }
+    }
+
+    let currentPerfectStreak = 0;
+    for (let d = e; d >= s; d--) {
+      const entry = dayStats.get(d);
+      if (!entry || entry.scheduled <= 0) continue;
+      if (entry.done >= entry.scheduled) {
+        currentPerfectStreak += 1;
+      } else if (d === todayDay && entry.done === 0) {
+        // Pending today doesn't break yesterday's perfect streak
+        continue;
+      } else {
+        break;
+      }
+    }
+
+    return {
+      perfectDays,
+      scheduledDaysWithHabits,
+      perfectRate:
+        scheduledDaysWithHabits === 0 ? null : perfectDays / scheduledDaysWithHabits,
+      currentPerfectStreak,
+      longestPerfectStreak,
+    };
+  }
+
+  public static habitTrendDeltas(
+    habits: Habit[],
+    checkins: HabitCheckin[],
+    startDay: number,
+    endDay: number,
+    todayDay: number
+  ): Map<number, HabitRowTrendInfo> {
+    const s = Math.min(startDay, endDay);
+    const e = Math.min(Math.max(startDay, endDay), todayDay);
+    const map = new Map<number, HabitRowTrendInfo>();
+    if (e < s) return map;
+
+    const doneByHabit = new Map<number, Set<number>>();
+    const habitById = new Map<number, Habit>();
+    for (const h of habits) habitById.set(h.id, h);
+    for (const c of checkins) {
+      const h = habitById.get(c.habitId);
+      if (!h || !HabitSchedule.isCheckinDoneForDay(h, c, c.dayIndex)) continue;
+      let set = doneByHabit.get(h.id);
+      if (!set) {
+        set = new Set<number>();
+        doneByHabit.set(h.id, set);
+      }
+      set.add(c.dayIndex);
+    }
+
+    for (const habit of habits) {
+      const effStart = Math.max(habit.startDay, s);
+      let deltaPct: number | null = null;
+      if (e - effStart + 1 >= 6) {
+        const mid = Math.floor((effStart + e) / 2);
+        const firstHalf = StreakCalculator.calculate(habit, checkins, effStart, mid, false);
+        const secondHalf = StreakCalculator.calculate(
+          habit,
+          checkins,
+          mid + 1,
+          e,
+          e >= todayDay
+        );
+        if (firstHalf.scheduledDays >= 2 && secondHalf.scheduledDays >= 2) {
+          deltaPct = Math.round(
+            (secondHalf.completionRate - firstHalf.completionRate) * 100
+          );
+        }
+      }
+
+      let bonusCount = 0;
+      const doneSet = doneByHabit.get(habit.id);
+      if (doneSet && e >= effStart) {
+        const firstWs = CivilCalendar.startOfWeek(effStart);
+        const lastWs = CivilCalendar.startOfWeek(e);
+        for (let ws = firstWs; ws <= lastWs; ws += 7) {
+          const wStart = Math.max(effStart, ws);
+          const wEnd = Math.min(e, ws + 6);
+          if (wEnd < wStart) continue;
+          const sched = HabitSchedule.getAtDay(habit, wEnd);
+          if (sched.weeklyTarget === null) continue;
+          let doneInWeek = 0;
+          for (let d = Math.max(habit.startDay, ws); d <= Math.min(ws + 6, e); d++) {
+            if (doneSet.has(d)) doneInWeek += 1;
+          }
+          if (doneInWeek > sched.weeklyTarget) {
+            bonusCount += doneInWeek - sched.weeklyTarget;
+          }
+        }
+      }
+
+      map.set(habit.id, { deltaPct, bonusCount });
+    }
+
+    return map;
   }
 
   public static weekdayHabitStats(
@@ -288,5 +445,228 @@ export class ChartsAnalytics {
         rate: total === 0 ? null : done[bit] / total,
       };
     });
+  }
+
+  public static habitVolumeBuckets(
+    habit: Habit,
+    checkins: HabitCheckin[],
+    startDay: number,
+    endDay: number,
+    maxBuckets: number = 14
+  ): HabitVolumeBucket[] {
+    const s = Math.min(startDay, endDay);
+    const e = Math.max(startDay, endDay);
+    const cap = Math.max(1, maxBuckets);
+    const totalDays = e - s + 1;
+
+    const checkinByDay = new Map<number, HabitCheckin>();
+    for (const c of checkins) {
+      if (c.habitId === habit.id && c.dayIndex >= s && c.dayIndex <= e) {
+        checkinByDay.set(c.dayIndex, c);
+      }
+    }
+
+    const computeBucket = (
+      key: string,
+      label: string,
+      shortLabel: string,
+      bucketStart: number,
+      bucketEnd: number
+    ): HabitVolumeBucket => {
+      const effectiveStart = Math.max(habit.startDay, bucketStart);
+      let actualTotal = 0;
+      let targetTotal = 0;
+      let targetPerDay: number | null = null;
+
+      if (bucketEnd >= effectiveStart) {
+        for (let d = effectiveStart; d <= bucketEnd; d++) {
+          const entry = checkinByDay.get(d);
+          if (entry) {
+            actualTotal += HabitSchedule.getCheckinValueForDay(habit, entry, d);
+          }
+        }
+
+        targetPerDay = HabitSchedule.getAtDay(habit, bucketEnd).dailyTarget;
+        const segments = HabitSchedule.getSegmentsInRange(habit, effectiveStart, bucketEnd);
+        for (const seg of segments) {
+          if (seg.dailyTarget === null) continue;
+          if (seg.weeklyTarget === null) {
+            const schedCount = CivilCalendar.countScheduledInRange(
+              seg.weekdays,
+              seg.start,
+              seg.end
+            );
+            targetTotal += schedCount * seg.dailyTarget;
+          } else {
+            const eligibleMask = (seg.weekdays & 0x7f) || 0x7f;
+            const firstWs = CivilCalendar.startOfWeek(seg.start);
+            const lastWs = CivilCalendar.startOfWeek(seg.end);
+            for (let ws = firstWs; ws <= lastWs; ws += 7) {
+              const weekFullStart = Math.max(habit.startDay, ws);
+              const weekFullEnd = ws + 6;
+              const sliceStart = Math.max(seg.start, weekFullStart);
+              const sliceEnd = Math.min(seg.end, weekFullEnd);
+              if (sliceEnd < sliceStart) continue;
+              const weekEligible = CivilCalendar.countScheduledInRange(
+                eligibleMask,
+                weekFullStart,
+                weekFullEnd
+              );
+              if (weekEligible === 0) continue;
+              const effWeekTarget = Math.min(seg.weeklyTarget, weekEligible);
+              const sliceEligible = CivilCalendar.countScheduledInRange(
+                eligibleMask,
+                sliceStart,
+                sliceEnd
+              );
+              targetTotal +=
+                (sliceEligible / weekEligible) * effWeekTarget * seg.dailyTarget;
+            }
+          }
+        }
+      }
+
+      return {
+        key,
+        label,
+        shortLabel,
+        startDay: bucketStart,
+        endDay: bucketEnd,
+        actualTotal: Math.round(actualTotal * 100) / 100,
+        targetTotal: Math.round(targetTotal * 100) / 100,
+        targetPerDay,
+      };
+    };
+
+    if (totalDays <= cap) {
+      const out: HabitVolumeBucket[] = [];
+      for (let d = s; d <= e; d++) {
+        const formatted = CivilCalendar.formatShortDate(d);
+        out.push(computeBucket(`d:${d}`, formatted, formatted.split(' ')[1] ?? formatted, d, d));
+      }
+      return out;
+    }
+
+    const firstWeek = CivilCalendar.startOfWeek(s);
+    const lastWeek = CivilCalendar.startOfWeek(e);
+    const weekCount = Math.floor((lastWeek - firstWeek) / 7) + 1;
+
+    if (weekCount <= cap) {
+      const out: HabitVolumeBucket[] = [];
+      for (let w = 0; w < weekCount; w++) {
+        const ws = firstWeek + w * 7;
+        const bucketStart = Math.max(s, ws);
+        const bucketEnd = Math.min(e, ws + 6);
+        const formatted = CivilCalendar.formatShortDate(bucketStart);
+        out.push(
+          computeBucket(
+            `w:${ws}`,
+            `${CivilCalendar.formatShortDate(bucketStart)} – ${CivilCalendar.formatShortDate(bucketEnd)}`,
+            formatted.split(' ')[1] ?? formatted,
+            bucketStart,
+            bucketEnd
+          )
+        );
+      }
+      return out;
+    }
+
+    const startLocal = CivilCalendar.toLocalDate(s);
+    const endLocal = CivilCalendar.toLocalDate(e);
+    const monthCount =
+      (endLocal.year - startLocal.year) * 12 + (endLocal.month - startLocal.month) + 1;
+
+    if (monthCount <= cap) {
+      const out: HabitVolumeBucket[] = [];
+      for (let m = 0; m < monthCount; m++) {
+        const total = startLocal.year * 12 + (startLocal.month - 1) + m;
+        const year = Math.floor(total / 12);
+        const month = (((total % 12) + 12) % 12) + 1;
+        const monthStart = CivilCalendar.fromLocalDate(year, month, 1);
+        const daysInMonth = CivilCalendar.getMonthDays(year, month).days.length;
+        const monthEnd = monthStart + daysInMonth - 1;
+        const bucketStart = Math.max(s, monthStart);
+        const bucketEnd = Math.min(e, monthEnd);
+        out.push(
+          computeBucket(
+            `m:${year}-${month}`,
+            CivilCalendar.formatMonthYear(year, month),
+            CivilCalendar.formatShortDate(monthStart).split(' ')[0],
+            bucketStart,
+            bucketEnd
+          )
+        );
+      }
+      return out;
+    }
+
+    const step = Math.ceil(totalDays / cap);
+    const out: HabitVolumeBucket[] = [];
+    for (let cursor = s; cursor <= e; cursor += step) {
+      const bucketEnd = Math.min(e, cursor + step - 1);
+      out.push(
+        computeBucket(
+          `r:${cursor}-${bucketEnd}`,
+          `${CivilCalendar.formatShortDate(cursor)} – ${CivilCalendar.formatShortDate(bucketEnd)}`,
+          CivilCalendar.formatShortDate(cursor).split(' ')[0],
+          cursor,
+          bucketEnd
+        )
+      );
+    }
+    return out;
+  }
+
+  public static summarizeHabitVolume(
+    habit: Habit,
+    checkins: HabitCheckin[],
+    startDay: number,
+    endDay: number
+  ): HabitVolumeSummary {
+    const s = Math.max(habit.startDay, Math.min(startDay, endDay));
+    const e = Math.max(startDay, endDay);
+    let totalVolume = 0;
+    let activeDaysLogged = 0;
+
+    if (e >= s) {
+      for (const c of checkins) {
+        if (c.habitId !== habit.id || c.dayIndex < s || c.dayIndex > e) continue;
+        const val = HabitSchedule.getCheckinValueForDay(habit, c, c.dayIndex);
+        if (val > 0) {
+          totalVolume += val;
+          activeDaysLogged += 1;
+        }
+      }
+    }
+
+    const roundedTotal = Math.round(totalVolume * 100) / 100;
+    const metrics = StreakCalculator.calculate(habit, checkins, s, e, false);
+    const buckets =
+      e >= s ? ChartsAnalytics.habitVolumeBuckets(habit, checkins, s, e, 1) : [];
+    const totalTargetVolume =
+      buckets.length > 0 ? Math.round(buckets[0].targetTotal * 100) / 100 : 0;
+    const targetStart =
+      e >= s ? HabitSchedule.getAtDay(habit, s).dailyTarget : HabitSchedule.getAtDay(habit, habit.startDay).dailyTarget;
+    const targetEnd =
+      e >= s ? HabitSchedule.getAtDay(habit, e).dailyTarget : HabitSchedule.getAtDay(habit, habit.startDay).dailyTarget;
+
+    return {
+      totalVolume: roundedTotal,
+      totalTargetVolume,
+      volumeAchievementRate:
+        totalTargetVolume > 0 ? roundedTotal / totalTargetVolume : null,
+      activeDaysLogged,
+      averagePerActiveDay:
+        activeDaysLogged > 0
+          ? Math.round((roundedTotal / activeDaysLogged) * 100) / 100
+          : 0,
+      averagePerScheduledDay:
+        metrics.scheduledDays > 0
+          ? Math.round((roundedTotal / metrics.scheduledDays) * 100) / 100
+          : 0,
+      targetStart,
+      targetEnd,
+      unit: habit.unit ?? null,
+    };
   }
 }

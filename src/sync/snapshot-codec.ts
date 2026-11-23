@@ -3,18 +3,43 @@ import {
   Habit,
   HabitCheckin,
   HabitNote,
+  HabitScheduleVersion,
   Task,
   TaskStatus,
+  normalizeCheckinValue,
+  normalizeDailyTarget,
+  normalizeHabitUnit,
   normalizeWeeklyTarget,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { HabitSchedule } from '../utils/habit-schedule';
 import { IdTable } from './id-table';
 import { SnapshotBytes } from './snapshot-bytes';
 import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 6;
+const FORMAT_VERSION = 8;
+
+function encodeScaledTarget(value: number | null | undefined): number {
+  const clean = normalizeDailyTarget(value);
+  return clean === null ? 0 : Math.round(clean * 100);
+}
+
+function decodeScaledTarget(scaled: number): number | null {
+  if (!Number.isFinite(scaled) || scaled <= 0) return null;
+  return normalizeDailyTarget(scaled / 100);
+}
+
+function encodeScaledValue(value: number | undefined): number {
+  const clean = normalizeCheckinValue(value);
+  return clean === undefined ? 0 : Math.round(clean * 100);
+}
+
+function decodeScaledValue(scaled: number): number | undefined {
+  if (!Number.isFinite(scaled) || scaled <= 0) return undefined;
+  return normalizeCheckinValue(scaled / 100);
+}
 
 function encodeTaskStatus(task: Task): number {
   const status = task.status ?? (task.done ? 'done' : 'open');
@@ -60,6 +85,9 @@ export class SnapshotCodec {
       idTable.intern(habit.id);
       stringTable.intern(habit.name);
       stringTable.intern(habit.color);
+      if (HabitSchedule.hasAnyDailyTarget(habit)) {
+        stringTable.intern(normalizeHabitUnit(habit.unit) ?? '');
+      }
     }
     for (const checkin of snapshot.checkins) {
       idTable.intern(checkin.habitId);
@@ -110,6 +138,38 @@ export class SnapshotCodec {
       body.writeFloat64(habit.createdAt);
       body.writeFloat64(habit.updatedAt);
 
+      const normalizedHistory = HabitSchedule.normalizeHistory(
+        habit.startDay,
+        habit.weekdays,
+        habit.weeklyTarget,
+        habit.scheduleHistory,
+        habit.dailyTarget
+      );
+      const historyEntries = normalizedHistory.scheduleHistory;
+      if (!historyEntries || historyEntries.length <= 1) {
+        body.writeVarUint(0);
+      } else {
+        body.writeVarUint(historyEntries.length);
+        for (const entry of historyEntries) {
+          body.writeVarInt(entry.fromDay - habit.startDay);
+          body.writeUint8(entry.weekdays & 0x7f);
+          body.writeUint8(normalizeWeeklyTarget(entry.weeklyTarget) ?? 0);
+          body.writeVarUint(encodeScaledTarget(entry.dailyTarget));
+        }
+      }
+
+      const cleanDailyTarget = normalizedHistory.dailyTarget;
+      body.writeVarUint(encodeScaledTarget(cleanDailyTarget));
+      const hasMeasured =
+        cleanDailyTarget !== null ||
+        (historyEntries?.some(
+          (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
+        ) ??
+          false);
+      if (hasMeasured) {
+        body.writeVarUint(stringTable.intern(normalizeHabitUnit(habit.unit) ?? ''));
+      }
+
       const habitCheckins = (checkinsByHabit.get(habit.id) ?? []).sort(
         (a, b) => a.dayIndex - b.dayIndex
       );
@@ -123,10 +183,14 @@ export class SnapshotCodec {
         const bitBytesCount = Math.ceil(spanDays / 8);
         const bitBytes = new Uint8Array(bitBytesCount);
 
+        let hasValues = false;
         for (const entry of habitCheckins) {
           if (entry.done) {
             const bitPos = entry.dayIndex - minDay;
             bitBytes[bitPos >> 3] |= 1 << (bitPos & 7);
+          }
+          if (normalizeCheckinValue(entry.value) !== undefined) {
+            hasValues = true;
           }
         }
 
@@ -138,6 +202,15 @@ export class SnapshotCodec {
         for (const entry of habitCheckins) {
           body.writeVarUint(entry.dayIndex - minDay);
           body.writeVarInt(entry.updatedAt - habit.createdAt);
+        }
+
+        if (hasValues) {
+          body.writeUint8(1);
+          for (const entry of habitCheckins) {
+            body.writeVarUint(encodeScaledValue(entry.value));
+          }
+        } else {
+          body.writeUint8(0);
         }
       }
     }
@@ -251,7 +324,66 @@ export class SnapshotCodec {
       const createdAt = reader.readFloat64();
       const updatedAt = reader.readFloat64();
 
-      habits.push({
+      let scheduleHistory: HabitScheduleVersion[] | undefined;
+      let rawHistory: HabitScheduleVersion[] = [];
+      if (version >= 7) {
+        const historyCount = reader.readVarUint();
+        if (historyCount > 10_000) {
+          throw new Error(`Unreasonable scheduleHistory count: ${historyCount}`);
+        }
+        if (historyCount > 0) {
+          for (let s = 0; s < historyCount; s++) {
+            const fromDay = startDay + reader.readVarInt();
+            const sWeekdays = reader.readUint8();
+            if (sWeekdays > 0x7f) {
+              throw new Error(`Invalid scheduleHistory weekdays mask: ${sWeekdays}`);
+            }
+            const sWtByte = reader.readUint8();
+            if (sWtByte > 7) {
+              throw new Error(`Invalid scheduleHistory weeklyTarget byte: ${sWtByte}`);
+            }
+            const sWeeklyTarget = sWtByte === 0 ? null : sWtByte;
+            const sDailyTarget =
+              version >= 8 ? decodeScaledTarget(reader.readVarUint()) : null;
+            const entry: HabitScheduleVersion = {
+              fromDay,
+              weekdays: HabitSchedule.normalizeWeekdays(sWeekdays, sWeeklyTarget),
+              weeklyTarget: sWeeklyTarget,
+            };
+            if (sDailyTarget !== null) {
+              entry.dailyTarget = sDailyTarget;
+            }
+            rawHistory.push(entry);
+          }
+        }
+      }
+
+      let dailyTarget: number | null = null;
+      let unit: string | null = null;
+      if (version >= 8) {
+        dailyTarget = decodeScaledTarget(reader.readVarUint());
+        const hasMeasuredInHistory = rawHistory.some(
+          (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
+        );
+        if (dailyTarget !== null || hasMeasuredInHistory) {
+          unit = normalizeHabitUnit(stringTable.get(reader.readVarUint()));
+        }
+      }
+
+      if (rawHistory.length > 0) {
+        const normalized = HabitSchedule.normalizeHistory(
+          startDay,
+          weekdays,
+          weeklyTarget,
+          rawHistory,
+          dailyTarget
+        );
+        if (normalized.scheduleHistory && normalized.scheduleHistory.length > 1) {
+          scheduleHistory = normalized.scheduleHistory;
+        }
+      }
+
+      const unpackedHabit: Habit = {
         id,
         name,
         color,
@@ -261,7 +393,17 @@ export class SnapshotCodec {
         archivedAt,
         createdAt,
         updatedAt,
-      });
+      };
+      if (dailyTarget !== null) {
+        unpackedHabit.dailyTarget = dailyTarget;
+      }
+      if (unit !== null) {
+        unpackedHabit.unit = unit;
+      }
+      if (scheduleHistory) {
+        unpackedHabit.scheduleHistory = scheduleHistory;
+      }
+      habits.push(unpackedHabit);
 
       const checkinCount = reader.readVarUint();
       if (checkinCount > 0) {
@@ -274,6 +416,7 @@ export class SnapshotCodec {
         const bitBytesCount = Math.ceil(spanDays / 8);
         const bitBytes = reader.readBytes(bitBytesCount);
 
+        const habitCheckins: HabitCheckin[] = [];
         for (let c = 0; c < checkinCount; c++) {
           const dayOffset = reader.readVarUint();
           if (dayOffset >= spanDays) {
@@ -281,12 +424,31 @@ export class SnapshotCodec {
           }
           const updatedAtDelta = reader.readVarInt();
           const done = (bitBytes[dayOffset >> 3] & (1 << (dayOffset & 7))) !== 0;
-          checkins.push({
+          habitCheckins.push({
             habitId: id,
             dayIndex: minDay + dayOffset,
             done,
             updatedAt: createdAt + updatedAtDelta,
           });
+        }
+
+        if (version >= 8) {
+          const valueMode = reader.readUint8();
+          if (valueMode !== 0 && valueMode !== 1) {
+            throw new Error(`Invalid check-in value mode in snapshot: ${valueMode}`);
+          }
+          if (valueMode === 1) {
+            for (let c = 0; c < checkinCount; c++) {
+              const val = decodeScaledValue(reader.readVarUint());
+              if (val !== undefined) {
+                habitCheckins[c].value = val;
+              }
+            }
+          }
+        }
+
+        for (const hc of habitCheckins) {
+          checkins.push(hc);
         }
       }
     }

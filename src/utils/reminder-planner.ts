@@ -1,5 +1,6 @@
 import { DomainSnapshot, Habit, Task } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
+import { HabitSchedule } from './habit-schedule';
 import { TodayBoard } from './today-board';
 
 export type BadgePermissionState = 'granted' | 'denied' | 'default' | 'unsupported';
@@ -134,9 +135,15 @@ export class ReminderPlanner {
       todayDay,
       snapshot.checkins
     );
+    const habitById = new Map<number, Habit>();
+    for (const h of snapshot.habits) {
+      habitById.set(h.id, h);
+    }
     const doneTodayIds = new Set<number>();
     for (const c of snapshot.checkins) {
-      if (c.dayIndex === todayDay && c.done) {
+      if (c.dayIndex !== todayDay) continue;
+      const habit = habitById.get(c.habitId);
+      if (habit && HabitSchedule.isCheckinDoneForDay(habit, c, todayDay)) {
         doneTodayIds.add(c.habitId);
       }
     }
@@ -191,18 +198,31 @@ export class ReminderPlanner {
           if (habit.archivedAt !== null || habit.startDay > dayIndex) {
             return false;
           }
-          if (habit.weeklyTarget !== null) {
+          const sched = HabitSchedule.getAtDay(habit, dayIndex);
+          if (sched.weeklyTarget !== null) {
+            const eligibleMask = (sched.weekdays & 0x7f) || 0x7f;
+            if (!CivilCalendar.isScheduled(eligibleMask, dayIndex)) {
+              return false;
+            }
             if (dayWeekStart === todayWeekStart) {
-              const flex = TodayBoard.getFlexibleWeekStatus(
+              const flexToday = TodayBoard.getFlexibleWeekStatus(
                 habit,
                 snapshot.checkins,
                 todayDay
               );
-              return flex ? flex.remainingNeeded > 0 : false;
+              if (flexToday !== null) {
+                return flexToday.remainingNeeded > 0;
+              }
+              const flexTargetDay = TodayBoard.getFlexibleWeekStatus(
+                habit,
+                snapshot.checkins,
+                dayIndex
+              );
+              return flexTargetDay ? flexTargetDay.remainingNeeded > 0 : true;
             }
             return true;
           }
-          return CivilCalendar.isScheduled(habit.weekdays, dayIndex);
+          return CivilCalendar.isScheduled(sched.weekdays, dayIndex);
         });
 
         dueOnDayTasks = snapshot.tasks.filter(

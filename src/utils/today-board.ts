@@ -1,5 +1,6 @@
-import { Habit, HabitCheckin, Task, TaskStatus, normalizeWeeklyTarget } from '../types/domain';
+import { Habit, HabitCheckin, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
+import { HabitSchedule } from './habit-schedule';
 
 export type TaskFilterMode =
   | 'all'
@@ -48,6 +49,7 @@ export interface FlexibleWeekStatus {
   effectiveTarget: number;
   doneInWeek: number;
   isDoneOnDay: boolean;
+  isEligibleDay: boolean;
   remainingDays: number;
   remainingNeeded: number;
   mustDoToday: boolean;
@@ -72,43 +74,86 @@ export class TodayBoard {
     checkins: HabitCheckin[],
     dayIndex: number
   ): FlexibleWeekStatus | null {
-    const target = normalizeWeeklyTarget(habit.weeklyTarget);
-    if (target === null || habit.startDay > dayIndex) {
+    if (habit.startDay > dayIndex) {
+      return null;
+    }
+
+    const sched = HabitSchedule.getAtDay(habit, dayIndex);
+    const target = sched.weeklyTarget;
+    if (target === null) {
       return null;
     }
 
     const weekStart = CivilCalendar.startOfWeek(dayIndex);
     const weekEnd = weekStart + 6;
-    const effectiveStart = Math.max(weekStart, habit.startDay);
-    const availableDays = Math.max(0, weekEnd - effectiveStart + 1);
-    const effectiveTarget = Math.min(target, availableDays);
+    const effectiveWeekStart = Math.max(weekStart, habit.startDay);
+    const segments = HabitSchedule.getSegmentsInRange(habit, effectiveWeekStart, weekEnd);
+    const activeSeg =
+      segments.find((s) => dayIndex >= s.start && dayIndex <= s.end) ??
+      segments[segments.length - 1];
 
-    let doneInWeek = 0;
+    const eligibleMask = (activeSeg.weekdays & 0x7f) || 0x7f;
+    const isEligibleDay = CivilCalendar.isScheduled(eligibleMask, dayIndex);
+    const availableDays = CivilCalendar.countScheduledInRange(
+      eligibleMask,
+      activeSeg.start,
+      activeSeg.end
+    );
+
+    let donePriorInWeek = 0;
+    let doneInSeg = 0;
     let isDoneOnDay = false;
+
     for (const entry of checkins) {
       if (
-        entry.habitId === habit.id &&
-        entry.done &&
-        entry.dayIndex >= effectiveStart &&
-        entry.dayIndex <= weekEnd
+        entry.habitId !== habit.id ||
+        entry.dayIndex < effectiveWeekStart ||
+        entry.dayIndex > activeSeg.end ||
+        !HabitSchedule.isCheckinDoneForDay(habit, entry, entry.dayIndex)
       ) {
-        doneInWeek += 1;
+        continue;
+      }
+      if (entry.dayIndex >= activeSeg.start) {
+        doneInSeg += 1;
         if (entry.dayIndex === dayIndex) {
           isDoneOnDay = true;
+        }
+      } else {
+        const entrySeg = segments.find(
+          (s) => entry.dayIndex >= s.start && entry.dayIndex <= s.end
+        );
+        if (entrySeg) {
+          if (
+            entrySeg.weeklyTarget !== null ||
+            CivilCalendar.isScheduled(entrySeg.weekdays, entry.dayIndex)
+          ) {
+            donePriorInWeek += 1;
+          }
         }
       }
     }
 
-    const remainingDays = Math.max(0, weekEnd - Math.max(dayIndex, effectiveStart) + 1);
+    const effectiveTarget = Math.min(target, donePriorInWeek + availableDays);
+    const doneInWeek = donePriorInWeek + doneInSeg;
+
+    const remainingDays = CivilCalendar.countScheduledInRange(
+      eligibleMask,
+      Math.max(dayIndex, activeSeg.start),
+      activeSeg.end
+    );
     const remainingNeeded = Math.max(0, effectiveTarget - doneInWeek);
     const mustDoToday =
-      !isDoneOnDay && remainingNeeded > 0 && remainingDays <= remainingNeeded;
+      isEligibleDay &&
+      !isDoneOnDay &&
+      remainingNeeded > 0 &&
+      remainingDays <= remainingNeeded;
 
     return {
       target,
       effectiveTarget,
       doneInWeek,
       isDoneOnDay,
+      isEligibleDay,
       remainingDays,
       remainingNeeded,
       mustDoToday,
@@ -128,9 +173,13 @@ export class TodayBoard {
         }
         const flex = TodayBoard.getFlexibleWeekStatus(habit, checkins, dayIndex);
         if (flex !== null) {
-          return flex.isDoneOnDay || flex.doneInWeek < flex.effectiveTarget;
+          return (
+            flex.isDoneOnDay ||
+            (flex.isEligibleDay && flex.doneInWeek < flex.effectiveTarget)
+          );
         }
-        return CivilCalendar.isScheduled(habit.weekdays, dayIndex);
+        const sched = HabitSchedule.getAtDay(habit, dayIndex);
+        return CivilCalendar.isScheduled(sched.weekdays, dayIndex);
       })
       .sort((a, b) => a.id - b.id);
   }

@@ -3,11 +3,16 @@ import {
   Habit,
   HabitCheckin,
   HabitNote,
+  ScheduleApplyScope,
   Task,
   TaskStatus,
+  normalizeCheckinValue,
+  normalizeDailyTarget,
+  normalizeHabitUnit,
   normalizeWeeklyTarget,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { HabitSchedule } from '../utils/habit-schedule';
 
 const DB_NAME = 'habits_tracker_db';
 const DB_VERSION = 1;
@@ -17,6 +22,8 @@ export interface CreateHabitInput {
   color: string;
   weekdays: number;
   weeklyTarget?: number | null;
+  dailyTarget?: number | null;
+  unit?: string | null;
   startDay: number;
 }
 
@@ -25,7 +32,11 @@ export interface UpdateHabitPatch {
   color?: string;
   weekdays?: number;
   weeklyTarget?: number | null;
+  dailyTarget?: number | null;
+  unit?: string | null;
   startDay?: number;
+  scheduleApplyScope?: ScheduleApplyScope;
+  scheduleEffectiveFromDay?: number;
 }
 
 export interface CreateTaskInput {
@@ -43,6 +54,50 @@ export interface UpdateTaskPatch {
   status?: TaskStatus;
   completedDay?: number | null;
   repeatable?: boolean;
+}
+
+function normalizeHabitRecord(habit: Habit): Habit {
+  const norm = HabitSchedule.normalizeHistory(
+    habit.startDay,
+    habit.weekdays,
+    habit.weeklyTarget,
+    habit.scheduleHistory,
+    habit.dailyTarget
+  );
+  const {
+    scheduleHistory: _ignored,
+    dailyTarget: _ignoredDt,
+    unit: _ignoredUnit,
+    ...rest
+  } = habit;
+  const cleaned: Habit = {
+    ...rest,
+    weekdays: norm.weekdays,
+    weeklyTarget: norm.weeklyTarget,
+  };
+  if (norm.dailyTarget !== null) {
+    cleaned.dailyTarget = norm.dailyTarget;
+  }
+  const hasAnyTarget =
+    norm.dailyTarget !== null ||
+    (norm.scheduleHistory?.some(
+      (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
+    ) ??
+      false);
+  const cleanUnit = normalizeHabitUnit(habit.unit);
+  if (hasAnyTarget && cleanUnit !== null) {
+    cleaned.unit = cleanUnit;
+  }
+  if (norm.scheduleHistory && norm.scheduleHistory.length > 1) {
+    cleaned.scheduleHistory = norm.scheduleHistory;
+  }
+  return cleaned;
+}
+
+function normalizeCheckinRecord(checkin: HabitCheckin): HabitCheckin {
+  const cleanValue = normalizeCheckinValue(checkin.value);
+  const { value: _ignored, ...rest } = checkin;
+  return cleanValue !== undefined ? { ...rest, value: cleanValue } : rest;
 }
 
 function normalizeTaskStatus(task: Pick<Task, 'done'> & { status?: TaskStatus }): TaskStatus {
@@ -137,12 +192,11 @@ export class HabitDatabase {
 
     return {
       habits: habits
-        .map((h) => ({
-          ...h,
-          weeklyTarget: normalizeWeeklyTarget(h.weeklyTarget),
-        }))
+        .map((h) => normalizeHabitRecord(h))
         .sort((a, b) => a.id - b.id),
-      checkins: checkins.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
+      checkins: checkins
+        .map((c) => normalizeCheckinRecord(c))
+        .sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       notes: notes.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       tasks: tasks
         .map((t) => {
@@ -189,13 +243,10 @@ export class HabitDatabase {
     tasksStore.clear();
 
     for (const habit of snapshot.habits) {
-      habitsStore.put({
-        ...habit,
-        weeklyTarget: normalizeWeeklyTarget(habit.weeklyTarget),
-      });
+      habitsStore.put(normalizeHabitRecord(habit));
     }
     for (const checkin of snapshot.checkins) {
-      checkinsStore.put(checkin);
+      checkinsStore.put(normalizeCheckinRecord(checkin));
     }
     for (const note of snapshot.notes) {
       notesStore.put(note);
@@ -213,6 +264,8 @@ export class HabitDatabase {
     const tx = db.transaction('habits', 'readwrite');
     const store = tx.objectStore('habits');
     const weeklyTarget = normalizeWeeklyTarget(input.weeklyTarget);
+    const dailyTarget = normalizeDailyTarget(input.dailyTarget);
+    const cleanUnit = dailyTarget !== null ? normalizeHabitUnit(input.unit) : null;
     const maskedWeekdays = input.weekdays & 0x7f;
     const payload: Omit<Habit, 'id'> = {
       name: input.name.trim(),
@@ -223,6 +276,8 @@ export class HabitDatabase {
       archivedAt: null,
       createdAt: now,
       updatedAt: now,
+      ...(dailyTarget !== null ? { dailyTarget } : {}),
+      ...(cleanUnit !== null ? { unit: cleanUnit } : {}),
     };
     const key = await this.promisifyRequest<IDBValidKey>(store.add(payload));
     await this.promisifyTx(tx);
@@ -237,21 +292,69 @@ export class HabitDatabase {
     if (!existing) {
       throw new Error(`Habit ${id} not found`);
     }
-    const nextWeeklyTarget =
+    const nextStartDay =
+      patch.startDay !== undefined ? patch.startDay : existing.startDay;
+    const rawNextWt =
       patch.weeklyTarget !== undefined
         ? normalizeWeeklyTarget(patch.weeklyTarget)
         : normalizeWeeklyTarget(existing.weeklyTarget);
-    const rawWeekdays =
+    const rawNextWd =
       patch.weekdays !== undefined ? patch.weekdays & 0x7f : existing.weekdays & 0x7f;
+    const rawNextDt =
+      patch.dailyTarget !== undefined
+        ? normalizeDailyTarget(patch.dailyTarget)
+        : normalizeDailyTarget(existing.dailyTarget);
+
+    const scheduleResult = HabitSchedule.applyEdit({
+      existing,
+      nextWeekdays: rawNextWd,
+      nextWeeklyTarget: rawNextWt,
+      nextDailyTarget: rawNextDt,
+      nextStartDay,
+      scope: patch.scheduleApplyScope,
+      effectiveFromDay: patch.scheduleEffectiveFromDay,
+    });
+
+    const hasAnyTarget =
+      scheduleResult.dailyTarget !== null ||
+      (scheduleResult.scheduleHistory?.some(
+        (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
+      ) ??
+        false);
+    const candidateUnit =
+      patch.unit !== undefined
+        ? normalizeHabitUnit(patch.unit)
+        : normalizeHabitUnit(existing.unit);
+    const resolvedUnit =
+      hasAnyTarget
+        ? candidateUnit ??
+          (scheduleResult.dailyTarget === null ? normalizeHabitUnit(existing.unit) : null)
+        : null;
+
+    const {
+      scheduleHistory: _prevHistory,
+      dailyTarget: _prevDt,
+      unit: _prevUnit,
+      ...existingWithoutExtras
+    } = existing;
     const updated: Habit = {
-      ...existing,
+      ...existingWithoutExtras,
       name: patch.name !== undefined ? patch.name.trim() : existing.name,
       color: patch.color !== undefined ? patch.color : existing.color,
-      weekdays: nextWeeklyTarget !== null && rawWeekdays === 0 ? 0x7f : rawWeekdays,
-      weeklyTarget: nextWeeklyTarget,
-      startDay: patch.startDay !== undefined ? patch.startDay : existing.startDay,
+      weekdays: scheduleResult.weekdays,
+      weeklyTarget: scheduleResult.weeklyTarget,
+      startDay: nextStartDay,
       updatedAt: this.nextTimestamp(existing.updatedAt),
     };
+    if (scheduleResult.dailyTarget !== null) {
+      updated.dailyTarget = scheduleResult.dailyTarget;
+    }
+    if (resolvedUnit !== null) {
+      updated.unit = resolvedUnit;
+    }
+    if (scheduleResult.scheduleHistory && scheduleResult.scheduleHistory.length > 1) {
+      updated.scheduleHistory = scheduleResult.scheduleHistory;
+    }
     store.put(updated);
     await this.promisifyTx(tx);
     return updated;
@@ -279,7 +382,8 @@ export class HabitDatabase {
   public async upsertCheckin(
     habitId: number,
     dayIndex: number,
-    done: boolean
+    done: boolean,
+    value?: number
   ): Promise<HabitCheckin> {
     const db = await this.open();
     const tx = db.transaction('checkins', 'readwrite');
@@ -287,10 +391,12 @@ export class HabitDatabase {
     const existing = await this.promisifyRequest<HabitCheckin | undefined>(
       store.get([habitId, dayIndex])
     );
+    const cleanValue = normalizeCheckinValue(value);
     const record: HabitCheckin = {
       habitId,
       dayIndex,
       done,
+      ...(cleanValue !== undefined ? { value: cleanValue } : {}),
       updatedAt: this.nextTimestamp(existing?.updatedAt),
     };
     store.put(record);

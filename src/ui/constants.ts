@@ -17,3 +17,5 @@ export const HABIT_COLORS: HabitColorPreset[] = [
 
 export const DEFAULT_HABIT_COLOR = HABIT_COLORS[0].hex;
 export const ALL_WEEKDAYS_MASK = 0b1111111; // 127 (Mon-Sun)
+export const WEEKDAYS_ONLY_MASK = 0b0011111; // 31 (Mon-Fri)
+export const WEEKENDS_MASK = 0b1100000; // 96 (Sat-Sun)

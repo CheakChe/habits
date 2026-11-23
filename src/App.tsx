@@ -231,6 +231,10 @@ export default function App(): JSX.Element {
                   goalsExpanded={store.todayGoalsExpanded()}
                   onToggleGoalsExpanded={() => store.toggleTodayGoalsExpanded()}
                   onToggleCheckin={(hId, d, next) => store.toggleCheckin(hId, d, next)}
+                  onSetCheckinValue={(hId, d, val) => store.setCheckinValue(hId, d, val)}
+                  onIncrementCheckinValue={(hId, d, delta) =>
+                    store.incrementCheckinValue(hId, d, delta)
+                  }
                   onSaveNote={(hId, d, txt) => store.saveNote(hId, d, txt)}
                   onToggleTask={(t) => store.toggleTaskDone(t)}
                   onQuickAddTask={(title, due) => store.quickAddTask(title, due)}
@@ -278,7 +282,18 @@ export default function App(): JSX.Element {
                   onSelectRangePreset={(p) => store.setHistoryRangePreset(p)}
                   onSelectCustomRange={(s, e) => store.setHistoryCustomRange(s, e)}
                   onChangeTimeZone={(tz) => store.setTimeZone(tz)}
+                  advancedHeatmapMode={store.advancedHeatmapMode()}
+                  onChangeAdvancedHeatmapMode={(m) => store.setAdvancedHeatmapMode(m)}
+                  advancedNotesFilter={store.advancedNotesFilter()}
+                  onChangeAdvancedNotesFilter={(f) => store.setAdvancedNotesFilter(f)}
+                  getAdvancedAnalytics={(habits, filter, startDay, endDay) =>
+                    store.getAdvancedAnalytics(habits, filter, startDay, endDay)
+                  }
                   onToggleCheckin={(hId, d, next) => store.toggleCheckin(hId, d, next)}
+                  onSetCheckinValue={(hId, d, val) => store.setCheckinValue(hId, d, val)}
+                  onIncrementCheckinValue={(hId, d, delta) =>
+                    store.incrementCheckinValue(hId, d, delta)
+                  }
                   onSaveNote={(hId, d, txt) => store.saveNote(hId, d, txt)}
                 />
               </Match>

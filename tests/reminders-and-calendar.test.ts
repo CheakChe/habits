@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CalendarReminderService } from '../src/sync/calendar-reminder-service';
-import { DomainSnapshot } from '../src/types/domain';
+import { DomainSnapshot, Habit } from '../src/types/domain';
 import { CivilCalendar } from '../src/utils/civil-calendar';
 import { NonRetryableError } from '../src/utils/helpers';
 import {
@@ -844,4 +844,271 @@ test('CalendarReminderService.syncRemoteCalendarId pulls shared calendarId and f
   assert.equal(typeof published?.updatedAt, 'number');
   assert.equal(createdViaPost, true);
 });
+
+test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-write-wins even without a calendar and deleteReminderCalendar preserves timeZone', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  // Shared Drive metadata simulator
+  let remoteMeta: Record<string, unknown> | null = {
+    calendarId: null,
+    timeZone: 'Asia/Tokyo',
+    timeZoneUpdatedAt: 2000,
+    updatedAt: 2000,
+  };
+
+  const extractJsonFromMultipart = (body: BodyInit | null | undefined): Record<string, unknown> | null => {
+    const raw =
+      typeof body === 'string'
+        ? body
+        : body instanceof Uint8Array
+          ? new TextDecoder().decode(body)
+          : '';
+    const parts = raw.split(/\r\n\r\n/);
+    if (parts.length < 3) return null;
+    const jsonPart = parts[parts.length - 1].split(/\r\n--/)[0];
+    return JSON.parse(jsonPart) as Record<string, unknown>;
+  };
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
+      return new Response(
+        JSON.stringify({
+          files: remoteMeta ? [{ id: 'meta-tz-1', modifiedTime: '2026-11-22T00:00:00Z' }] : [],
+        }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.endsWith('/drive/v3/files/meta-tz-1?alt=media')) {
+      return new Response(JSON.stringify(remoteMeta), { status: 200 });
+    }
+    if (
+      (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-tz-1')) ||
+      (method === 'POST' && url.endsWith('/upload/drive/v3/files?uploadType=multipart'))
+    ) {
+      const parsed = extractJsonFromMultipart(init?.body);
+      if (parsed) {
+        remoteMeta = parsed;
+      }
+      return new Response(JSON.stringify({ id: 'meta-tz-1' }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-tz-1')) {
+      return new Response(JSON.stringify({ id: 'cal-tz-1', timeZone: 'Asia/Tokyo' }), { status: 200 });
+    }
+    if (method === 'DELETE' && url.endsWith('/calendars/cal-tz-1')) {
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+
+  // 1) Without any calendar created yet, older local device pulls newer remote timeZone from Drive
+  const pulledNoCal = await service.syncRemoteCalendarId('google', 'tok-1', null, 'UTC', {
+    calendarEnabled: false,
+    reminderTime: '20:00',
+    horizonDays: 3,
+    timeZoneUpdatedAt: 1000,
+  });
+  assert.equal(pulledNoCal?.calendarId, null);
+  assert.equal(pulledNoCal?.timeZone, 'Asia/Tokyo');
+  assert.equal(pulledNoCal?.timeZoneUpdatedAt, 2000);
+
+  // 2) Device with a newer local timeZone pushes it to Drive (even with no calendar yet)
+  const pushedNoCal = await service.syncRemoteCalendarId(
+    'google',
+    'tok-1',
+    null,
+    'Europe/Berlin',
+    {
+      calendarEnabled: false,
+      reminderTime: '20:00',
+      horizonDays: 3,
+      timeZoneUpdatedAt: 5000,
+    }
+  );
+  assert.equal(pushedNoCal?.timeZone, 'Europe/Berlin');
+  assert.equal(pushedNoCal?.timeZoneUpdatedAt, 5000);
+  assert.equal(remoteMeta?.timeZone, 'Europe/Berlin');
+  assert.equal(remoteMeta?.timeZoneUpdatedAt, 5000);
+
+  // 3) When a calendar exists and remote has an even newer timeZone, local device pulls remote timeZone
+  remoteMeta = {
+    calendarId: 'cal-tz-1',
+    timeZone: 'America/New_York',
+    timeZoneUpdatedAt: 9000,
+    updatedAt: 9000,
+  };
+  const pulledWithCal = await service.syncRemoteCalendarId(
+    'google',
+    'tok-1',
+    'cal-tz-1',
+    'Europe/Berlin',
+    {
+      calendarEnabled: true,
+      reminderTime: '20:00',
+      horizonDays: 3,
+      timeZoneUpdatedAt: 5000,
+    }
+  );
+  assert.equal(pulledWithCal?.calendarId, 'cal-tz-1');
+  assert.equal(pulledWithCal?.timeZone, 'America/New_York');
+  assert.equal(pulledWithCal?.timeZoneUpdatedAt, 9000);
+
+  // 4) Deleting reminder calendar clears calendarId to null but preserves synced timeZone
+  await service.deleteReminderCalendar('google', 'tok-1', 'cal-tz-1');
+  assert.equal(remoteMeta?.calendarId, null);
+  assert.equal(remoteMeta?.timeZone, 'America/New_York');
+  assert.equal(remoteMeta?.timeZoneUpdatedAt, 9000);
+});
+
+test('ReminderPlanner skips off-schedule weekdays for flexible weekly habits', () => {
+  const friday = MONDAY_DAY + 4;
+  const saturday = MONDAY_DAY + 5;
+  const sunday = MONDAY_DAY + 6;
+  const nextMonday = MONDAY_DAY + 7;
+
+  const snap = makeSnapshot({
+    habits: [
+      {
+        id: 1,
+        name: 'Workday Habit',
+        color: '#3B82F6',
+        weekdays: 0b0011111, // Mon-Fri only
+        weeklyTarget: 2,
+        startDay: MONDAY_DAY - 7,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+  });
+
+  // On Saturday (off-schedule), today summary should have 0 unfinished habits
+  const satSummary = ReminderPlanner.getTodayPendingSummary(snap, saturday);
+  assert.equal(satSummary.unfinishedHabitsCount, 0);
+  assert.equal(satSummary.totalPendingCount, 0);
+
+  // Starting Friday with horizonDays=4 (Fri, Sat, Sun, next Mon):
+  // Fri (offset 0) & next Mon (offset 3) should have events; Sat & Sun should be omitted.
+  const events = ReminderPlanner.buildDesiredEvents(
+    snap,
+    friday,
+    { reminderTime: '18:00', horizonDays: 4 },
+    'UTC'
+  );
+  assert.deepEqual(
+    events.map((e) => e.dayIndex),
+    [friday, nextMonday]
+  );
+  assert.ok(!events.some((e) => e.dayIndex === saturday || e.dayIndex === sunday));
+});
+
+test('ReminderPlanner buildDesiredEvents resolves scheduleHistory changes across future horizon days', () => {
+  // Monday: habit is Fixed on Monday only; starting Tuesday it switches to Wed-only Fixed
+  // With horizonDays=3 (Mon, Tue, Wed):
+  // - Mon (today) has habit -> planned
+  // - Tue (switches to Wed-only) -> NOT scheduled -> omitted
+  // - Wed (Wed-only) -> planned
+  const snap = makeSnapshot({
+    habits: [
+      {
+        id: 1,
+        name: 'Adaptive Routine',
+        color: '#3B82F6',
+        weekdays: 1 << 2, // Wed
+        weeklyTarget: null,
+        startDay: MONDAY_DAY - 7,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 2000,
+        scheduleHistory: [
+          { fromDay: MONDAY_DAY - 7, weekdays: 1 << 0, weeklyTarget: null }, // Mon
+          { fromDay: TUESDAY_DAY, weekdays: 1 << 2, weeklyTarget: null }, // Wed starting Tue
+        ],
+      },
+    ],
+  });
+
+  const events = ReminderPlanner.buildDesiredEvents(
+    snap,
+    MONDAY_DAY,
+    { reminderTime: '19:00', horizonDays: 3 },
+    'UTC'
+  );
+
+  assert.deepEqual(
+    events.map((e) => e.dayIndex),
+    [MONDAY_DAY, WEDNESDAY_DAY]
+  );
+});
+
+test('ReminderPlanner evaluates measured habit checkins against active dailyTarget', () => {
+  const habit: Habit = {
+    id: 1,
+    name: 'Focus',
+    color: '#3B82F6',
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: 30,
+    unit: 'min',
+    startDay: MONDAY_DAY - 7,
+    archivedAt: null,
+    createdAt: 1000,
+    updatedAt: 2000,
+    scheduleHistory: [
+      { fromDay: MONDAY_DAY - 7, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 15 },
+      { fromDay: TUESDAY_DAY, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 30 },
+    ],
+  };
+
+  // On Monday (target = 15): partial value 10 -> still pending
+  const monPartial = ReminderPlanner.getTodayPendingSummary(
+    makeSnapshot({
+      habits: [habit],
+      checkins: [{ habitId: 1, dayIndex: MONDAY_DAY, done: false, value: 10, updatedAt: 1000 }],
+    }),
+    MONDAY_DAY
+  );
+  assert.equal(monPartial.unfinishedHabitsCount, 1);
+
+  // On Monday (target = 15): value 15 -> cleared
+  const monDone = ReminderPlanner.getTodayPendingSummary(
+    makeSnapshot({
+      habits: [habit],
+      checkins: [{ habitId: 1, dayIndex: MONDAY_DAY, done: true, value: 15, updatedAt: 1000 }],
+    }),
+    MONDAY_DAY
+  );
+  assert.equal(monDone.unfinishedHabitsCount, 0);
+
+  // On Tuesday (target stepped up to 30): even if done flag was stale true with value 15, 15 < 30 -> pending!
+  const tueSteppedPending = ReminderPlanner.getTodayPendingSummary(
+    makeSnapshot({
+      habits: [habit],
+      checkins: [{ habitId: 1, dayIndex: TUESDAY_DAY, done: true, value: 15, updatedAt: 1000 }],
+    }),
+    TUESDAY_DAY
+  );
+  assert.equal(tueSteppedPending.unfinishedHabitsCount, 1);
+
+  // On Tuesday with value 30 -> cleared
+  const tueDone = ReminderPlanner.getTodayPendingSummary(
+    makeSnapshot({
+      habits: [habit],
+      checkins: [{ habitId: 1, dayIndex: TUESDAY_DAY, done: true, value: 30, updatedAt: 1000 }],
+    }),
+    TUESDAY_DAY
+  );
+  assert.equal(tueDone.unfinishedHabitsCount, 0);
+});
+
+
+
+
 

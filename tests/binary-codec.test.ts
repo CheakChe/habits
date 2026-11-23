@@ -435,3 +435,306 @@ test('SnapshotCodec backward-compatibly unpacks v5 habit records with weeklyTarg
   assert.equal(unpacked.habits[0].weeklyTarget, null);
   assert.equal(unpacked.habits[0].name, 'Legacy v5 habit');
 });
+
+test('SnapshotCodec v7 encodes/decodes scheduleHistory deterministically, omits single-period history, and unpacks v6 cleanly', () => {
+  const baseDay = CivilCalendar.fromLocalDate(2026, 11, 2);
+  const snapA: DomainSnapshot = {
+    habits: [
+      {
+        id: 1,
+        name: 'Versioned Habit',
+        color: '#3B82F6',
+        weekdays: 0b0010101,
+        weeklyTarget: null,
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 3000,
+        scheduleHistory: [
+          // Intentionally unsorted + duplicate same-day + consecutive duplicate + pre-startDay
+          { fromDay: baseDay + 14, weekdays: 0b0010101, weeklyTarget: null },
+          { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: 3 },
+          { fromDay: baseDay - 2, weekdays: 0b0011111, weeklyTarget: null },
+          { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: 4 }, // overwrites baseDay+7=3
+          { fromDay: baseDay + 14, weekdays: 0b0010101, weeklyTarget: null },
+        ],
+      },
+      {
+        id: 2,
+        name: 'Single Schedule Habit',
+        color: '#22C55E',
+        weekdays: 127,
+        weeklyTarget: 5,
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 2000,
+        scheduleHistory: [{ fromDay: baseDay, weekdays: 127, weeklyTarget: 5 }],
+      },
+    ],
+    checkins: [],
+    notes: [],
+    tasks: [],
+  };
+
+  const snapCanonical: DomainSnapshot = {
+    ...snapA,
+    habits: [
+      {
+        ...snapA.habits[0],
+        scheduleHistory: [
+          { fromDay: baseDay, weekdays: 0b0011111, weeklyTarget: null },
+          { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: 4 },
+          { fromDay: baseDay + 14, weekdays: 0b0010101, weeklyTarget: null },
+        ],
+      },
+      {
+        id: 2,
+        name: 'Single Schedule Habit',
+        color: '#22C55E',
+        weekdays: 127,
+        weeklyTarget: 5,
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+    ],
+  };
+
+  const bytesA = SnapshotCodec.pack(snapA);
+  const bytesCanonical = SnapshotCodec.pack(snapCanonical);
+  assert.equal(Helpers.bytesEqual(bytesA, bytesCanonical), true);
+
+  const unpacked = SnapshotCodec.unpack(bytesA);
+  assert.deepEqual(unpacked.habits[0].scheduleHistory, [
+    { fromDay: baseDay, weekdays: 0b0011111, weeklyTarget: null },
+    { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: 4 },
+    { fromDay: baseDay + 14, weekdays: 0b0010101, weeklyTarget: null },
+  ]);
+  assert.equal('scheduleHistory' in unpacked.habits[1], false);
+
+  // Hand-craft a v6 snapshot (includes weeklyTarget byte, no scheduleHistory field)
+  const stringTable = new StringTable();
+  const idTable = new IdTable();
+  const nameIdx = stringTable.intern('Legacy v6 habit');
+  const colorIdx = stringTable.intern('#A855F7');
+  const idIdx = idTable.intern(7);
+
+  const body = new SnapshotBytes(128);
+  body.writeUint8(0x48);
+  body.writeUint8(0x42);
+  body.writeUint8(0x54);
+  body.writeUint8(0x31);
+  body.writeUint8(6); // version = 6
+  stringTable.writeTo(body);
+  idTable.writeTo(body);
+  body.writeVarUint(1);
+  body.writeVarUint(idIdx);
+  body.writeVarUint(nameIdx);
+  body.writeVarUint(colorIdx);
+  body.writeUint8(0b0011111); // weekdays
+  body.writeUint8(3); // weeklyTarget
+  body.writeVarInt(baseDay); // startDay
+  body.writeUint8(0); // archivedAt = null
+  body.writeFloat64(1000);
+  body.writeFloat64(2000);
+  body.writeVarUint(0); // checkins
+  body.writeVarUint(0); // notes
+  body.writeVarUint(0); // tasks
+
+  const payload = body.toUint8Array();
+  const frame = new SnapshotBytes(payload.byteLength + 4);
+  frame.writeBytes(payload);
+  frame.writeUint32BE(SnapshotBytes.computeChecksum(payload));
+
+  const unpackedV6 = SnapshotCodec.unpack(frame.toUint8Array());
+  assert.equal(unpackedV6.habits.length, 1);
+  assert.equal(unpackedV6.habits[0].weeklyTarget, 3);
+  assert.equal(unpackedV6.habits[0].weekdays, 0b0011111);
+  assert.equal('scheduleHistory' in unpackedV6.habits[0], false);
+});
+
+test('SnapshotCodec v8 round-trips measured habits, versioned dailyTarget, checkin values, and reads v7 snapshots', () => {
+  const baseDay = CivilCalendar.fromLocalDate(2026, 11, 1);
+
+  const snap: DomainSnapshot = {
+    habits: [
+      {
+        id: 10,
+        name: 'Meditation',
+        color: '#3B82F6',
+        weekdays: 0b1111111,
+        weeklyTarget: null,
+        dailyTarget: 30,
+        unit: 'min',
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 3000,
+        scheduleHistory: [
+          { fromDay: baseDay, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 15 },
+          { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 30 },
+        ],
+      },
+      {
+        id: 11,
+        name: 'Running',
+        color: '#22C55E',
+        weekdays: 0b1111111,
+        weeklyTarget: 3,
+        dailyTarget: 2.5,
+        unit: 'km',
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+      {
+        id: 12,
+        name: 'Reverted Habit',
+        color: '#F59E0B',
+        weekdays: 0b1111111,
+        weeklyTarget: null,
+        dailyTarget: null,
+        unit: 'pages',
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 2500,
+        scheduleHistory: [
+          { fromDay: baseDay, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 20 },
+          { fromDay: baseDay + 5, weekdays: 0b1111111, weeklyTarget: null },
+        ],
+      },
+      {
+        id: 13,
+        name: 'Plain Checkoff',
+        color: '#A855F7',
+        weekdays: 0b0011111,
+        weeklyTarget: null,
+        startDay: baseDay,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 1500,
+      },
+    ],
+    checkins: [
+      { habitId: 10, dayIndex: baseDay, done: true, value: 15, updatedAt: 1100 },
+      { habitId: 10, dayIndex: baseDay + 1, done: false, value: 10.5, updatedAt: 1200 },
+      { habitId: 10, dayIndex: baseDay + 7, done: true, value: 32.25, updatedAt: 3100 },
+      { habitId: 11, dayIndex: baseDay + 2, done: false, updatedAt: 2100 },
+      { habitId: 13, dayIndex: baseDay, done: true, updatedAt: 1600 },
+    ],
+    notes: [],
+    tasks: [],
+  };
+
+  const bytes1 = SnapshotCodec.pack(snap);
+  const bytes2 = SnapshotCodec.pack(snap);
+  assert.equal(Helpers.bytesEqual(bytes1, bytes2), true);
+
+  const unpacked = SnapshotCodec.unpack(bytes1);
+  assert.equal(unpacked.habits.length, 4);
+
+  const u10 = unpacked.habits.find((h) => h.id === 10)!;
+  assert.equal(u10.dailyTarget, 30);
+  assert.equal(u10.unit, 'min');
+  assert.deepEqual(u10.scheduleHistory, [
+    { fromDay: baseDay, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 15 },
+    { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 30 },
+  ]);
+
+  const u11 = unpacked.habits.find((h) => h.id === 11)!;
+  assert.equal(u11.dailyTarget, 2.5);
+  assert.equal(u11.unit, 'km');
+  assert.equal('scheduleHistory' in u11, false);
+
+  const u12 = unpacked.habits.find((h) => h.id === 12)!;
+  assert.equal('dailyTarget' in u12, false);
+  assert.equal(u12.unit, 'pages');
+  assert.deepEqual(u12.scheduleHistory, [
+    { fromDay: baseDay, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 20 },
+    { fromDay: baseDay + 5, weekdays: 0b1111111, weeklyTarget: null },
+  ]);
+
+  const u13 = unpacked.habits.find((h) => h.id === 13)!;
+  assert.equal('dailyTarget' in u13, false);
+  assert.equal('unit' in u13, false);
+  assert.equal('scheduleHistory' in u13, false);
+
+  assert.deepEqual(
+    unpacked.checkins.find((c) => c.habitId === 10 && c.dayIndex === baseDay + 1),
+    { habitId: 10, dayIndex: baseDay + 1, done: false, value: 10.5, updatedAt: 1200 }
+  );
+  assert.deepEqual(
+    unpacked.checkins.find((c) => c.habitId === 10 && c.dayIndex === baseDay + 7),
+    { habitId: 10, dayIndex: baseDay + 7, done: true, value: 32.25, updatedAt: 3100 }
+  );
+  const c11 = unpacked.checkins.find((c) => c.habitId === 11)!;
+  assert.equal('value' in c11, false);
+  const c13 = unpacked.checkins.find((c) => c.habitId === 13)!;
+  assert.equal('value' in c13, false);
+
+  // Backward compatibility: hand-craft a v7 snapshot (has scheduleHistory without dailyTarget/unit/checkin values)
+  const stringTable = new StringTable();
+  const idTable = new IdTable();
+  const nameIdx = stringTable.intern('Legacy v7 habit');
+  const colorIdx = stringTable.intern('#EF4444');
+  const idIdx = idTable.intern(42);
+
+  const body = new SnapshotBytes(256);
+  body.writeUint8(0x48);
+  body.writeUint8(0x42);
+  body.writeUint8(0x54);
+  body.writeUint8(0x31);
+  body.writeUint8(7); // version = 7
+  stringTable.writeTo(body);
+  idTable.writeTo(body);
+  body.writeVarUint(1); // habitCount
+  body.writeVarUint(idIdx);
+  body.writeVarUint(nameIdx);
+  body.writeVarUint(colorIdx);
+  body.writeUint8(0b1111111); // weekdays
+  body.writeUint8(4); // weeklyTarget
+  body.writeVarInt(baseDay); // startDay
+  body.writeUint8(0); // archivedAt = null
+  body.writeFloat64(1000);
+  body.writeFloat64(2000);
+  // v7 scheduleHistory: 2 entries (no dailyTarget varuint)
+  body.writeVarUint(2);
+  body.writeVarInt(0);
+  body.writeUint8(0b0011111);
+  body.writeUint8(0);
+  body.writeVarInt(7);
+  body.writeUint8(0b1111111);
+  body.writeUint8(4);
+  // v7 checkins: 1 done checkin at baseDay (no valueMode byte)
+  body.writeVarUint(1);
+  body.writeVarInt(0); // minOffsetFromStart
+  body.writeVarUint(1); // spanDays
+  body.writeBytes(new Uint8Array([0b00000001])); // bitBytes
+  body.writeVarUint(0); // dayOffset
+  body.writeVarInt(500); // updatedAtDelta
+  body.writeVarUint(0); // notes
+  body.writeVarUint(0); // tasks
+
+  const payload = body.toUint8Array();
+  const frame = new SnapshotBytes(payload.byteLength + 4);
+  frame.writeBytes(payload);
+  frame.writeUint32BE(SnapshotBytes.computeChecksum(payload));
+
+  const unpackedV7 = SnapshotCodec.unpack(frame.toUint8Array());
+  assert.equal(unpackedV7.habits.length, 1);
+  assert.equal('dailyTarget' in unpackedV7.habits[0], false);
+  assert.equal('unit' in unpackedV7.habits[0], false);
+  assert.deepEqual(unpackedV7.habits[0].scheduleHistory, [
+    { fromDay: baseDay, weekdays: 0b0011111, weeklyTarget: null },
+    { fromDay: baseDay + 7, weekdays: 0b1111111, weeklyTarget: 4 },
+  ]);
+  assert.deepEqual(unpackedV7.checkins, [
+    { habitId: 42, dayIndex: baseDay, done: true, updatedAt: 1500 },
+  ]);
+});
+
+

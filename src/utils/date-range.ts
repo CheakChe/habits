@@ -226,6 +226,49 @@ export class DateRangeResolver {
     }
   }
 
+  public static previousPeriod(
+    preset: DateRangePresetId,
+    startDay: number,
+    endDay: number
+  ): { startDay: number; endDay: number; label: string } | null {
+    if (preset === 'all_time') {
+      return null;
+    }
+    const s = Math.min(startDay, endDay);
+    const e = Math.max(startDay, endDay);
+    const spanDays = e - s + 1;
+    if (spanDays <= 0 || spanDays > 3660) {
+      return null;
+    }
+    if (preset === 'prev_month') {
+      const startLocal = CivilCalendar.toLocalDate(s);
+      const prevYear = startLocal.month === 1 ? startLocal.year - 1 : startLocal.year;
+      const prevMonth = startLocal.month === 1 ? 12 : startLocal.month - 1;
+      const prevMonthStart = CivilCalendar.fromLocalDate(prevYear, prevMonth, 1);
+      return {
+        startDay: prevMonthStart,
+        endDay: s - 1,
+        label: CivilCalendar.formatMonthYear(prevYear, prevMonth),
+      };
+    }
+    if (preset === 'prev_year') {
+      const startLocal = CivilCalendar.toLocalDate(s);
+      const prevYear = startLocal.year - 1;
+      return {
+        startDay: CivilCalendar.fromLocalDate(prevYear, 1, 1),
+        endDay: CivilCalendar.fromLocalDate(prevYear, 12, 31),
+        label: String(prevYear),
+      };
+    }
+    const prevEnd = s - 1;
+    const prevStart = prevEnd - (spanDays - 1);
+    return {
+      startDay: prevStart,
+      endDay: prevEnd,
+      label: DateRangeResolver.formatRangeLabel(prevStart, prevEnd),
+    };
+  }
+
   public static formatRangeLabel(startDay: number, endDay: number): string {
     if (startDay === endDay) {
       return CivilCalendar.formatShortDateWithYear(startDay);

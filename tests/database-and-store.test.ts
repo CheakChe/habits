@@ -805,3 +805,289 @@ test('TrackerStore persists History multi-habit filter, Tasks multi-status filte
     store.dispose();
   }
 });
+
+test('HabitDatabase and TrackerStore persist scheduleHistory scopes, preserve on rename, deduplicate, and reset on entire history', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const db = new HabitDatabase();
+  const day0 = 20750;
+  const h = await db.createHabit({
+    name: 'Exercise',
+    color: '#3B82F6',
+    weekdays: 0b0011111, // Mon-Fri fixed
+    weeklyTarget: null,
+    startDay: day0,
+  });
+  assert.equal('scheduleHistory' in h, false);
+
+  // Edit schedule 'from_day' on day0 + 10 -> creates 2-entry scheduleHistory
+  const hFlex = await db.updateHabit(h.id, {
+    weekdays: 0b1111111,
+    weeklyTarget: 3,
+    scheduleApplyScope: 'from_day',
+    scheduleEffectiveFromDay: day0 + 10,
+  });
+  assert.equal(hFlex.weeklyTarget, 3);
+  assert.equal(hFlex.weekdays, 0b1111111);
+  assert.deepEqual(hFlex.scheduleHistory, [
+    { fromDay: day0, weekdays: 0b0011111, weeklyTarget: null },
+    { fromDay: day0 + 10, weekdays: 0b1111111, weeklyTarget: 3 },
+  ]);
+
+  // Same-day overwrite at day0 + 10 replaces that day's version
+  const hSameDay = await db.updateHabit(h.id, {
+    weekdays: 0b0011111,
+    weeklyTarget: 4,
+    scheduleApplyScope: 'from_day',
+    scheduleEffectiveFromDay: day0 + 10,
+  });
+  assert.deepEqual(hSameDay.scheduleHistory, [
+    { fromDay: day0, weekdays: 0b0011111, weeklyTarget: null },
+    { fromDay: day0 + 10, weekdays: 0b0011111, weeklyTarget: 4 },
+  ]);
+
+  // Rename / change color without changing schedule -> preserves scheduleHistory!
+  const hRenamed = await db.updateHabit(h.id, {
+    name: 'Daily Training',
+    color: '#22C55E',
+    weekdays: 0b0011111,
+    weeklyTarget: 4,
+  });
+  assert.equal(hRenamed.name, 'Daily Training');
+  assert.deepEqual(hRenamed.scheduleHistory, hSameDay.scheduleHistory);
+
+  // Reverting on same day (day0 + 10) back to baseline (Mon-Fri fixed) deduplicates and omits scheduleHistory!
+  const hCollapsed = await db.updateHabit(h.id, {
+    weekdays: 0b0011111,
+    weeklyTarget: null,
+    scheduleApplyScope: 'from_day',
+    scheduleEffectiveFromDay: day0 + 10,
+  });
+  assert.equal('scheduleHistory' in hCollapsed, false);
+
+  // Create new history, advance startDay past transition -> clamps & omits scheduleHistory
+  await db.updateHabit(h.id, {
+    weekdays: 0b1111111,
+    weeklyTarget: 5,
+    scheduleApplyScope: 'from_day',
+    scheduleEffectiveFromDay: day0 + 10,
+  });
+  const hClamped = await db.updateHabit(h.id, {
+    startDay: day0 + 12,
+    weekdays: 0b1111111,
+    weeklyTarget: 5,
+  });
+  assert.equal('scheduleHistory' in hClamped, false);
+  assert.equal(hClamped.weeklyTarget, 5);
+
+  // TrackerStore forwards scheduleApplyScope & scheduleEffectiveFromDay and resets cleanly on 'all'
+  const store = new TrackerStore();
+  try {
+    store.init();
+    store.selectGuest();
+    await new Promise((r) => setTimeout(r, 15));
+
+    const start = store.todayDay() - 14;
+    await store.saveHabit({
+      name: 'Read',
+      color: '#A855F7',
+      weekdays: 0b1111111,
+      weeklyTarget: null,
+      startDay: start,
+    });
+    const created = store.snapshot().habits.find((x) => x.name === 'Read')!;
+    store.openEditHabit(created);
+    await store.saveHabit({
+      name: 'Read',
+      color: '#A855F7',
+      weekdays: 0b1111111,
+      weeklyTarget: 4,
+      startDay: start,
+      scheduleApplyScope: 'from_day',
+      scheduleEffectiveFromDay: store.todayDay(),
+    });
+    const versioned = store.snapshot().habits.find((x) => x.id === created.id)!;
+    assert.equal(versioned.scheduleHistory?.length, 2);
+
+    store.openEditHabit(versioned);
+    await store.saveHabit({
+      name: 'Read',
+      color: '#A855F7',
+      weekdays: 0b0010101,
+      weeklyTarget: null,
+      startDay: start,
+      scheduleApplyScope: 'all',
+    });
+    const resetHabit = store.snapshot().habits.find((x) => x.id === created.id)!;
+    assert.equal('scheduleHistory' in resetHabit, false);
+    assert.equal(resetHabit.weekdays, 0b0010101);
+    assert.equal(resetHabit.weeklyTarget, null);
+  } finally {
+    store.dispose();
+  }
+});
+
+test('HabitDatabase and TrackerStore support measured habits, stepped dailyTarget scopes, and +1/+5/manual logging', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const db = new HabitDatabase();
+  const day0 = 20740;
+
+  // Create measured habit: 15 min/day
+  const h = await db.createHabit({
+    name: 'Focus',
+    color: '#3B82F6',
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: 15,
+    unit: ' min ',
+    startDay: day0,
+  });
+  assert.equal(h.dailyTarget, 15);
+  assert.equal(h.unit, 'min');
+  assert.equal('scheduleHistory' in h, false);
+
+  // Step up dailyTarget 15 -> 30 from day0 + 10 using 'from_day'
+  const stepped = await db.updateHabit(h.id, {
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: 30,
+    unit: 'min',
+    scheduleApplyScope: 'from_day',
+    scheduleEffectiveFromDay: day0 + 10,
+  });
+  assert.equal(stepped.dailyTarget, 30);
+  assert.equal(stepped.unit, 'min');
+  assert.deepEqual(stepped.scheduleHistory, [
+    { fromDay: day0, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 15 },
+    { fromDay: day0 + 10, weekdays: 0b1111111, weeklyTarget: null, dailyTarget: 30 },
+  ]);
+
+  // Switch back to check-off from day0 + 20 using 'from_day' -> keeps unit for earlier measured segments!
+  const revertedPartial = await db.updateHabit(h.id, {
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: null,
+    unit: null,
+    scheduleApplyScope: 'from_day',
+    scheduleEffectiveFromDay: day0 + 20,
+  });
+  assert.equal('dailyTarget' in revertedPartial, false);
+  assert.equal(revertedPartial.unit, 'min');
+  assert.equal(revertedPartial.scheduleHistory?.length, 3);
+
+  // Switch to check-off for 'all' -> strips dailyTarget, unit, and scheduleHistory
+  const revertedAll = await db.updateHabit(h.id, {
+    weekdays: 0b1111111,
+    weeklyTarget: null,
+    dailyTarget: null,
+    unit: null,
+    scheduleApplyScope: 'all',
+  });
+  assert.equal('dailyTarget' in revertedAll, false);
+  assert.equal('unit' in revertedAll, false);
+  assert.equal('scheduleHistory' in revertedAll, false);
+
+  // Direct db.upsertCheckin stores and strips numeric value cleanly
+  await db.upsertCheckin(h.id, day0, false, 12.5);
+  let snap = await db.getAllSnapshot();
+  assert.equal(snap.checkins[0].value, 12.5);
+  assert.equal(snap.checkins[0].done, false);
+
+  await db.upsertCheckin(h.id, day0, false, 0);
+  snap = await db.getAllSnapshot();
+  assert.equal('value' in snap.checkins[0], false);
+
+  // TrackerStore quick-logging and toggle behavior
+  const store = new TrackerStore();
+  try {
+    store.init();
+    store.selectGuest();
+    await new Promise((r) => setTimeout(r, 15));
+
+    const today = store.todayDay();
+    await store.saveHabit({
+      name: 'Meditation',
+      color: '#22C55E',
+      weekdays: 0b1111111,
+      weeklyTarget: null,
+      dailyTarget: 15,
+      unit: 'min',
+      startDay: today - 10,
+    });
+    const med = store.snapshot().habits.find((x) => x.name === 'Meditation')!;
+
+    // +5, +5, +1 => 11/15 (partial, done === false)
+    await store.incrementCheckinValue(med.id, today, 5);
+    await store.incrementCheckinValue(med.id, today, 5);
+    await store.incrementCheckinValue(med.id, today, 1);
+    let c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.value, 11);
+    assert.equal(c.done, false);
+
+    // +5 => 16 >= 15 => done === true
+    await store.incrementCheckinValue(med.id, today, 5);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.value, 16);
+    assert.equal(c.done, true);
+
+    // toggleCheckin(false) resets to 0 & done === false
+    await store.toggleCheckin(med.id, today, false);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.done, false);
+    assert.equal('value' in c, false);
+
+    // toggleCheckin(true) from 0 completes full active dailyTarget (15)
+    await store.toggleCheckin(med.id, today, true);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.done, true);
+    assert.equal(c.value, 15);
+
+    // Bump today's target to 30 from today
+    store.openEditHabit(med);
+    await store.saveHabit({
+      name: 'Meditation',
+      color: '#22C55E',
+      weekdays: 0b1111111,
+      weeklyTarget: null,
+      dailyTarget: 30,
+      unit: 'min',
+      startDay: today - 10,
+      scheduleApplyScope: 'from_day',
+      scheduleEffectiveFromDay: today,
+    });
+
+    // toggleCheckin(true) when value (15) < new active target (30) fills up to 30!
+    await store.toggleCheckin(med.id, today, true);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.done, true);
+    assert.equal(c.value, 30);
+
+    // Manual entry below/above target
+    await store.setCheckinValue(med.id, today, 22.5);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.value, 22.5);
+    assert.equal(c.done, false);
+
+    await store.setCheckinValue(med.id, today, 30);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.value, 30);
+    assert.equal(c.done, true);
+
+    // Rapid unawaited calls serialize cleanly without losing updates
+    await Promise.all([
+      store.setCheckinValue(med.id, today, 10),
+      store.incrementCheckinValue(med.id, today, 5),
+      store.incrementCheckinValue(med.id, today, 1),
+    ]);
+    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    assert.equal(c.value, 16);
+    assert.equal(c.done, false);
+  } finally {
+    store.dispose();
+  }
+});
+
+

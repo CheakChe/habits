@@ -7,8 +7,18 @@ import {
   MAX_REVISIONS_TO_KEEP,
   SyncPreparationResult,
 } from '../sync/drive-sync-service';
-import { Habit, SessionMode, Task, TaskStatus } from '../types/domain';
+import {
+  Habit,
+  ScheduleApplyScope,
+  SessionMode,
+  Task,
+  TaskStatus,
+  normalizeDailyTarget,
+  normalizeHabitUnit,
+  normalizeWeeklyTarget,
+} from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { HabitSchedule } from '../utils/habit-schedule';
 import {
   BadgePermissionState,
   ReminderPlanner,
@@ -41,7 +51,13 @@ import {
   UploadIcon,
 } from './Icons';
 import { PWAInstallButton } from './PwaControls';
-import { ALL_WEEKDAYS_MASK, DEFAULT_HABIT_COLOR, HABIT_COLORS } from './constants';
+import {
+  ALL_WEEKDAYS_MASK,
+  DEFAULT_HABIT_COLOR,
+  HABIT_COLORS,
+  WEEKDAYS_ONLY_MASK,
+  WEEKENDS_MASK,
+} from './constants';
 import { useBodyScrollLock } from './scroll-lock';
 import { TaskDraftPrefill, TaskModalMode } from './tracker-store';
 
@@ -55,7 +71,11 @@ interface HabitModalProps {
     color: string;
     weekdays: number;
     weeklyTarget: number | null;
+    dailyTarget: number | null;
+    unit: string | null;
     startDay: number;
+    scheduleApplyScope?: ScheduleApplyScope;
+    scheduleEffectiveFromDay?: number;
   }) => Promise<void>;
 }
 
@@ -65,10 +85,14 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
   const [hexInput, setHexInput] = createSignal(DEFAULT_HABIT_COLOR);
   const [badge, setBadge] = createSignal<HabitBadgeType>({ kind: 'none' });
   const [badgeTab, setBadgeTab] = createSignal<'none' | 'icon' | 'emoji'>('none');
+  const [goalMode, setGoalMode] = createSignal<'checkoff' | 'measured'>('checkoff');
+  const [dailyTargetInput, setDailyTargetInput] = createSignal('15');
+  const [unitInput, setUnitInput] = createSignal('');
   const [scheduleMode, setScheduleMode] = createSignal<'weekdays' | 'weekly_target'>('weekdays');
   const [weekdays, setWeekdays] = createSignal(ALL_WEEKDAYS_MASK);
   const [weeklyTarget, setWeeklyTarget] = createSignal(3);
   const [startDay, setStartDay] = createSignal<number>(props.todayDay);
+  const [applyScope, setApplyScope] = createSignal<ScheduleApplyScope>('from_day');
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
 
@@ -77,11 +101,15 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
     const habit = props.editingHabit;
     if (habit) {
       const parsed = HabitAppearance.parse(habit.color);
+      const dt = normalizeDailyTarget(habit.dailyTarget);
       setName(habit.name);
       setAccentColor(parsed.color);
       setHexInput(parsed.color);
       setBadge(parsed.badge);
       setBadgeTab(parsed.badge.kind);
+      setGoalMode(dt !== null ? 'measured' : 'checkoff');
+      setDailyTargetInput(dt !== null ? HabitSchedule.formatNumericValue(dt) : '15');
+      setUnitInput(habit.unit ?? '');
       setScheduleMode(habit.weeklyTarget !== null ? 'weekly_target' : 'weekdays');
       setWeekdays(habit.weekdays);
       setWeeklyTarget(habit.weeklyTarget ?? 3);
@@ -92,11 +120,15 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setHexInput(DEFAULT_HABIT_COLOR);
       setBadge({ kind: 'none' });
       setBadgeTab('none');
+      setGoalMode('checkoff');
+      setDailyTargetInput('15');
+      setUnitInput('');
       setScheduleMode('weekdays');
       setWeekdays(ALL_WEEKDAYS_MASK);
       setWeeklyTarget(3);
       setStartDay(props.todayDay);
     }
+    setApplyScope('from_day');
     setError(null);
   });
 
@@ -128,9 +160,55 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
   const isHexInputValid = () => HabitAppearance.normalizeHex(hexInput()) !== null;
   const composedAppearance = () => HabitAppearance.format(accentColor(), badge());
 
+  const selectedWeekdaysCount = () => CivilCalendar.countScheduledDays(weekdays());
+
+  const selectedWeekdaySummary = () => {
+    const mask = weekdays() & 0x7f;
+    if (mask === ALL_WEEKDAYS_MASK) return 'Mon–Sun';
+    if (mask === WEEKDAYS_ONLY_MASK) return 'Mon–Fri';
+    if (mask === WEEKENDS_MASK) return 'Sat–Sun';
+    const labels: string[] = [];
+    for (let bit = 0; bit < 7; bit++) {
+      if ((mask & (1 << bit)) !== 0) {
+        labels.push(CivilCalendar.weekdayShortLabel(bit));
+      }
+    }
+    return labels.join(', ');
+  };
+
   const toggleWeekday = (bit: number) => {
     setWeekdays((prev) => prev ^ (1 << bit));
   };
+
+  const parsedDailyTarget = () => {
+    if (goalMode() !== 'measured') return null;
+    const raw = dailyTargetInput().trim().replace(',', '.');
+    if (!raw) return null;
+    return normalizeDailyTarget(Number(raw));
+  };
+
+  const hasExistingHistory = () =>
+    Boolean(props.editingHabit?.scheduleHistory && props.editingHabit.scheduleHistory.length > 1);
+
+  const scheduleChanged = () => {
+    const habit = props.editingHabit;
+    if (!habit) return false;
+    const prevWt = normalizeWeeklyTarget(habit.weeklyTarget);
+    const prevWd = HabitSchedule.normalizeWeekdays(habit.weekdays, prevWt);
+    const prevDt = normalizeDailyTarget(habit.dailyTarget);
+    const nextWt =
+      scheduleMode() === 'weekly_target' ? normalizeWeeklyTarget(weeklyTarget()) : null;
+    const nextWd = HabitSchedule.normalizeWeekdays(weekdays(), nextWt);
+    const nextDt = parsedDailyTarget();
+    return nextWd !== prevWd || nextWt !== prevWt || nextDt !== prevDt;
+  };
+
+  const showApplyScopeSelector = () =>
+    Boolean(
+      props.editingHabit &&
+        scheduleChanged() &&
+        (startDay() < props.todayDay || hasExistingHistory())
+    );
 
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();
@@ -144,22 +222,54 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setError('Enter a valid hex color (e.g. #3B82F6).');
       return;
     }
-    if (scheduleMode() === 'weekdays' && (weekdays() & 0x7f) === 0) {
-      setError('Select at least one scheduled day.');
+    const nextDailyTarget = parsedDailyTarget();
+    if (goalMode() === 'measured' && nextDailyTarget === null) {
+      setError('Enter a positive daily target (e.g. 15).');
+      return;
+    }
+    const maskedWeekdays = weekdays() & 0x7f;
+    if (maskedWeekdays === 0) {
+      setError(
+        scheduleMode() === 'weekly_target'
+          ? 'Select at least one allowed day.'
+          : 'Select at least one scheduled day.'
+      );
+      return;
+    }
+    if (
+      scheduleMode() === 'weekly_target' &&
+      weeklyTarget() > CivilCalendar.countScheduledDays(maskedWeekdays)
+    ) {
+      setError('Weekly target cannot exceed the number of selected days.');
       return;
     }
     setSaving(true);
     setError(null);
     try {
       const isFlexible = scheduleMode() === 'weekly_target';
+      const editing = props.editingHabit;
+      const scopeNeeded = showApplyScopeSelector();
+      const changed = scheduleChanged();
+      const nextUnit =
+        goalMode() === 'measured'
+          ? normalizeHabitUnit(unitInput())
+          : editing?.unit ?? null;
       await props.onSave({
         name: trimmed,
         color: HabitAppearance.format(normalizedHex, badge()),
-        weekdays: isFlexible
-          ? (weekdays() & 0x7f) || ALL_WEEKDAYS_MASK
-          : weekdays() & 0x7f,
+        weekdays: maskedWeekdays,
         weeklyTarget: isFlexible ? weeklyTarget() : null,
+        dailyTarget: nextDailyTarget,
+        unit: nextUnit,
         startDay: startDay(),
+        ...(editing && scopeNeeded
+          ? {
+              scheduleApplyScope: applyScope(),
+              scheduleEffectiveFromDay: applyScope() === 'from_day' ? props.todayDay : undefined,
+            }
+          : editing && changed
+            ? { scheduleApplyScope: 'all' as ScheduleApplyScope }
+            : {}),
       });
       props.onClose();
     } catch (err) {
@@ -442,7 +552,12 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setScheduleMode('weekly_target')}
+                    onClick={() => {
+                      setScheduleMode('weekly_target');
+                      if ((weekdays() & 0x7f) === 0) {
+                        setWeekdays(ALL_WEEKDAYS_MASK);
+                      }
+                    }}
                     aria-pressed={scheduleMode() === 'weekly_target'}
                     class={`h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                       scheduleMode() === 'weekly_target'
@@ -458,7 +573,7 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
               <Show
                 when={scheduleMode() === 'weekdays'}
                 fallback={
-                  <div class="space-y-2">
+                  <div class="space-y-3">
                     <div class="grid grid-cols-7 gap-1.5" role="group" aria-label="Weekly target count">
                       <For each={[1, 2, 3, 4, 5, 6, 7]}>
                         {(count) => {
@@ -481,8 +596,91 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                         }}
                       </For>
                     </div>
-                    <p class="text-[11px] text-[#8E95A5]">
-                      Complete {weeklyTarget()}× on any days each week (Mon–Sun). Once finished, it clears from Today until next week.
+
+                    <div class="space-y-2">
+                      <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="text-xs font-medium text-[#9AA1B1]">
+                          Allowed days
+                        </span>
+                        <div class="flex items-center gap-2 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => setWeekdays(ALL_WEEKDAYS_MASK)}
+                            class={`cursor-pointer ${
+                              (weekdays() & 0x7f) === ALL_WEEKDAYS_MASK
+                                ? 'text-[#60A5FA]'
+                                : 'text-[#9AA1B1] hover:text-[#F5F7FA]'
+                            }`}
+                          >
+                            All
+                          </button>
+                          <span aria-hidden="true" class="text-[#5B6270]">·</span>
+                          <button
+                            type="button"
+                            onClick={() => setWeekdays(WEEKDAYS_ONLY_MASK)}
+                            class={`cursor-pointer ${
+                              (weekdays() & 0x7f) === WEEKDAYS_ONLY_MASK
+                                ? 'text-[#60A5FA]'
+                                : 'text-[#9AA1B1] hover:text-[#F5F7FA]'
+                            }`}
+                          >
+                            Mon–Fri
+                          </button>
+                          <span aria-hidden="true" class="text-[#5B6270]">·</span>
+                          <button
+                            type="button"
+                            onClick={() => setWeekdays(WEEKENDS_MASK)}
+                            class={`cursor-pointer ${
+                              (weekdays() & 0x7f) === WEEKENDS_MASK
+                                ? 'text-[#60A5FA]'
+                                : 'text-[#9AA1B1] hover:text-[#F5F7FA]'
+                            }`}
+                          >
+                            Sat–Sun
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-7 gap-1.5" role="group" aria-label="Allowed weekdays">
+                        <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                          {(bit) => {
+                            const active = () => (weekdays() & (1 << bit)) !== 0;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => toggleWeekday(bit)}
+                                aria-pressed={active()}
+                                class={`min-h-[40px] rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                                  active()
+                                    ? 'bg-[#3B82F6] text-white'
+                                    : 'bg-[#0A0B0E] border border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                                }`}
+                              >
+                                {CivilCalendar.weekdayShortLabel(bit)}
+                              </button>
+                            );
+                          }}
+                        </For>
+                      </div>
+                    </div>
+
+                    <p
+                      class={`text-[11px] ${
+                        selectedWeekdaysCount() === 0 ||
+                        weeklyTarget() > selectedWeekdaysCount()
+                          ? 'text-[#FCA5A5]'
+                          : 'text-[#8E95A5]'
+                      }`}
+                    >
+                      {selectedWeekdaysCount() === 0
+                        ? 'Select at least one allowed day of the week.'
+                        : weeklyTarget() > selectedWeekdaysCount()
+                          ? `Weekly target (${weeklyTarget()}×) exceeds the ${selectedWeekdaysCount()} selected ${
+                              selectedWeekdaysCount() === 1 ? 'day' : 'days'
+                            }.`
+                          : (weekdays() & 0x7f) === ALL_WEEKDAYS_MASK
+                            ? `Complete ${weeklyTarget()}× on any days each week (Mon–Sun). Once finished, it clears from Today until next week.`
+                            : `Complete ${weeklyTarget()}× on ${selectedWeekdaySummary()} each week. Clears from Today on off-days and once finished.`}
                     </p>
                   </div>
                 }
@@ -508,6 +706,144 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                     }}
                   </For>
                 </div>
+              </Show>
+
+              {/* Daily Goal: Check-off vs Measured */}
+              <div class="pt-1 space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="block text-xs font-medium text-[#9AA1B1]">Daily goal</span>
+                  <div class="inline-flex items-center p-0.5 rounded-xl bg-[#0A0B0E] border border-white/[0.08]">
+                    <button
+                      type="button"
+                      onClick={() => setGoalMode('checkoff')}
+                      aria-pressed={goalMode() === 'checkoff'}
+                      class={`h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        goalMode() === 'checkoff'
+                          ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                          : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      Check-off
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGoalMode('measured')}
+                      aria-pressed={goalMode() === 'measured'}
+                      class={`h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                        goalMode() === 'measured'
+                          ? 'bg-[#1C1F26] text-[#F5F7FA]'
+                          : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      Measured
+                    </button>
+                  </div>
+                </div>
+
+                <Show when={goalMode() === 'measured'}>
+                  <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-3 space-y-2.5">
+                    <div class="grid grid-cols-2 gap-2.5">
+                      <div class="space-y-1">
+                        <label
+                          for="habit-daily-target"
+                          class="block text-[11px] font-medium text-[#9AA1B1]"
+                        >
+                          Target
+                        </label>
+                        <input
+                          id="habit-daily-target"
+                          type="number"
+                          inputmode="decimal"
+                          min="0.01"
+                          step="any"
+                          value={dailyTargetInput()}
+                          onInput={(e) => setDailyTargetInput(e.currentTarget.value)}
+                          placeholder="15"
+                          class="w-full h-10 rounded-xl bg-[#14161B] border border-white/[0.1] px-3 text-sm font-mono tabular-nums text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+                        />
+                      </div>
+                      <div class="space-y-1">
+                        <label
+                          for="habit-unit"
+                          class="block text-[11px] font-medium text-[#9AA1B1]"
+                        >
+                          Unit (optional)
+                        </label>
+                        <input
+                          id="habit-unit"
+                          type="text"
+                          maxlength={24}
+                          value={unitInput()}
+                          onInput={(e) => setUnitInput(e.currentTarget.value)}
+                          placeholder="e.g. min, pages"
+                          class="w-full h-10 rounded-xl bg-[#14161B] border border-white/[0.1] px-3 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+                        />
+                      </div>
+                    </div>
+
+                    <p class="text-[11px] text-[#8E95A5]">
+                      Quick logging on Today & History: +1, +5, and manual input.
+                    </p>
+                  </div>
+                </Show>
+              </div>
+
+              <Show when={showApplyScopeSelector()}>
+                <div class="rounded-2xl bg-[#0A0B0E] border border-white/[0.08] p-3 space-y-2.5">
+                  <span class="block text-xs font-medium text-[#9AA1B1]">
+                    Apply change
+                  </span>
+                  <div
+                    class="grid grid-cols-2 gap-1.5"
+                    role="radiogroup"
+                    aria-label="Apply change"
+                  >
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={applyScope() === 'from_day'}
+                      onClick={() => setApplyScope('from_day')}
+                      class={`min-h-[40px] px-3 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                        applyScope() === 'from_day'
+                          ? 'bg-[#3B82F6] text-white'
+                          : 'bg-[#14161B] border border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      From today
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={applyScope() === 'all'}
+                      onClick={() => setApplyScope('all')}
+                      class={`min-h-[40px] px-3 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                        applyScope() === 'all'
+                          ? 'bg-[#3B82F6] text-white'
+                          : 'bg-[#14161B] border border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      Entire history
+                    </button>
+                  </div>
+                  <p class="text-[11px] text-[#8E95A5]">
+                    {applyScope() === 'from_day'
+                      ? `Keeps past history intact before ${CivilCalendar.formatShortDate(props.todayDay)}.`
+                      : `Replaces the schedule and target from ${CivilCalendar.formatShortDate(startDay())} and recalculates past stats.`}
+                  </p>
+                </div>
+              </Show>
+
+              <Show when={!showApplyScopeSelector() && hasExistingHistory()}>
+                {(() => {
+                  const history = props.editingHabit!.scheduleHistory!;
+                  const latest = history[history.length - 1];
+                  return (
+                    <p class="text-[11px] text-[#8E95A5]">
+                      Updated {CivilCalendar.formatShortDate(latest.fromDay)} ·{' '}
+                      <span class="font-mono tabular-nums">{history.length}</span> periods preserved
+                    </p>
+                  );
+                })()}
               </Show>
             </div>
 

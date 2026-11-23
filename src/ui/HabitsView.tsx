@@ -1,9 +1,11 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot, Habit } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { HabitSchedule } from '../utils/habit-schedule';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { HabitBadge } from './HabitBadge';
 import { ArchiveIcon, EditIcon, PlusIcon, RestoreIcon } from './Icons';
+import { ALL_WEEKDAYS_MASK } from './constants';
 
 interface HabitsViewProps {
   snapshot: DomainSnapshot;
@@ -139,6 +141,13 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                   metrics().streakUnit === 'weeks' ? 'w' : 'd';
                 const streakUnitLong = () =>
                   metrics().streakUnit === 'weeks' ? 'week' : 'day';
+                const activeSchedule = createMemo(() =>
+                  HabitSchedule.getAtDay(habit, props.todayDay)
+                );
+                const latestScheduleChangeDay = () =>
+                  habit.scheduleHistory && habit.scheduleHistory.length > 1
+                    ? habit.scheduleHistory[habit.scheduleHistory.length - 1].fromDay
+                    : null;
 
                 return (
                   <li
@@ -159,6 +168,20 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
 
                       <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[#8E95A5]">
                         <span>Started {CivilCalendar.formatShortDate(habit.startDay)}</span>
+                        <Show when={activeSchedule().dailyTarget !== null}>
+                          <span aria-hidden="true">·</span>
+                          <span class="font-mono tabular-nums text-[#C8CDD8]">
+                            Goal {HabitSchedule.formatNumericValue(activeSchedule().dailyTarget!)}
+                            {habit.unit ? ` ${habit.unit}` : ''}/day
+                          </span>
+                        </Show>
+                        <Show when={latestScheduleChangeDay() !== null}>
+                          <span aria-hidden="true">·</span>
+                          <span>
+                            Updated{' '}
+                            {CivilCalendar.formatShortDate(latestScheduleChangeDay()!)}
+                          </span>
+                        </Show>
                         <span aria-hidden="true">·</span>
                         <span
                           class={`font-mono tabular-nums ${streakToneClass()}`}
@@ -204,14 +227,45 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
 
                     <div class="flex items-center justify-between sm:justify-end gap-4 shrink-0">
                       <Show
-                        when={habit.weeklyTarget === null}
+                        when={activeSchedule().weeklyTarget === null}
                         fallback={
-                          <span
-                            class="text-xs font-mono tabular-nums text-[#C8CDD8] whitespace-nowrap"
+                          <div
+                            class="flex items-center gap-2.5 flex-wrap"
                             aria-label="Flexible weekly schedule"
                           >
-                            {habit.weeklyTarget}× / week
-                          </span>
+                            <span class="text-xs font-mono tabular-nums text-[#C8CDD8] whitespace-nowrap">
+                              {activeSchedule().weeklyTarget}× / week
+                            </span>
+                            <Show
+                              when={
+                                (activeSchedule().weekdays & ALL_WEEKDAYS_MASK) !==
+                                ALL_WEEKDAYS_MASK
+                              }
+                            >
+                              <div
+                                class="flex items-center gap-1"
+                                aria-label="Allowed weekdays"
+                              >
+                                <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                                  {(bit) => {
+                                    const active =
+                                      (activeSchedule().weekdays & (1 << bit)) !== 0;
+                                    return (
+                                      <span
+                                        class={`w-6 h-6 rounded-md text-[11px] font-mono flex items-center justify-center ${
+                                          active
+                                            ? 'bg-white/[0.1] text-[#F5F7FA]'
+                                            : 'text-[#4B5563]'
+                                        }`}
+                                      >
+                                        {CivilCalendar.weekdayShortLabel(bit).slice(0, 1)}
+                                      </span>
+                                    );
+                                  }}
+                                </For>
+                              </div>
+                            </Show>
+                          </div>
                         }
                       >
                         <div
@@ -220,7 +274,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         >
                           <For each={[0, 1, 2, 3, 4, 5, 6]}>
                             {(bit) => {
-                              const active = (habit.weekdays & (1 << bit)) !== 0;
+                              const active = (activeSchedule().weekdays & (1 << bit)) !== 0;
                               return (
                                 <span
                                   class={`w-6 h-6 rounded-md text-[11px] font-mono flex items-center justify-center ${

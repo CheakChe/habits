@@ -1,5 +1,11 @@
-import { For, JSX, Show, createEffect, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot, HistorySubTab } from '../types/domain';
+import { For, JSX, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js';
+import { DomainSnapshot, Habit, HabitCheckin, HistorySubTab } from '../types/domain';
+import {
+  AdvancedAnalyticsReport,
+  AdvancedHeatmapMode,
+  AdvancedNotesFilter,
+} from '../utils/advanced-analytics';
+import { ChartsAnalytics } from '../utils/charts-analytics';
 import { CivilCalendar } from '../utils/civil-calendar';
 import {
   DateRangePresetId,
@@ -8,11 +14,18 @@ import {
   DayCellTone,
 } from '../utils/date-range';
 import { StreakCalculator, StreakUnit } from '../utils/streak-calculator';
+import { HabitSchedule } from '../utils/habit-schedule';
 import { TaskAnalytics } from '../utils/task-analytics';
 import { HabitAppearance } from '../utils/habit-appearance';
-import { CustomMultiSelect, HistoryRangePicker, SelectOption } from './CustomControls';
+import {
+  CustomMultiSelect,
+  HistoryRangePicker,
+  MeasuredQuickControls,
+  SelectOption,
+} from './CustomControls';
 import { HabitBadge } from './HabitBadge';
-import { HistoryChartsPanel } from './HistoryChartsPanel';
+import { HistoryAdvancedPanel } from './HistoryAdvancedPanel';
+import { HistoryChartsPanel, PeriodComparisonView } from './HistoryChartsPanel';
 import {
   ArchiveIcon,
   CalendarIcon,
@@ -21,6 +34,7 @@ import {
   ChevronRightIcon,
   CloseIcon,
   HistoryTabIcon,
+  LayersIcon,
   NoteIcon,
   RepeatIcon,
 } from './Icons';
@@ -39,7 +53,19 @@ interface HistoryViewProps {
   onSelectRangePreset: (preset: DateRangePresetId) => void;
   onSelectCustomRange: (startDay: number, endDay: number) => void;
   onChangeTimeZone: (timeZone: string) => void;
+  advancedHeatmapMode: AdvancedHeatmapMode;
+  onChangeAdvancedHeatmapMode: (mode: AdvancedHeatmapMode) => void;
+  advancedNotesFilter: AdvancedNotesFilter;
+  onChangeAdvancedNotesFilter: (filter: AdvancedNotesFilter) => void;
+  getAdvancedAnalytics: (
+    targetHabits: Habit[],
+    habitFilter: 'all' | number[],
+    startDay: number,
+    endDay: number
+  ) => AdvancedAnalyticsReport;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
+  onSetCheckinValue: (habitId: number, dayIndex: number, value: number) => Promise<void>;
+  onIncrementCheckinValue: (habitId: number, dayIndex: number, delta: number) => Promise<void>;
   onSaveNote: (habitId: number, dayIndex: number, text: string) => Promise<void>;
 }
 
@@ -132,9 +158,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   };
 
   const checkinIndex = createMemo(() => {
-    const map = new Map<string, boolean>();
+    const map = new Map<string, HabitCheckin>();
     for (const c of props.snapshot.checkins) {
-      map.set(`${c.habitId}:${c.dayIndex}`, c.done);
+      map.set(`${c.habitId}:${c.dayIndex}`, c);
     }
     return map;
   });
@@ -217,6 +243,26 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     };
   });
 
+  const perfectDays = createMemo(() =>
+    ChartsAnalytics.perfectDaysSummary(
+      targetHabits(),
+      props.snapshot.checkins,
+      effectiveRangeStart(),
+      effectiveRangeEnd(),
+      props.todayDay
+    )
+  );
+
+  const habitTrends = createMemo(() =>
+    ChartsAnalytics.habitTrendDeltas(
+      targetHabits(),
+      props.snapshot.checkins,
+      effectiveRangeStart(),
+      effectiveRangeEnd(),
+      props.todayDay
+    )
+  );
+
   const habitBreakdown = createMemo(() =>
     StreakCalculator.summarizeHabitsForRange(
       targetHabits(),
@@ -235,6 +281,61 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       props.timeZone
     )
   );
+
+  const prevComparison = createMemo((): PeriodComparisonView | null => {
+    const prev = DateRangeResolver.previousPeriod(
+      props.rangePreset,
+      effectiveRangeStart(),
+      effectiveRangeEnd()
+    );
+    if (!prev) return null;
+
+    const habits = targetHabits();
+    let prevScheduled = 0;
+    let prevCompleted = 0;
+    for (const h of habits) {
+      const m = StreakCalculator.calculate(
+        h,
+        props.snapshot.checkins,
+        prev.startDay,
+        prev.endDay,
+        false
+      );
+      prevScheduled += m.scheduledDays;
+      prevCompleted += m.completedScheduledDays;
+    }
+
+    const curHabitsSummary = analyticsSummary();
+    const habitRateDeltaPct =
+      prevScheduled > 0 && curHabitsSummary.scheduledDays > 0
+        ? Math.round(
+            (curHabitsSummary.completionRate - prevCompleted / prevScheduled) * 100
+          )
+        : null;
+
+    const prevTasks = TaskAnalytics.summarizeRange(
+      props.snapshot.tasks,
+      prev.startDay,
+      prev.endDay,
+      props.timeZone
+    );
+    const curTasks = taskSummary();
+    const taskDoneDelta =
+      prevTasks.doneCount > 0 || curTasks.doneCount > 0
+        ? curTasks.doneCount - prevTasks.doneCount
+        : null;
+    const taskRateDeltaPct =
+      prevTasks.completionRate !== null && curTasks.completionRate !== null
+        ? Math.round((curTasks.completionRate - prevTasks.completionRate) * 100)
+        : null;
+
+    return {
+      prevLabel: prev.label,
+      habitRateDeltaPct,
+      taskDoneDelta,
+      taskRateDeltaPct,
+    };
+  });
 
   const taskOutcomeBuckets = createMemo(() =>
     TaskAnalytics.rangeOutcomeBuckets(
@@ -419,11 +520,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             <p class="text-sm text-[#8E95A5]">
               {props.subTab === 'calendar'
                 ? 'Inspect past days, edit check-ins, and review daily notes and tasks.'
-                : 'Track habit consistency trends, weekday patterns, and task discipline over time.'}
+                : props.subTab === 'charts'
+                  ? 'Track habit consistency trends, weekday patterns, and task discipline over time.'
+                  : 'Explore deeper behavioral diagnostics, backlog flow, workload forecast, and notes.'}
             </p>
           </div>
 
-          {/* Sub-tab Segmented Control: Calendar | Charts */}
+          {/* Sub-tab Segmented Control: Calendar | Charts | Advanced */}
           <div
             role="tablist"
             aria-label="History view mode"
@@ -457,6 +560,20 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               <HistoryTabIcon class="w-3.5 h-3.5" />
               <span>Charts</span>
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={props.subTab === 'advanced'}
+              onClick={() => props.onSelectSubTab('advanced')}
+              class={`h-9 px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                props.subTab === 'advanced'
+                  ? 'bg-[#3B82F6] text-white'
+                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+              }`}
+            >
+              <LayersIcon class="w-3.5 h-3.5" />
+              <span>Advanced</span>
+            </button>
           </div>
         </div>
 
@@ -481,7 +598,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               onChange={(val) => props.onChangeHabitFilter(val)}
             />
 
-            <Show when={props.subTab === 'charts'}>
+            <Show when={props.subTab === 'charts' || props.subTab === 'advanced'}>
               <HistoryRangePicker
                 preset={props.rangePreset}
                 customStartDay={props.customStartDay}
@@ -518,20 +635,23 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </div>
         }
       >
-        <Show
-          when={props.subTab === 'calendar'}
-          fallback={
+        <Switch>
+          <Match when={props.subTab === 'charts'}>
             <HistoryChartsPanel
               habits={props.snapshot.habits}
               targetHabits={targetHabits()}
               habitFilter={props.habitFilter}
               checkins={props.snapshot.checkins}
+              notes={props.snapshot.notes}
               tasks={props.snapshot.tasks}
               effectiveRangeStart={effectiveRangeStart()}
               effectiveRangeEnd={effectiveRangeEnd()}
               rangeLabel={resolvedRange().label}
               timeZone={props.timeZone}
               analyticsSummary={analyticsSummary()}
+              perfectDays={perfectDays()}
+              prevComparison={prevComparison()}
+              habitTrends={habitTrends()}
               taskSummary={taskSummary()}
               taskOutcomeBuckets={taskOutcomeBuckets()}
               habitBreakdown={habitBreakdown()}
@@ -541,8 +661,31 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               onInspectDayInCalendar={inspectDayInCalendar}
               onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
             />
-          }
-        >
+          </Match>
+
+          <Match when={props.subTab === 'advanced'}>
+            <HistoryAdvancedPanel
+              report={props.getAdvancedAnalytics(
+                targetHabits(),
+                props.habitFilter,
+                effectiveRangeStart(),
+                effectiveRangeEnd()
+              )}
+              effectiveRangeStart={effectiveRangeStart()}
+              effectiveRangeEnd={effectiveRangeEnd()}
+              rangeLabel={resolvedRange().label}
+              selectedDay={selectedDay()}
+              heatmapMode={props.advancedHeatmapMode}
+              notesFilter={props.advancedNotesFilter}
+              onChangeHeatmapMode={props.onChangeAdvancedHeatmapMode}
+              onChangeNotesFilter={props.onChangeAdvancedNotesFilter}
+              onSelectDay={(day) => setSelectedDay(day)}
+              onInspectDayInCalendar={inspectDayInCalendar}
+              onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
+            />
+          </Match>
+
+          <Match when={props.subTab === 'calendar'}>
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
             <div class="flex items-center justify-between">
@@ -674,26 +817,76 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               <ul class="divide-y divide-white/[0.06]">
                 <For each={selectedDayHabits()}>
                   {(habit) => {
+                    const checkinEntry = () =>
+                      checkinIndex().get(`${habit.id}:${selectedDay()}`);
+                    const activeTarget = () =>
+                      HabitSchedule.getAtDay(habit, selectedDay()).dailyTarget;
+                    const currentValue = () =>
+                      HabitSchedule.getCheckinValueForDay(
+                        habit,
+                        checkinEntry(),
+                        selectedDay()
+                      );
                     const isDone = () =>
-                      checkinIndex().get(`${habit.id}:${selectedDay()}`) === true;
+                      HabitSchedule.isCheckinDoneForDay(
+                        habit,
+                        checkinEntry(),
+                        selectedDay()
+                      );
+                    const isPartial = () => {
+                      const target = activeTarget();
+                      return target !== null && !isDone() && currentValue() > 0;
+                    };
+                    const partialPct = () => {
+                      const target = activeTarget();
+                      if (target === null || target <= 0) return 0;
+                      return Math.min(100, Math.round((currentValue() / target) * 100));
+                    };
+                    const accentColor = () => HabitAppearance.getColor(habit.color);
                     const scheduleStatusLabel = () => {
-                      if (habit.weeklyTarget !== null) {
-                        const wkEnd = Math.min(
-                          CivilCalendar.startOfWeek(selectedDay()) + 6,
-                          props.todayDay
+                      const day = selectedDay();
+                      const sched = HabitSchedule.getAtDay(habit, day);
+                      const valPrefix =
+                        sched.dailyTarget !== null
+                          ? `${HabitSchedule.formatNumericValue(currentValue())}/${HabitSchedule.formatNumericValue(sched.dailyTarget)}${habit.unit ? ` ${habit.unit}` : ''} · `
+                          : '';
+                      if (sched.weeklyTarget !== null) {
+                        const weekStart = CivilCalendar.startOfWeek(day);
+                        const weekEnd = weekStart + 6;
+                        const segs = HabitSchedule.getSegmentsInRange(
+                          habit,
+                          Math.max(habit.startDay, weekStart),
+                          weekEnd
                         );
+                        const activeSeg =
+                          segs.find((s) => day >= s.start && day <= s.end) ??
+                          segs[segs.length - 1];
+                        const evalDay =
+                          day <= props.todayDay
+                            ? Math.min(activeSeg ? activeSeg.end : weekEnd, props.todayDay)
+                            : day;
                         const wk = StreakCalculator.calculateWeeklyProgress(
                           habit,
                           props.snapshot.checkins,
-                          wkEnd
+                          evalDay
                         );
-                        return wk.isComplete
+                        const flexLabel = wk.isComplete
                           ? `Flexible (${wk.completedDays}/${wk.scheduledDays} wk complete)`
                           : `Flexible (${wk.completedDays}/${wk.scheduledDays} wk)`;
+                        const eligibleMask = (sched.weekdays & 0x7f) || 0x7f;
+                        return (
+                          valPrefix +
+                          (CivilCalendar.isScheduled(eligibleMask, day)
+                            ? flexLabel
+                            : `Off-schedule day · ${flexLabel}`)
+                        );
                       }
-                      return CivilCalendar.isScheduled(habit.weekdays, selectedDay())
-                        ? 'Scheduled'
-                        : 'Off-schedule day';
+                      return (
+                        valPrefix +
+                        (CivilCalendar.isScheduled(sched.weekdays, day)
+                          ? 'Scheduled'
+                          : 'Off-schedule day')
+                      );
                     };
                     const noteText = () =>
                       noteIndex().get(`${habit.id}:${selectedDay()}`) ?? '';
@@ -713,23 +906,35 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                             }
                             aria-pressed={isDone()}
                             aria-label={`Toggle ${habit.name} for ${CivilCalendar.formatShortDate(selectedDay())}`}
-                            class={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
+                            class={`relative overflow-hidden w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
                               isDone()
                                 ? 'border-transparent'
-                                : 'bg-[#0A0B0E] border-white/[0.12] text-transparent hover:border-white/30'
+                                : isPartial()
+                                  ? 'bg-[#0A0B0E] border-white/[0.22] text-[#C8CDD8] hover:border-white/40'
+                                  : 'bg-[#0A0B0E] border-white/[0.12] text-transparent hover:border-white/30'
                             }`}
                             style={
                               isDone()
                                 ? {
-                                    'background-color': HabitAppearance.getColor(habit.color),
+                                    'background-color': accentColor(),
                                     color: HabitAppearance.getContrastTextColor(
-                                      HabitAppearance.getColor(habit.color)
+                                      accentColor()
                                     ),
                                   }
                                 : undefined
                             }
                           >
-                            <CheckIcon class="w-4 h-4" />
+                            <Show when={isPartial()}>
+                              <span
+                                aria-hidden="true"
+                                class="absolute inset-x-0 bottom-0 opacity-25 transition-all"
+                                style={{
+                                  height: `${partialPct()}%`,
+                                  'background-color': accentColor(),
+                                }}
+                              />
+                            </Show>
+                            <CheckIcon class="w-4 h-4 relative z-10" />
                           </button>
 
                           <div class="min-w-0 flex-1">
@@ -743,7 +948,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                               </p>
                             </div>
                             <p
-                              class="text-xs text-[#8E95A5] line-clamp-2 break-words"
+                              class="text-xs text-[#8E95A5] font-mono tabular-nums line-clamp-2 break-words"
                               title={
                                 noteText() && !isEditingNote()
                                   ? `${scheduleStatusLabel()} · ${noteText()}`
@@ -775,6 +980,28 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
                             <NoteIcon class="w-4 h-4" />
                           </button>
                         </div>
+
+                        <Show when={activeTarget() !== null || currentValue() > 0}>
+                          <div class="pl-[3.25rem]">
+                            <MeasuredQuickControls
+                              habitName={habit.name}
+                              accentColor={accentColor()}
+                              unit={habit.unit}
+                              value={currentValue()}
+                              target={activeTarget() ?? Math.max(1, currentValue())}
+                              onIncrement={(delta) =>
+                                props.onIncrementCheckinValue(
+                                  habit.id,
+                                  selectedDay(),
+                                  delta
+                                )
+                              }
+                              onSetValue={(val) =>
+                                props.onSetCheckinValue(habit.id, selectedDay(), val)
+                              }
+                            />
+                          </div>
+                        </Show>
 
                         <Show when={isEditingNote()}>
                           <div class="flex items-center gap-2">
@@ -948,7 +1175,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             </div>
           </section>
         </div>
-        </Show>
+          </Match>
+        </Switch>
       </Show>
     </div>
   );
