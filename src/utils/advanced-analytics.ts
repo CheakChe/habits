@@ -35,6 +35,7 @@ export interface HabitWeekdayMatrixCell {
   scheduledCount: number;
   doneCount: number;
   rate: number | null;
+  isOffSchedule: boolean;
 }
 
 export interface HabitWeekdayMatrixRow {
@@ -677,17 +678,20 @@ export class AdvancedAnalytics {
 
       const scheduled = new Array<number>(7).fill(0);
       const done = new Array<number>(7).fill(0);
+      let allowedWeekdaysMask = 0;
 
       if (isFlexible) {
-        for (let d = effStart; d <= endDay; d++) {
-          const bit = CivilCalendar.weekdayBit(d);
-          const sc = HabitSchedule.getAtDay(habit, d);
-          const eligibleMask = (sc.weekdays & 0x7f) || 0x7f;
-          if (CivilCalendar.isScheduled(eligibleMask, d)) {
-            scheduled[bit] += 1;
+        const segments = HabitSchedule.getSegmentsInRange(habit, effStart, endDay);
+        for (const seg of segments) {
+          if (seg.weeklyTarget !== null) {
+            allowedWeekdaysMask |= (seg.weekdays & 0x7f) || 0x7f;
+          } else {
+            allowedWeekdaysMask |= seg.weekdays & 0x7f;
           }
+        }
+        for (let d = effStart; d <= endDay; d++) {
           if (doneSet.has(d)) {
-            done[bit] += 1;
+            done[CivilCalendar.weekdayBit(d)] += 1;
           }
         }
       } else {
@@ -719,17 +723,24 @@ export class AdvancedAnalytics {
         habit,
         isFlexible,
         overallRate: overall.completionRate,
-        cells: [0, 1, 2, 3, 4, 5, 6].map((bit) => ({
-          weekdayBit: bit,
-          scheduledCount: scheduled[bit],
-          doneCount: done[bit],
-          rate:
-            scheduled[bit] === 0
-              ? null
-              : isFlexible
-                ? done[bit] / scheduled[bit]
-                : done[bit] / scheduled[bit],
-        })),
+        cells: [0, 1, 2, 3, 4, 5, 6].map((bit) => {
+          if (isFlexible) {
+            return {
+              weekdayBit: bit,
+              scheduledCount: 0,
+              doneCount: done[bit],
+              rate: null,
+              isOffSchedule: (allowedWeekdaysMask & (1 << bit)) === 0,
+            };
+          }
+          return {
+            weekdayBit: bit,
+            scheduledCount: scheduled[bit],
+            doneCount: done[bit],
+            rate: scheduled[bit] === 0 ? null : done[bit] / scheduled[bit],
+            isOffSchedule: scheduled[bit] === 0,
+          };
+        }),
       });
     }
 

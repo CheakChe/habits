@@ -47,7 +47,7 @@ export default function App(): JSX.Element {
         />
       }
     >
-      <div class="min-h-screen bg-[#0A0B0E] text-[#F5F7FA] pb-24 md:pb-12">
+      <div class="min-h-screen bg-[#0A0B0E] text-[#F5F7FA] pb-24 md:pb-12 overflow-x-clip">
         {/* Top Bar Contract: 3 zones separated by gap-8 */}
         <header class="sticky top-0 z-30 h-14 bg-[#0A0B0E]/85 backdrop-blur-md border-b border-white/[0.08]">
           <div class="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-8">
@@ -107,7 +107,7 @@ export default function App(): JSX.Element {
                     : 'text-[#8E95A5] border-transparent hover:text-[#F5F7FA]'
                 }`}
               >
-                History
+                Progress
               </button>
             </nav>
 
@@ -344,7 +344,7 @@ export default function App(): JSX.Element {
             }`}
           >
             <HistoryTabIcon class="w-5 h-5" />
-            <span>History</span>
+            <span>Progress</span>
           </button>
         </nav>
 

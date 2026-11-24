@@ -515,7 +515,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div class="space-y-1 min-w-0">
             <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
-              History &amp; Analytics
+              Progress
             </h1>
             <p class="text-sm text-[#8E95A5]">
               {props.subTab === 'calendar'
@@ -529,15 +529,15 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           {/* Sub-tab Segmented Control: Calendar | Charts | Advanced */}
           <div
             role="tablist"
-            aria-label="History view mode"
-            class="inline-flex items-center p-1 rounded-xl bg-[#14161B] border border-white/[0.08] self-start lg:self-auto shrink-0"
+            aria-label="Progress view mode"
+            class="inline-flex items-center p-1 rounded-xl bg-[#14161B] border border-white/[0.08] self-start lg:self-auto max-w-full overflow-x-auto shrink-0"
           >
             <button
               type="button"
               role="tab"
               aria-selected={props.subTab === 'calendar'}
               onClick={() => props.onSelectSubTab('calendar')}
-              class={`h-9 px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`h-9 px-2.5 sm:px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 props.subTab === 'calendar'
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -551,7 +551,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               role="tab"
               aria-selected={props.subTab === 'charts'}
               onClick={() => props.onSelectSubTab('charts')}
-              class={`h-9 px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`h-9 px-2.5 sm:px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 props.subTab === 'charts'
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -565,7 +565,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               role="tab"
               aria-selected={props.subTab === 'advanced'}
               onClick={() => props.onSelectSubTab('advanced')}
-              class={`h-9 px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`h-9 px-2.5 sm:px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 props.subTab === 'advanced'
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -687,7 +687,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
 
           <Match when={props.subTab === 'calendar'}>
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+          <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-5">
             <div class="flex items-center justify-between">
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
                 {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
@@ -712,7 +712,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               </div>
             </div>
 
-            <div class="grid grid-cols-7 gap-1.5 text-center">
+            <div class="grid grid-cols-7 gap-1 sm:gap-1.5 text-center">
               <For each={[0, 1, 2, 3, 4, 5, 6]}>
                 {(bit) => (
                   <div class="text-[11px] font-medium text-[#6B7280] py-1">

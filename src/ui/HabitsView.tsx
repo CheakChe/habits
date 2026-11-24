@@ -46,7 +46,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           </p>
         </div>
 
-        <div class="flex items-center gap-3 self-start sm:self-auto">
+        <div class="flex flex-wrap items-center gap-2.5 sm:gap-3 self-start sm:self-auto max-w-full">
           <div class="flex items-center gap-1 p-1 bg-[#14161B] border border-white/[0.08] rounded-xl">
             <button
               type="button"
@@ -151,7 +151,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
 
                 return (
                   <li
-                    class={`px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors ${
+                    class={`px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors ${
                       exactMilestone() ? 'bg-white/[0.015]' : ''
                     }`}
                   >
@@ -225,7 +225,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                       </div>
                     </div>
 
-                    <div class="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                    <div class="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-2 sm:gap-4 shrink-0">
                       <Show
                         when={activeSchedule().weeklyTarget === null}
                         fallback={

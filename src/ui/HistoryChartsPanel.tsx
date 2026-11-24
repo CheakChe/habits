@@ -430,12 +430,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
   return (
     <div class="space-y-6">
       {/* 4-Column KPI Strip */}
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
           <span class="text-xs text-[#8E95A5]">
             {props.targetHabits.length === 1 ? 'Current Streak' : 'Best Current Streak'}
           </span>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {props.analyticsSummary.currentStreak}
             {props.analyticsSummary.currentStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
@@ -446,9 +446,9 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </Show>
         </div>
 
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
+        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
           <span class="text-xs text-[#8E95A5]">Longest Streak</span>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {props.analyticsSummary.longestStreak}
             {props.analyticsSummary.longestStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
@@ -460,8 +460,8 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </Show>
         </div>
 
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <div class="flex items-center justify-between gap-2">
+        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
+          <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <span class="text-xs text-[#8E95A5]">Habit Completion</span>
             <Show
               when={
@@ -488,7 +488,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               })()}
             </Show>
           </div>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {Math.round(props.analyticsSummary.completionRate * 100)}%
           </p>
           <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
@@ -497,8 +497,8 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </span>
         </div>
 
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
-          <div class="flex items-center justify-between gap-2">
+        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
+          <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <span class="text-xs text-[#8E95A5]">Tasks Done</span>
             <Show
               when={
@@ -525,7 +525,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               })()}
             </Show>
           </div>
-          <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
             {props.taskSummary.doneCount}
             <Show when={props.taskSummary.completionRate !== null}>
               <span class="text-sm font-normal text-[#8E95A5]">
@@ -546,7 +546,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
 
       {/* Row 1: Consistency Trend (Area/Line SVG) + Task Discipline (Donut SVG) */}
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
+        <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -773,7 +773,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </Show>
         </section>
 
-        <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
+        <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
           <div class="flex items-start justify-between gap-2">
             <div>
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -926,7 +926,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
 
       {/* Row 2: Tasks Overview (Stacked Bars) + Weekday Rhythm */}
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
+        <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -1037,7 +1037,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </Show>
         </section>
 
-        <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
+        <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -1107,7 +1107,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </div>
             }
           >
-            <div class="grid grid-cols-7 gap-2 h-36 pt-3 items-end">
+            <div class="grid grid-cols-7 gap-1 sm:gap-2 h-36 pt-3 items-end">
               <Show
                 when={weekdayMode() === 'habits'}
                 fallback={
@@ -1247,7 +1247,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               : null;
           };
           return (
-            <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4">
+            <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-4">
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0 space-y-0.5">
                   <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -1413,7 +1413,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       </Show>
 
       {/* Row 3: Full-Width Consistency Heatmap */}
-      <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+      <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-5">
         <div class="flex items-start sm:items-center justify-between flex-wrap gap-3">
           <div>
             <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -1581,7 +1581,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
         }
       >
         <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-          <div class="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between gap-4">
+          <div class="px-4 sm:px-6 py-4 border-b border-white/[0.06] flex items-center justify-between gap-4">
             <div>
               <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
                 Habit Breakdown
@@ -1611,7 +1611,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                     <button
                       type="button"
                       onClick={() => props.onSelectHabitFilter([row.habit.id])}
-                      class="w-full text-left px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      class="w-full text-left px-4 sm:px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
                       <div class="min-w-0 space-y-1 flex-1">
                         <div class="flex items-start gap-2.5">

@@ -2091,6 +2091,69 @@ test('AdvancedAnalytics computes bounce-back, at-risk, matrix, flex/measured, sc
   assert.equal(tiredKw.missedCount, 2);
 });
 
+test('AdvancedAnalytics habitWeekdayMatrix distinguishes allowed vs off-schedule days for flexible habits', () => {
+  const mon = CivilCalendar.fromLocalDate(2026, 11, 2); // Monday
+  const sat = mon + 5; // Saturday (off-schedule)
+  const monSatOnly: Habit = {
+    id: 201,
+    name: 'Weekday Flex',
+    color: '#3B82F6',
+    weekdays: 0b0011111, // Mon-Fri allowed, Sat-Sun off-schedule
+    weeklyTarget: 3,
+    startDay: mon,
+    archivedAt: null,
+    createdAt: 1000,
+    updatedAt: 1000,
+  };
+  const checkins: HabitCheckin[] = [
+    { habitId: 201, dayIndex: mon, done: true, updatedAt: 1000 },
+    { habitId: 201, dayIndex: sat, done: true, updatedAt: 2000 }, // off-schedule check-in
+  ];
+  const snapshot: DomainSnapshot = {
+    habits: [monSatOnly],
+    checkins,
+    notes: [],
+    tasks: [],
+  };
+
+  const fullWeek = AdvancedAnalytics.compute({
+    snapshot,
+    targetHabits: [monSatOnly],
+    startDay: mon,
+    endDay: mon + 6,
+    todayDay: mon + 6,
+    timeZone: 'UTC',
+  });
+
+  const row = fullWeek.habitWeekdayMatrix[0];
+  assert.equal(row.isFlexible, true);
+  for (const cell of row.cells) {
+    assert.equal(cell.scheduledCount, 0);
+    assert.equal(cell.rate, null);
+  }
+  assert.equal(row.cells[0].doneCount, 1); // Mon
+  assert.equal(row.cells[0].isOffSchedule, false);
+  assert.equal(row.cells[1].doneCount, 0); // Tue (allowed, 0 completions)
+  assert.equal(row.cells[1].isOffSchedule, false);
+  assert.equal(row.cells[5].doneCount, 1); // Sat (off-schedule, 1 completion)
+  assert.equal(row.cells[5].isOffSchedule, true);
+  assert.equal(row.cells[6].doneCount, 0); // Sun (off-schedule, 0 completions)
+  assert.equal(row.cells[6].isOffSchedule, true);
+
+  // Even in a 1-day range (Monday), Tue-Fri remain allowed and Sat-Sun remain off-schedule
+  const singleDay = AdvancedAnalytics.compute({
+    snapshot,
+    targetHabits: [monSatOnly],
+    startDay: mon,
+    endDay: mon,
+    todayDay: mon,
+    timeZone: 'UTC',
+  });
+  const singleRow = singleDay.habitWeekdayMatrix[0];
+  assert.equal(singleRow.cells[1].isOffSchedule, false);
+  assert.equal(singleRow.cells[5].isOffSchedule, true);
+});
+
 
 
 

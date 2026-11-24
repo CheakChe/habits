@@ -782,7 +782,7 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                     </div>
 
                     <p class="text-[11px] text-[#8E95A5]">
-                      Quick logging on Today & History: +1, +5, and manual input.
+                      Quick logging on Today & Progress: +1, +5, and manual input.
                     </p>
                   </div>
                 </Show>
@@ -916,7 +916,7 @@ const TASK_STATUS_OPTIONS: {
   {
     value: 'done',
     label: 'Done',
-    hint: 'Completed — counted in History & Completed Tasks.',
+    hint: 'Completed — counted in Progress & Completed Tasks.',
   },
   {
     value: 'not_done',

@@ -49,9 +49,20 @@ function heatmapSquareClass(tone: DayCellTone): string {
   }
 }
 
-function matrixCellTone(rate: number | null, isFlexible: boolean, doneCount: number): string {
+function matrixCellTone(
+  rate: number | null,
+  isFlexible: boolean,
+  doneCount: number,
+  isOffSchedule: boolean
+): string {
   if (isFlexible) {
-    if (doneCount === 0) return 'bg-[#0A0B0E] text-[#6B7280] border-white/[0.06]';
+    if (isOffSchedule) {
+      if (doneCount === 0) {
+        return 'bg-transparent text-[#4B5563] border-dashed border-white/[0.06]';
+      }
+      return 'bg-[#3B82F6]/15 text-[#93C5FD] border-dashed border-[#3B82F6]/45';
+    }
+    if (doneCount === 0) return 'bg-[#0A0B0E] text-[#8E95A5] border-white/[0.08]';
     return 'bg-[#3B82F6]/20 text-[#93C5FD] border-[#3B82F6]/35';
   }
   if (rate === null) return 'bg-[#0A0B0E] text-[#4B5563] border-white/[0.05]';
@@ -128,10 +139,10 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
         </div>
 
         {/* 4 Summary Tiles */}
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
             <span class="text-xs text-[#8E95A5]">Bounce-Back Rate</span>
-            <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+            <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
               {props.report.bounceBack.bounceBackRate !== null
                 ? `${Math.round(props.report.bounceBack.bounceBackRate * 100)}%`
                 : '—'}
@@ -143,9 +154,9 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
             </span>
           </div>
 
-          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
+          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
             <span class="text-xs text-[#8E95A5]">Retroactive Check-ins</span>
-            <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+            <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
               {props.report.loggingDiscipline.retroactiveRate !== null
                 ? `${Math.round(props.report.loggingDiscipline.retroactiveRate * 100)}%`
                 : '—'}
@@ -156,9 +167,9 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
             </span>
           </div>
 
-          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
+          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
             <span class="text-xs text-[#8E95A5]">Peak Logging Time</span>
-            <p class="text-2xl font-display font-semibold text-[#F5F7FA]">
+            <p class="text-xl sm:text-2xl font-display font-semibold text-[#F5F7FA] truncate">
               {peakLoggingWindow() ? peakLoggingWindow()!.label : '—'}
             </p>
             <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
@@ -168,10 +179,10 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
             </span>
           </div>
 
-          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1">
+          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
             <span class="text-xs text-[#8E95A5]">Cooling / At-Risk</span>
             <p
-              class={`text-2xl font-display font-semibold font-mono tabular-nums ${
+              class={`text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums ${
                 props.report.atRiskHabits.length > 0 ? 'text-[#F59E0B]' : 'text-[#F5F7FA]'
               }`}
             >
@@ -187,7 +198,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
 
         {/* At-Risk Habits + Logging Time-of-Day */}
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          <section class="lg:col-span-6 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4">
+          <section class="lg:col-span-6 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-4">
             <div class="flex items-start justify-between gap-2">
               <div>
                 <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -216,9 +227,9 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                       <button
                         type="button"
                         onClick={() => props.onSelectHabitFilter([item.habit.id])}
-                        class="w-full py-3 flex items-center justify-between gap-3 text-left hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors cursor-pointer"
+                        class="w-full py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-3 gap-y-1 text-left hover:bg-white/[0.02] rounded-lg px-2 -mx-2 transition-colors cursor-pointer"
                       >
-                        <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="flex items-center gap-2.5 min-w-0 flex-1">
                           <HabitBadge appearanceRaw={item.habit.color} size="xs" />
                           <span class="text-sm font-medium text-[#F5F7FA] truncate">
                             {item.habit.name}
@@ -244,7 +255,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
             </Show>
           </section>
 
-          <section class="lg:col-span-6 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4">
+          <section class="lg:col-span-6 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-4">
             <div>
               <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
                 Check-in Time of Day
@@ -298,7 +309,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
         {/* Habit x Weekday Matrix */}
         <Show when={props.report.habitWeekdayMatrix.length > 0}>
           <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-            <div class="px-6 py-4 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
+            <div class="px-4 sm:px-6 py-4 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
                   Habit × Weekday Matrix
@@ -309,33 +320,103 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
               </div>
             </div>
 
-            <div class="overflow-x-auto">
-              <table class="w-full text-left border-collapse min-w-[540px]">
+            {/* Mobile stacked 7-day matrix (zero horizontal overflow) */}
+            <div class="sm:hidden">
+              <div class="grid grid-cols-7 gap-1 px-4 py-2 border-b border-white/[0.06] text-[10px] font-mono text-[#8E95A5] text-center">
+                <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                  {(bit) => <span>{CivilCalendar.weekdayShortLabel(bit)}</span>}
+                </For>
+              </div>
+              <ul class="divide-y divide-white/[0.05]">
+                <For each={props.report.habitWeekdayMatrix}>
+                  {(row) => (
+                    <li class="px-4 py-3 space-y-2">
+                      <div class="flex items-center justify-between gap-2 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => props.onSelectHabitFilter([row.habit.id])}
+                          class="flex items-center gap-2 min-w-0 flex-1 overflow-hidden text-left hover:underline cursor-pointer"
+                        >
+                          <HabitBadge appearanceRaw={row.habit.color} size="xs" />
+                          <span class="text-xs font-medium text-[#F5F7FA] truncate min-w-0">
+                            {row.habit.name}
+                          </span>
+                          <Show when={row.isFlexible}>
+                            <span class="text-[10px] font-mono text-[#6B7280] shrink-0">
+                              flex
+                            </span>
+                          </Show>
+                        </button>
+                        <span class="text-xs font-mono tabular-nums font-medium text-[#F5F7FA] shrink-0">
+                          {Math.round(row.overallRate * 100)}%
+                        </span>
+                      </div>
+                      <div class="grid grid-cols-7 gap-1">
+                        <For each={row.cells}>
+                          {(cell) => (
+                            <div
+                              class={`h-7 rounded-md border flex items-center justify-center text-[10px] font-mono tabular-nums ${matrixCellTone(
+                                cell.rate,
+                                row.isFlexible,
+                                cell.doneCount,
+                                cell.isOffSchedule
+                              )}`}
+                              title={
+                                row.isFlexible
+                                  ? cell.isOffSchedule
+                                    ? `Off-schedule day · ${cell.doneCount} ${cell.doneCount === 1 ? 'completion' : 'completions'}`
+                                    : `${cell.doneCount} ${cell.doneCount === 1 ? 'completion' : 'completions'}`
+                                  : cell.rate !== null
+                                    ? `${cell.doneCount}/${cell.scheduledCount} (${Math.round(cell.rate * 100)}%)`
+                                    : 'Unscheduled'
+                              }
+                            >
+                              {row.isFlexible
+                                ? cell.doneCount > 0
+                                  ? `${cell.doneCount}×`
+                                  : '·'
+                                : cell.rate !== null
+                                  ? `${Math.round(cell.rate * 100)}%`
+                                  : '·'}
+                            </div>
+                          )}
+                        </For>
+                      </div>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </div>
+
+            {/* Tablet / Desktop table */}
+            <div class="hidden sm:block overflow-x-auto">
+              <table class="w-full text-left border-collapse table-fixed">
                 <thead>
                   <tr class="border-b border-white/[0.06] text-[11px] font-mono text-[#8E95A5]">
-                    <th class="py-3 pl-6 pr-3 font-medium">Habit</th>
+                    <th class="py-3 pl-6 pr-3 font-medium w-auto">Habit</th>
                     <For each={[0, 1, 2, 3, 4, 5, 6]}>
                       {(bit) => (
-                        <th class="py-3 px-1.5 text-center font-medium w-14">
+                        <th class="py-3 px-1 text-center font-medium w-11 md:w-14">
                           {CivilCalendar.weekdayShortLabel(bit)}
                         </th>
                       )}
                     </For>
-                    <th class="py-3 pl-3 pr-6 text-right font-medium w-16">Total</th>
+                    <th class="py-3 pl-2 pr-6 text-right font-medium w-14 md:w-16">Total</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-white/[0.05]">
                   <For each={props.report.habitWeekdayMatrix}>
                     {(row) => (
                       <tr class="hover:bg-white/[0.02] transition-colors">
-                        <td class="py-2.5 pl-6 pr-3 max-w-[220px]">
+                        <td class="py-2.5 pl-6 pr-3 overflow-hidden">
                           <button
                             type="button"
                             onClick={() => props.onSelectHabitFilter([row.habit.id])}
-                            class="flex items-center gap-2 min-w-0 text-left hover:underline cursor-pointer"
+                            class="w-full max-w-full flex items-center gap-2 min-w-0 overflow-hidden text-left hover:underline cursor-pointer"
+                            title={row.habit.name}
                           >
                             <HabitBadge appearanceRaw={row.habit.color} size="xs" />
-                            <span class="text-xs font-medium text-[#F5F7FA] truncate">
+                            <span class="text-xs font-medium text-[#F5F7FA] truncate min-w-0">
                               {row.habit.name}
                             </span>
                             <Show when={row.isFlexible}>
@@ -347,16 +428,19 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                         </td>
                         <For each={row.cells}>
                           {(cell) => (
-                            <td class="py-2 px-1.5 text-center">
+                            <td class="py-2 px-1 text-center">
                               <div
                                 class={`h-8 rounded-lg border flex items-center justify-center text-[11px] font-mono tabular-nums ${matrixCellTone(
                                   cell.rate,
                                   row.isFlexible,
-                                  cell.doneCount
+                                  cell.doneCount,
+                                  cell.isOffSchedule
                                 )}`}
                                 title={
                                   row.isFlexible
-                                    ? `${cell.doneCount} completions`
+                                    ? cell.isOffSchedule
+                                      ? `Off-schedule day · ${cell.doneCount} ${cell.doneCount === 1 ? 'completion' : 'completions'}`
+                                      : `${cell.doneCount} ${cell.doneCount === 1 ? 'completion' : 'completions'}`
                                     : cell.rate !== null
                                       ? `${cell.doneCount}/${cell.scheduledCount} (${Math.round(cell.rate * 100)}%)`
                                       : 'Unscheduled'
@@ -373,7 +457,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                             </td>
                           )}
                         </For>
-                        <td class="py-2.5 pl-3 pr-6 text-right text-xs font-mono tabular-nums font-medium text-[#F5F7FA]">
+                        <td class="py-2.5 pl-2 pr-6 text-right text-xs font-mono tabular-nums font-medium text-[#F5F7FA]">
                           {Math.round(row.overallRate * 100)}%
                         </td>
                       </tr>
@@ -400,7 +484,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                     props.report.measuredIntensity.length > 0
                       ? 'lg:col-span-6'
                       : 'lg:col-span-12'
-                  } rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4`}
+                  } rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-4`}
                 >
                   <div class="flex items-start justify-between gap-2 flex-wrap">
                     <div>
@@ -422,7 +506,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                     </div>
                   </div>
 
-                  <div class="grid grid-cols-7 gap-2 h-28 pt-2 items-end">
+                  <div class="grid grid-cols-7 gap-1 sm:gap-2 h-28 pt-2 items-end">
                     <For each={flex().weekdayDistribution}>
                       {(d) => {
                         const hPct = () =>
@@ -466,7 +550,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                   props.report.flexibleInsight !== null
                     ? 'lg:col-span-6'
                     : 'lg:col-span-12'
-                } rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-4`}
+                } rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-4`}
               >
                 <div>
                   <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -558,7 +642,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
         {/* Schedule Change Before / After Impact */}
         <Show when={props.report.scheduleImpacts.length > 0}>
           <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-            <div class="px-6 py-4 border-b border-white/[0.06]">
+            <div class="px-4 sm:px-6 py-4 border-b border-white/[0.06]">
               <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
                 Schedule Change Impact
               </h3>
@@ -569,11 +653,11 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
             <ul class="divide-y divide-white/[0.06]">
               <For each={props.report.scheduleImpacts}>
                 {(imp) => (
-                  <li class="px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <li class="px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div class="min-w-0 space-y-0.5">
-                      <div class="flex items-center gap-2">
+                      <div class="flex items-center gap-2 min-w-0">
                         <HabitBadge appearanceRaw={imp.habit.color} size="xs" />
-                        <span class="text-sm font-medium text-[#F5F7FA] truncate">
+                        <span class="text-sm font-medium text-[#F5F7FA] truncate min-w-0">
                           {imp.habit.name}
                         </span>
                         <span class="text-[11px] font-mono text-[#6B7280] shrink-0">
@@ -640,7 +724,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Backlog Flow Chart */}
-          <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
+          <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -672,7 +756,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
               </div>
             </div>
 
-            <div class="flex items-end gap-2 h-36 pt-3">
+            <div class="flex items-end gap-1 sm:gap-2 h-36 pt-3">
               <For each={props.report.backlogFlowBuckets}>
                 {(b) => {
                   const createdH = () =>
@@ -714,7 +798,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
           </section>
 
           {/* Velocity & Open Backlog Aging */}
-          <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4">
+          <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
             <div>
               <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
                 Latency &amp; Backlog Aging
@@ -816,7 +900,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
           <section
             class={`${
               props.report.repeatableTasks.length > 0 ? 'lg:col-span-7' : 'lg:col-span-12'
-            } rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 flex flex-col justify-between space-y-4`}
+            } rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4`}
           >
             <div class="flex items-start justify-between gap-3 flex-wrap">
               <div>
@@ -861,7 +945,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
               </div>
             </div>
 
-            <div class="grid grid-cols-7 gap-2 h-36 pt-3 items-end">
+            <div class="grid grid-cols-7 gap-1 sm:gap-2 h-36 pt-3 items-end">
               <For each={props.report.workloadForecast}>
                 {(d) => {
                   const totalH = () =>
@@ -927,7 +1011,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
 
           <Show when={props.report.repeatableTasks.length > 0}>
             <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-              <div class="px-6 py-4 border-b border-white/[0.06]">
+              <div class="px-4 sm:px-6 py-4 border-b border-white/[0.06]">
                 <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
                   Repeatable Tasks
                 </h3>
@@ -938,7 +1022,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
               <ul class="divide-y divide-white/[0.06] max-h-64 overflow-y-auto">
                 <For each={props.report.repeatableTasks}>
                   {(rt) => (
-                    <li class="px-6 py-3 flex items-center justify-between gap-3">
+                    <li class="px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
                       <div class="min-w-0">
                         <p class="text-xs font-medium text-[#F5F7FA] truncate" title={rt.title}>
                           {rt.title}
@@ -971,17 +1055,17 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
           Cross-Domain Load &amp; Multi-Mode Heatmap
         </h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
           <For each={props.report.crossDomainLoad}>
             {(bucket) => (
-              <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-5 space-y-1.5">
+              <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1.5">
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-medium text-[#C8CDD8]">{bucket.label}</span>
                   <span class="text-[11px] font-mono tabular-nums text-[#6B7280]">
                     {bucket.taskCountLabel}
                   </span>
                 </div>
-                <p class="text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+                <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
                   {bucket.habitRate !== null
                     ? `${Math.round(bucket.habitRate * 100)}%`
                     : '—'}
@@ -995,7 +1079,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
           </For>
         </div>
 
-        <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-6 space-y-5">
+        <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-5">
           <div class="flex flex-wrap items-start sm:items-center justify-between gap-3">
             <div>
               <h3 class="font-display text-base font-semibold text-[#F5F7FA]">
@@ -1136,7 +1220,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
 
       {/* SECTION 4: Habit Notes & Reflections */}
       <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-        <div class="px-6 py-4 border-b border-white/[0.06] flex flex-wrap items-start sm:items-center justify-between gap-3">
+        <div class="px-4 sm:px-6 py-4 border-b border-white/[0.06] flex flex-wrap items-start sm:items-center justify-between gap-3">
           <div>
             <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
               Habit Notes &amp; Reflections
@@ -1174,7 +1258,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
         </div>
 
         <Show when={props.report.notesInsights.topKeywords.length > 0}>
-          <div class="px-6 py-3 border-b border-white/[0.06] flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+          <div class="px-4 sm:px-6 py-3 border-b border-white/[0.06] flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
             <span class="text-[#6B7280]">Top terms:</span>
             <For each={props.report.notesInsights.topKeywords}>
               {(kw) => (
@@ -1208,7 +1292,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
         <Show
           when={filteredNotes().length > 0}
           fallback={
-            <div class="px-6 py-10 text-center">
+            <div class="px-4 sm:px-6 py-10 text-center">
               <p class="text-sm text-[#8E95A5]">
                 {props.report.notesInsights.totalNotes === 0
                   ? 'No habit notes recorded in this period.'
@@ -1224,7 +1308,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                   <button
                     type="button"
                     onClick={() => props.onInspectDayInCalendar(entry.dayIndex)}
-                    class="w-full text-left px-6 py-3.5 hover:bg-white/[0.02] transition-colors cursor-pointer flex items-start justify-between gap-4"
+                    class="w-full text-left px-4 sm:px-6 py-3.5 hover:bg-white/[0.02] transition-colors cursor-pointer flex items-start justify-between gap-4"
                   >
                     <div class="min-w-0 space-y-1 flex-1">
                       <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
