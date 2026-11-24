@@ -107,8 +107,7 @@ export class DateRangeResolver {
     }
   ): ResolvedDateRange {
     const local = CivilCalendar.toLocalDate(todayDay);
-    const label =
-      DATE_RANGE_PRESETS.find((p) => p.id === preset)?.label ?? 'Custom';
+    const label = DATE_RANGE_PRESETS.find((p) => p.id === preset)?.label ?? 'Custom';
 
     switch (preset) {
       case 'today':
@@ -204,11 +203,7 @@ export class DateRangeResolver {
 
       case 'all_time': {
         const startDay = options?.snapshot
-          ? DateRangeResolver.findEarliestActivityDay(
-              options.snapshot,
-              todayDay,
-              options.timeZone
-            )
+          ? DateRangeResolver.findEarliestActivityDay(options.snapshot, todayDay, options.timeZone)
           : todayDay - 29;
         return { preset, startDay, endDay: todayDay, label };
       }

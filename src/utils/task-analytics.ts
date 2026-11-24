@@ -277,7 +277,7 @@ export class TaskAnalytics {
       for (let m = 0; m < monthCount; m++) {
         const total = startLocal.year * 12 + (startLocal.month - 1) + m;
         const year = Math.floor(total / 12);
-        const month = ((total % 12) + 12) % 12 + 1;
+        const month = (((total % 12) + 12) % 12) + 1;
         idxMap.set(`${year}-${month}`, monthBuckets.length);
         monthBuckets.push({
           year,
@@ -344,25 +344,17 @@ export class TaskAnalytics {
     maxBuckets: number = 12,
     timeZone?: string
   ): { key: string; label: string; shortLabel: string; count: number }[] {
-    return TaskAnalytics.rangeOutcomeBuckets(
-      tasks,
-      startDay,
-      endDay,
-      maxBuckets,
-      timeZone
-    ).map((b) => ({
-      key: b.key,
-      label: b.label,
-      shortLabel: b.shortLabel,
-      count: b.doneCount,
-    }));
+    return TaskAnalytics.rangeOutcomeBuckets(tasks, startDay, endDay, maxBuckets, timeZone).map(
+      (b) => ({
+        key: b.key,
+        label: b.label,
+        shortLabel: b.shortLabel,
+        count: b.doneCount,
+      })
+    );
   }
 
-  public static tasksForDay(
-    tasks: Task[],
-    dayIndex: number,
-    timeZone?: string
-  ): DayTasksBreakdown {
+  public static tasksForDay(tasks: Task[], dayIndex: number, timeZone?: string): DayTasksBreakdown {
     const done: Task[] = [];
     const notDone: Task[] = [];
     const archived: Task[] = [];

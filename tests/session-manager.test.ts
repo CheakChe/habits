@@ -30,7 +30,6 @@ test('SessionManager uses GIS token client, caches token only in RAM, tracks exp
 
   const manager = new SessionManager({
     oauthClientId: 'test-client-id.apps.googleusercontent.com',
-    firebaseConfig: null,
     storage,
     nowFn: () => now,
     fetchFn: async () =>
@@ -101,7 +100,6 @@ test('SessionManager retries with consent prompt when GIS returns interaction_re
 
   const manager = new SessionManager({
     oauthClientId: 'test-client-id.apps.googleusercontent.com',
-    firebaseConfig: null,
     storage,
     fetchFn: async () => new Response('{}', { status: 200 }),
     getGisOAuth2: () => ({

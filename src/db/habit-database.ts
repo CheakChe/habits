@@ -64,12 +64,7 @@ function normalizeHabitRecord(habit: Habit): Habit {
     habit.scheduleHistory,
     habit.dailyTarget
   );
-  const {
-    scheduleHistory: _ignored,
-    dailyTarget: _ignoredDt,
-    unit: _ignoredUnit,
-    ...rest
-  } = habit;
+  const { scheduleHistory: _ignored, dailyTarget: _ignoredDt, unit: _ignoredUnit, ...rest } = habit;
   const cleaned: Habit = {
     ...rest,
     weekdays: norm.weekdays,
@@ -80,9 +75,7 @@ function normalizeHabitRecord(habit: Habit): Habit {
   }
   const hasAnyTarget =
     norm.dailyTarget !== null ||
-    (norm.scheduleHistory?.some(
-      (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
-    ) ??
+    (norm.scheduleHistory?.some((entry) => normalizeDailyTarget(entry.dailyTarget) !== null) ??
       false);
   const cleanUnit = normalizeHabitUnit(habit.unit);
   if (hasAnyTarget && cleanUnit !== null) {
@@ -191,9 +184,7 @@ export class HabitDatabase {
     ]);
 
     return {
-      habits: habits
-        .map((h) => normalizeHabitRecord(h))
-        .sort((a, b) => a.id - b.id),
+      habits: habits.map((h) => normalizeHabitRecord(h)).sort((a, b) => a.id - b.id),
       checkins: checkins
         .map((c) => normalizeCheckinRecord(c))
         .sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
@@ -292,8 +283,7 @@ export class HabitDatabase {
     if (!existing) {
       throw new Error(`Habit ${id} not found`);
     }
-    const nextStartDay =
-      patch.startDay !== undefined ? patch.startDay : existing.startDay;
+    const nextStartDay = patch.startDay !== undefined ? patch.startDay : existing.startDay;
     const rawNextWt =
       patch.weeklyTarget !== undefined
         ? normalizeWeeklyTarget(patch.weeklyTarget)
@@ -322,14 +312,11 @@ export class HabitDatabase {
       ) ??
         false);
     const candidateUnit =
-      patch.unit !== undefined
-        ? normalizeHabitUnit(patch.unit)
-        : normalizeHabitUnit(existing.unit);
-    const resolvedUnit =
-      hasAnyTarget
-        ? candidateUnit ??
-          (scheduleResult.dailyTarget === null ? normalizeHabitUnit(existing.unit) : null)
-        : null;
+      patch.unit !== undefined ? normalizeHabitUnit(patch.unit) : normalizeHabitUnit(existing.unit);
+    const resolvedUnit = hasAnyTarget
+      ? (candidateUnit ??
+        (scheduleResult.dailyTarget === null ? normalizeHabitUnit(existing.unit) : null))
+      : null;
 
     const {
       scheduleHistory: _prevHistory,
@@ -404,11 +391,7 @@ export class HabitDatabase {
     return record;
   }
 
-  public async upsertNote(
-    habitId: number,
-    dayIndex: number,
-    text: string
-  ): Promise<HabitNote> {
+  public async upsertNote(habitId: number, dayIndex: number, text: string): Promise<HabitNote> {
     const db = await this.open();
     const tx = db.transaction('notes', 'readwrite');
     const store = tx.objectStore('notes');
@@ -493,10 +476,7 @@ export class HabitDatabase {
       done: nextDone,
       status: nextStatus,
       completedDay: nextCompletedDay,
-      repeatable:
-        patch.repeatable !== undefined
-          ? patch.repeatable
-          : Boolean(existing.repeatable),
+      repeatable: patch.repeatable !== undefined ? patch.repeatable : Boolean(existing.repeatable),
       deletedAt: existing.deletedAt ?? null,
       updatedAt: this.nextTimestamp(existing.updatedAt),
     };

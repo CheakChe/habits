@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -14,26 +14,35 @@
 
   html {
     font-family: var(--font-sans);
-    background-color: #0A0B0E;
-    color: #F5F7FA;
+    background-color: #0a0b0e;
+    color: #f5f7fa;
   }
 
   body {
     overflow-wrap: break-word;
   }
 
-  h1, h2, h3, h4, .font-display {
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-display {
     font-family: var(--font-display);
     text-wrap: balance;
     overflow-wrap: break-word;
   }
 
-  p, li, dd, dt, blockquote {
+  p,
+  li,
+  dd,
+  dt,
+  blockquote {
     text-wrap: pretty;
     overflow-wrap: break-word;
   }
 
-  .font-mono, .tabular-nums {
+  .font-mono,
+  .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
 }
@@ -75,7 +84,10 @@
   padding: 0 20px;
   position: relative;
   text-align: center;
-  transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -133,7 +145,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

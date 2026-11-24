@@ -162,9 +162,7 @@ export class SnapshotCodec {
       body.writeVarUint(encodeScaledTarget(cleanDailyTarget));
       const hasMeasured =
         cleanDailyTarget !== null ||
-        (historyEntries?.some(
-          (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
-        ) ??
+        (historyEntries?.some((entry) => normalizeDailyTarget(entry.dailyTarget) !== null) ??
           false);
       if (hasMeasured) {
         body.writeVarUint(stringTable.intern(normalizeHabitUnit(habit.unit) ?? ''));
@@ -325,7 +323,7 @@ export class SnapshotCodec {
       const updatedAt = reader.readFloat64();
 
       let scheduleHistory: HabitScheduleVersion[] | undefined;
-      let rawHistory: HabitScheduleVersion[] = [];
+      const rawHistory: HabitScheduleVersion[] = [];
       if (version >= 7) {
         const historyCount = reader.readVarUint();
         if (historyCount > 10_000) {
@@ -343,8 +341,7 @@ export class SnapshotCodec {
               throw new Error(`Invalid scheduleHistory weeklyTarget byte: ${sWtByte}`);
             }
             const sWeeklyTarget = sWtByte === 0 ? null : sWtByte;
-            const sDailyTarget =
-              version >= 8 ? decodeScaledTarget(reader.readVarUint()) : null;
+            const sDailyTarget = version >= 8 ? decodeScaledTarget(reader.readVarUint()) : null;
             const entry: HabitScheduleVersion = {
               fromDay,
               weekdays: HabitSchedule.normalizeWeekdays(sWeekdays, sWeeklyTarget),

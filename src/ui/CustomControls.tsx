@@ -1,4 +1,14 @@
-import { For, JSX, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from 'solid-js';
+import {
+  For,
+  JSX,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  untrack,
+} from 'solid-js';
 import { Portal } from 'solid-js/web';
 import { CivilCalendar } from '../utils/civil-calendar';
 import {
@@ -38,9 +48,7 @@ interface CustomSelectProps<T extends string | number> {
   class?: string;
 }
 
-export function CustomSelect<T extends string | number>(
-  props: CustomSelectProps<T>
-): JSX.Element {
+export function CustomSelect<T extends string | number>(props: CustomSelectProps<T>): JSX.Element {
   const [open, setOpen] = createSignal(false);
   let containerRef: HTMLDivElement | undefined;
 
@@ -80,20 +88,18 @@ export function CustomSelect<T extends string | number>(
         aria-haspopup="listbox"
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
-        class={`h-10 min-w-[140px] sm:min-w-[180px] max-w-full rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium text-[#F5F7FA] flex items-center justify-between gap-3 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-          open()
-            ? 'border-[#3B82F6]'
-            : 'border-white/[0.08] hover:border-white/20'
+        class={`flex h-10 max-w-full min-w-[140px] shrink-0 cursor-pointer items-center justify-between gap-3 rounded-xl border bg-[#14161B] px-3.5 text-xs font-medium whitespace-nowrap text-[#F5F7FA] transition-colors sm:min-w-[180px] ${
+          open() ? 'border-[#3B82F6]' : 'border-white/[0.08] hover:border-white/20'
         }`}
       >
-        <span class="flex items-center gap-2 min-w-0">
+        <span class="flex min-w-0 items-center gap-2">
           <Show when={selectedOption()?.dotColor}>
             {(dot) => <HabitBadge appearanceRaw={dot()} size="xs" />}
           </Show>
           <span class="truncate">{selectedOption()?.label ?? ''}</span>
         </span>
         <ChevronDownIcon
-          class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+          class={`h-3.5 w-3.5 shrink-0 text-[#8E95A5] transition-transform duration-150 ${
             open() ? 'rotate-180 text-[#60A5FA]' : ''
           }`}
         />
@@ -102,7 +108,7 @@ export function CustomSelect<T extends string | number>(
       <Show when={open()}>
         <div
           role="listbox"
-          class="absolute left-0 sm:left-auto sm:right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/70 p-1.5 z-50 max-h-64 overflow-y-auto overscroll-contain"
+          class="absolute left-0 z-50 mt-2 max-h-64 w-64 max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-2xl border border-white/[0.1] bg-[#181B22]/95 p-1.5 shadow-2xl shadow-black/70 backdrop-blur-xl sm:right-0 sm:left-auto"
         >
           <For each={props.options}>
             {(option) => {
@@ -116,27 +122,23 @@ export function CustomSelect<T extends string | number>(
                     props.onChange(option.value);
                     setOpen(false);
                   }}
-                  class={`w-full min-h-[38px] px-3 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-xs transition-colors cursor-pointer ${
+                  class={`flex min-h-[38px] w-full cursor-pointer items-center justify-between gap-2.5 rounded-xl px-3 py-2 text-left text-xs transition-colors ${
                     isSelected()
                       ? 'bg-[#3B82F6]/15 text-[#F5F7FA]'
                       : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                   }`}
                 >
-                  <span class="flex items-center gap-2.5 min-w-0">
+                  <span class="flex min-w-0 items-center gap-2.5">
                     <Show when={option.dotColor}>
                       {(dot) => <HabitBadge appearanceRaw={dot()} size="xs" />}
                     </Show>
                     <span class="truncate font-medium">{option.label}</span>
                     <Show when={option.hint}>
-                      {(hint) => (
-                        <span class="text-[11px] text-[#6B7280] shrink-0">
-                          {hint()}
-                        </span>
-                      )}
+                      {(hint) => <span class="shrink-0 text-[11px] text-[#6B7280]">{hint()}</span>}
                     </Show>
                   </span>
                   <Show when={isSelected()}>
-                    <CheckIcon class="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
+                    <CheckIcon class="h-3.5 w-3.5 shrink-0 text-[#60A5FA]" />
                   </Show>
                 </button>
               );
@@ -289,15 +291,15 @@ export function CustomMultiSelect<T extends string | number>(
         aria-expanded={open()}
         title={triggerTitle()}
         onClick={() => setOpen((v) => !v)}
-        class={`h-10 w-full rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium flex items-center justify-between gap-2 transition-colors whitespace-nowrap cursor-pointer ${
+        class={`flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-xl border bg-[#14161B] px-3.5 text-xs font-medium whitespace-nowrap transition-colors ${
           open()
             ? 'border-[#3B82F6] text-[#F5F7FA]'
-            : 'border-white/[0.08] hover:border-white/20 text-[#F5F7FA]'
+            : 'border-white/[0.08] text-[#F5F7FA] hover:border-white/20'
         }`}
       >
-        <span class="flex items-center gap-2 min-w-0 flex-1">
+        <span class="flex min-w-0 flex-1 items-center gap-2">
           <Show when={previewDots().length > 0}>
-            <span class="inline-flex items-center gap-1 shrink-0">
+            <span class="inline-flex shrink-0 items-center gap-1">
               <For each={previewDots()}>
                 {(dot) => <HabitBadge appearanceRaw={dot} size="xs" />}
               </For>
@@ -312,7 +314,7 @@ export function CustomMultiSelect<T extends string | number>(
           </span>
         </span>
         <ChevronDownIcon
-          class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+          class={`h-3.5 w-3.5 shrink-0 text-[#8E95A5] transition-transform duration-150 ${
             open() ? 'rotate-180 text-[#60A5FA]' : ''
           }`}
         />
@@ -323,15 +325,15 @@ export function CustomMultiSelect<T extends string | number>(
           role="listbox"
           aria-multiselectable="true"
           aria-label={props.ariaLabel}
-          class={`absolute mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/70 p-1.5 z-50 ${
-            props.align === 'right' ? 'left-0 sm:left-auto sm:right-0' : 'left-0'
+          class={`absolute z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.1] bg-[#181B22]/95 p-1.5 shadow-2xl shadow-black/70 backdrop-blur-xl ${
+            props.align === 'right' ? 'left-0 sm:right-0 sm:left-auto' : 'left-0'
           }`}
         >
-          <div class="px-2 pt-1 pb-2 mb-1 border-b border-white/[0.06] flex items-center justify-between gap-2 text-[11px]">
+          <div class="mb-1 flex items-center justify-between gap-2 border-b border-white/[0.06] px-2 pt-1 pb-2 text-[11px]">
             <button
               type="button"
               onClick={() => props.onChange('all')}
-              class={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+              class={`cursor-pointer rounded-lg px-2 py-1 font-medium transition-colors ${
                 isAll()
                   ? 'bg-[#3B82F6]/15 text-[#60A5FA]'
                   : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
@@ -346,7 +348,7 @@ export function CustomMultiSelect<T extends string | number>(
                   <button
                     type="button"
                     onClick={() => props.onChange([...preset().values])}
-                    class={`px-2 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
+                    class={`cursor-pointer rounded-lg px-2 py-1 font-medium transition-colors ${
                       matchesQuickPreset()
                         ? 'bg-[#3B82F6]/15 text-[#60A5FA]'
                         : 'text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
@@ -360,7 +362,7 @@ export function CustomMultiSelect<T extends string | number>(
                 <button
                   type="button"
                   onClick={() => props.onChange([])}
-                  class="px-2 py-1 rounded-lg font-medium text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA] transition-colors cursor-pointer"
+                  class="cursor-pointer rounded-lg px-2 py-1 font-medium text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
                 >
                   Clear
                 </button>
@@ -368,13 +370,11 @@ export function CustomMultiSelect<T extends string | number>(
             </div>
           </div>
 
-          <div class="max-h-64 overflow-y-auto overscroll-contain space-y-0.5">
+          <div class="max-h-64 space-y-0.5 overflow-y-auto overscroll-contain">
             <Show
               when={props.options.length > 0}
               fallback={
-                <p class="px-3 py-3 text-xs text-[#8E95A5] text-center">
-                  No options available
-                </p>
+                <p class="px-3 py-3 text-center text-xs text-[#8E95A5]">No options available</p>
               }
             >
               <For each={props.options}>
@@ -386,21 +386,21 @@ export function CustomMultiSelect<T extends string | number>(
                       role="option"
                       aria-selected={isChecked()}
                       onClick={() => toggleValue(option.value)}
-                      class={`w-full min-h-[38px] px-2.5 py-2 rounded-xl flex items-center justify-between gap-2.5 text-left text-xs transition-colors cursor-pointer ${
+                      class={`flex min-h-[38px] w-full cursor-pointer items-center justify-between gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition-colors ${
                         isChecked()
                           ? 'bg-[#3B82F6]/10 text-[#F5F7FA]'
                           : 'text-[#9AA1B1] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                       }`}
                     >
-                      <span class="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span class="flex min-w-0 flex-1 items-center gap-2.5">
                         <span
-                          class={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                          class={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors ${
                             isChecked()
-                              ? 'bg-[#3B82F6] border-[#3B82F6] text-white'
-                              : 'bg-[#0A0B0E] border-white/[0.18] text-transparent'
+                              ? 'border-[#3B82F6] bg-[#3B82F6] text-white'
+                              : 'border-white/[0.18] bg-[#0A0B0E] text-transparent'
                           }`}
                         >
-                          <CheckIcon class="w-3 h-3" />
+                          <CheckIcon class="h-3 w-3" />
                         </span>
                         <Show when={option.dotColor}>
                           {(dot) => <HabitBadge appearanceRaw={dot()} size="xs" />}
@@ -409,7 +409,7 @@ export function CustomMultiSelect<T extends string | number>(
                       </span>
                       <Show when={option.hint}>
                         {(hint) => (
-                          <span class="text-[11px] font-mono tabular-nums text-[#6B7280] shrink-0">
+                          <span class="shrink-0 font-mono text-[11px] text-[#6B7280] tabular-nums">
                             {hint()}
                           </span>
                         )}
@@ -438,7 +438,7 @@ interface DatePickerProps {
 
 export function DatePicker(props: DatePickerProps): JSX.Element {
   const [open, setOpen] = createSignal(false);
-  const initialDate = CivilCalendar.toLocalDate(props.value ?? props.todayDay);
+  const initialDate = untrack(() => CivilCalendar.toLocalDate(props.value ?? props.todayDay));
   const [viewYear, setViewYear] = createSignal(initialDate.year);
   const [viewMonth, setViewMonth] = createSignal(initialDate.month);
   const [coords, setCoords] = createSignal<{ top: number; left: number; width: number }>({
@@ -518,9 +518,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
     onCleanup(() => window.cancelAnimationFrame(rafId));
   });
 
-  const monthGrid = createMemo(() =>
-    CivilCalendar.getMonthDays(viewYear(), viewMonth())
-  );
+  const monthGrid = createMemo(() => CivilCalendar.getMonthDays(viewYear(), viewMonth()));
 
   const goPrevMonth = () => {
     if (viewMonth() === 1) {
@@ -544,8 +542,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
     const val = props.value;
     if (val === null) return props.placeholder ?? 'No due date';
     if (val === props.todayDay) return `Today · ${CivilCalendar.formatShortDate(val)}`;
-    if (val === props.todayDay + 1)
-      return `Tomorrow · ${CivilCalendar.formatShortDate(val)}`;
+    if (val === props.todayDay + 1) return `Tomorrow · ${CivilCalendar.formatShortDate(val)}`;
     return CivilCalendar.formatFullDate(val);
   });
 
@@ -558,28 +555,28 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
           aria-haspopup="dialog"
           aria-expanded={open()}
           onClick={() => setOpen((v) => !v)}
-          class={`flex-1 h-11 rounded-xl bg-[#0A0B0E] border px-3.5 text-sm flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+          class={`flex h-11 flex-1 cursor-pointer items-center justify-between gap-3 rounded-xl border bg-[#0A0B0E] px-3.5 text-sm transition-colors ${
             open()
               ? 'border-[#3B82F6] text-[#F5F7FA]'
-              : 'border-white/[0.1] hover:border-white/25 text-[#F5F7FA]'
+              : 'border-white/[0.1] text-[#F5F7FA] hover:border-white/25'
           }`}
         >
-          <span class="flex items-center gap-2.5 min-w-0">
+          <span class="flex min-w-0 items-center gap-2.5">
             <CalendarIcon
-              class={`w-4 h-4 shrink-0 ${
+              class={`h-4 w-4 shrink-0 ${
                 props.value !== null ? 'text-[#60A5FA]' : 'text-[#6B7280]'
               }`}
             />
             <span
-              class={`truncate font-mono tabular-nums text-[13px] ${
-                props.value === null ? 'text-[#6B7280] font-sans' : 'text-[#F5F7FA]'
+              class={`truncate font-mono text-[13px] tabular-nums ${
+                props.value === null ? 'font-sans text-[#6B7280]' : 'text-[#F5F7FA]'
               }`}
             >
               {formattedLabel()}
             </span>
           </span>
           <ChevronDownIcon
-            class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+            class={`h-3.5 w-3.5 shrink-0 text-[#8E95A5] transition-transform duration-150 ${
               open() ? 'rotate-180 text-[#60A5FA]' : ''
             }`}
           />
@@ -593,9 +590,9 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
               setOpen(false);
             }}
             aria-label="Clear date"
-            class="h-11 w-11 rounded-xl bg-[#0A0B0E] border border-white/[0.1] hover:border-white/25 text-[#8E95A5] hover:text-[#F5F7FA] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+            class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.1] bg-[#0A0B0E] text-[#8E95A5] transition-colors hover:border-white/25 hover:text-[#F5F7FA]"
           >
-            <CloseIcon class="w-4 h-4" />
+            <CloseIcon class="h-4 w-4" />
           </button>
         </Show>
       </div>
@@ -611,108 +608,106 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
               left: `${coords().left}px`,
               width: `${coords().width}px`,
             }}
-            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-4 space-y-3 z-[70] max-h-[calc(100dvh-16px)] overflow-y-auto overscroll-contain"
+            class="fixed z-[70] max-h-[calc(100dvh-16px)] space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-white/[0.1] bg-[#181B22]/95 p-4 shadow-2xl shadow-black/75 backdrop-blur-xl"
           >
-          <div class="flex items-center justify-between">
-            <span class="font-display text-sm font-semibold text-[#F5F7FA]">
-              {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
-            </span>
-            <div class="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={goPrevMonth}
-                aria-label="Previous month"
-                class="w-8 h-8 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
-              >
-                <ChevronLeftIcon class="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={goNextMonth}
-                aria-label="Next month"
-                class="w-8 h-8 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
-              >
-                <ChevronRightIcon class="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-7 gap-1 text-center">
-            <For each={[0, 1, 2, 3, 4, 5, 6]}>
-              {(bit) => (
-                <div class="text-[11px] font-medium text-[#6B7280] py-1">
-                  {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
-                </div>
-              )}
-            </For>
-
-            <For each={Array.from({ length: monthGrid().leadingEmpty })}>
-              {() => <div />}
-            </For>
-
-            <For each={monthGrid().days}>
-              {(dayIndex) => {
-                const local = CivilCalendar.toLocalDate(dayIndex);
-                const isSelected = () => props.value === dayIndex;
-                const isToday = () => dayIndex === props.todayDay;
-                return (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      props.onChange(dayIndex);
-                      setOpen(false);
-                    }}
-                    class={`h-9 rounded-xl text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer ${
-                      isSelected()
-                        ? 'bg-[#3B82F6] text-white font-semibold'
-                        : isToday()
-                          ? 'bg-[#3B82F6]/15 text-[#60A5FA] ring-1 ring-[#3B82F6]/50 hover:bg-[#3B82F6]/25'
-                          : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
-                    }`}
-                  >
-                    {local.day}
-                  </button>
-                );
-              }}
-            </For>
-          </div>
-
-          <div class="pt-2 border-t border-white/[0.08] flex items-center justify-between text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                props.onChange(props.todayDay);
-                setOpen(false);
-              }}
-              class="px-2.5 py-1.5 rounded-lg text-[#60A5FA] hover:bg-[#3B82F6]/10 font-medium transition-colors cursor-pointer"
-            >
-              Today
-            </button>
-            <Show when={props.allowClear}>
+            <div class="flex items-center justify-between">
+              <span class="font-display text-sm font-semibold text-[#F5F7FA]">
+                {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
+              </span>
               <div class="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    props.onChange(props.todayDay + 1);
-                    setOpen(false);
-                  }}
-                  class="px-2.5 py-1.5 rounded-lg text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  onClick={goPrevMonth}
+                  aria-label="Previous month"
+                  class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[#8E95A5] transition-colors hover:bg-white/[0.08] hover:text-[#F5F7FA]"
                 >
-                  Tomorrow
+                  <ChevronLeftIcon class="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    props.onChange(null);
-                    setOpen(false);
-                  }}
-                  class="px-2.5 py-1.5 rounded-lg text-[#9AA1B1] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                  onClick={goNextMonth}
+                  aria-label="Next month"
+                  class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[#8E95A5] transition-colors hover:bg-white/[0.08] hover:text-[#F5F7FA]"
                 >
-                  No date
+                  <ChevronRightIcon class="h-4 w-4" />
                 </button>
               </div>
-            </Show>
-          </div>
+            </div>
+
+            <div class="grid grid-cols-7 gap-1 text-center">
+              <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                {(bit) => (
+                  <div class="py-1 text-[11px] font-medium text-[#6B7280]">
+                    {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
+                  </div>
+                )}
+              </For>
+
+              <For each={Array.from({ length: monthGrid().leadingEmpty })}>{() => <div />}</For>
+
+              <For each={monthGrid().days}>
+                {(dayIndex) => {
+                  const local = CivilCalendar.toLocalDate(dayIndex);
+                  const isSelected = () => props.value === dayIndex;
+                  const isToday = () => dayIndex === props.todayDay;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        props.onChange(dayIndex);
+                        setOpen(false);
+                      }}
+                      class={`flex h-9 cursor-pointer items-center justify-center rounded-xl font-mono text-xs tabular-nums transition-colors ${
+                        isSelected()
+                          ? 'bg-[#3B82F6] font-semibold text-white'
+                          : isToday()
+                            ? 'bg-[#3B82F6]/15 text-[#60A5FA] ring-1 ring-[#3B82F6]/50 hover:bg-[#3B82F6]/25'
+                            : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
+                      }`}
+                    >
+                      {local.day}
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+
+            <div class="flex items-center justify-between border-t border-white/[0.08] pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  props.onChange(props.todayDay);
+                  setOpen(false);
+                }}
+                class="cursor-pointer rounded-lg px-2.5 py-1.5 font-medium text-[#60A5FA] transition-colors hover:bg-[#3B82F6]/10"
+              >
+                Today
+              </button>
+              <Show when={props.allowClear}>
+                <div class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      props.onChange(props.todayDay + 1);
+                      setOpen(false);
+                    }}
+                    class="cursor-pointer rounded-lg px-2.5 py-1.5 text-[#9AA1B1] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                  >
+                    Tomorrow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      props.onChange(null);
+                      setOpen(false);
+                    }}
+                    class="cursor-pointer rounded-lg px-2.5 py-1.5 text-[#9AA1B1] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                  >
+                    No date
+                  </button>
+                </div>
+              </Show>
+            </div>
           </div>
         </Portal>
       </Show>
@@ -820,18 +815,18 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
         aria-haspopup="dialog"
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
-        class={`w-full h-10 rounded-xl bg-[#14161B] border px-3.5 text-sm font-mono tabular-nums flex items-center justify-between gap-2.5 transition-colors cursor-pointer ${
+        class={`flex h-10 w-full cursor-pointer items-center justify-between gap-2.5 rounded-xl border bg-[#14161B] px-3.5 font-mono text-sm tabular-nums transition-colors ${
           open()
             ? 'border-[#3B82F6] text-[#F5F7FA]'
-            : 'border-white/[0.1] hover:border-white/25 text-[#F5F7FA]'
+            : 'border-white/[0.1] text-[#F5F7FA] hover:border-white/25'
         }`}
       >
-        <span class="flex items-center gap-2.5 min-w-0">
-          <ClockIcon class="w-4 h-4 text-[#60A5FA] shrink-0" />
+        <span class="flex min-w-0 items-center gap-2.5">
+          <ClockIcon class="h-4 w-4 shrink-0 text-[#60A5FA]" />
           <span>{normalized()}</span>
         </span>
         <ChevronDownIcon
-          class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+          class={`h-3.5 w-3.5 shrink-0 text-[#8E95A5] transition-transform duration-150 ${
             open() ? 'rotate-180 text-[#60A5FA]' : ''
           }`}
         />
@@ -848,23 +843,23 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
               left: `${coords().left}px`,
               width: `${coords().width}px`,
             }}
-            class="fixed rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 p-3.5 space-y-3 z-[70] max-h-[calc(100dvh-16px)] overflow-y-auto overscroll-contain"
+            class="fixed z-[70] max-h-[calc(100dvh-16px)] space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-white/[0.1] bg-[#181B22]/95 p-3.5 shadow-2xl shadow-black/75 backdrop-blur-xl"
           >
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs font-medium text-[#C8CDD8]">Pick time</span>
-              <span class="font-mono tabular-nums text-xs font-semibold text-[#60A5FA]">
+              <span class="font-mono text-xs font-semibold text-[#60A5FA] tabular-nums">
                 {normalized()}
               </span>
             </div>
 
             <div class="grid grid-cols-2 gap-2">
               <div class="space-y-1">
-                <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280] text-center">
+                <span class="block text-center text-[10px] font-medium tracking-wider text-[#6B7280] uppercase">
                   Hour
                 </span>
                 <div
                   ref={hoursColRef}
-                  class="h-44 overflow-y-auto rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5"
+                  class="h-44 space-y-0.5 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#0A0B0E] p-1"
                 >
                   <For each={HOURS_LIST}>
                     {(hh) => {
@@ -874,9 +869,9 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
                           type="button"
                           data-active={active() ? 'true' : undefined}
                           onClick={() => props.onChange(`${hh}:${selectedMinute()}`)}
-                          class={`w-full h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer ${
+                          class={`flex h-8 w-full cursor-pointer items-center justify-center rounded-lg font-mono text-xs tabular-nums transition-colors ${
                             active()
-                              ? 'bg-[#3B82F6] text-white font-semibold'
+                              ? 'bg-[#3B82F6] font-semibold text-white'
                               : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                           }`}
                         >
@@ -889,12 +884,12 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
               </div>
 
               <div class="space-y-1">
-                <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280] text-center">
+                <span class="block text-center text-[10px] font-medium tracking-wider text-[#6B7280] uppercase">
                   Min
                 </span>
                 <div
                   ref={minutesColRef}
-                  class="h-44 overflow-y-auto rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5"
+                  class="h-44 space-y-0.5 overflow-y-auto rounded-xl border border-white/[0.08] bg-[#0A0B0E] p-1"
                 >
                   <For each={MINUTES_LIST}>
                     {(mm) => {
@@ -904,9 +899,9 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
                           type="button"
                           data-active={active() ? 'true' : undefined}
                           onClick={() => props.onChange(`${selectedHour()}:${mm}`)}
-                          class={`w-full h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer ${
+                          class={`flex h-8 w-full cursor-pointer items-center justify-center rounded-lg font-mono text-xs tabular-nums transition-colors ${
                             active()
-                              ? 'bg-[#3B82F6] text-white font-semibold'
+                              ? 'bg-[#3B82F6] font-semibold text-white'
                               : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                           }`}
                         >
@@ -919,8 +914,8 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
               </div>
             </div>
 
-            <div class="pt-2 border-t border-white/[0.08] flex items-center justify-between gap-1.5">
-              <div class="flex items-center gap-1 flex-wrap">
+            <div class="flex items-center justify-between gap-1.5 border-t border-white/[0.08] pt-2">
+              <div class="flex flex-wrap items-center gap-1">
                 <For each={TIME_QUICK_PRESETS}>
                   {(preset) => (
                     <button
@@ -929,7 +924,7 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
                         props.onChange(preset);
                         setOpen(false);
                       }}
-                      class={`px-2 py-1 rounded-lg text-[11px] font-mono tabular-nums transition-colors cursor-pointer ${
+                      class={`cursor-pointer rounded-lg px-2 py-1 font-mono text-[11px] tabular-nums transition-colors ${
                         normalized() === preset
                           ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
                           : 'text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
@@ -943,7 +938,7 @@ export function CustomTimePicker(props: CustomTimePickerProps): JSX.Element {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                class="px-2.5 py-1 rounded-lg bg-[#3B82F6] hover:bg-[#2563EB] text-[11px] font-medium text-white transition-colors cursor-pointer shrink-0"
+                class="shrink-0 cursor-pointer rounded-lg bg-[#3B82F6] px-2.5 py-1 text-[11px] font-medium text-white transition-colors hover:bg-[#2563EB]"
               >
                 Done
               </button>
@@ -984,8 +979,8 @@ const MONTH_SHORT_NAMES = [
 
 export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element {
   const [open, setOpen] = createSignal(false);
-  const initialDate = CivilCalendar.toLocalDate(
-    Math.min(props.resolvedRange.endDay, props.todayDay)
+  const initialDate = untrack(() =>
+    CivilCalendar.toLocalDate(Math.min(props.resolvedRange.endDay, props.todayDay))
   );
   const [viewYear, setViewYear] = createSignal(initialDate.year);
   const [viewMonth, setViewMonth] = createSignal(initialDate.month);
@@ -1126,9 +1121,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
     });
   });
 
-  const monthGrid = createMemo(() =>
-    CivilCalendar.getMonthDays(viewYear(), viewMonth())
-  );
+  const monthGrid = createMemo(() => CivilCalendar.getMonthDays(viewYear(), viewMonth()));
 
   const goPrevMonth = () => {
     if (viewMonth() === 1) {
@@ -1256,8 +1249,8 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
   const renderPickerBody = () => (
     <div class="grid grid-cols-1 sm:grid-cols-12">
       {/* Presets list */}
-      <div class="sm:col-span-5 border-b sm:border-b-0 sm:border-r border-white/[0.08] p-2.5 max-h-48 sm:max-h-[430px] overflow-y-auto overscroll-contain space-y-0.5">
-        <p class="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#6B7280]">
+      <div class="max-h-48 space-y-0.5 overflow-y-auto overscroll-contain border-b border-white/[0.08] p-2.5 sm:col-span-5 sm:max-h-[430px] sm:border-r sm:border-b-0">
+        <p class="px-2.5 py-1 text-[10px] font-semibold tracking-wider text-[#6B7280] uppercase">
           Presets
         </p>
         <For each={DATE_RANGE_PRESETS}>
@@ -1277,15 +1270,15 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                     setTzExpanded(false);
                   }
                 }}
-                class={`w-full min-h-[34px] px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-left text-xs transition-colors cursor-pointer ${
+                class={`flex min-h-[34px] w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                   isActive()
-                    ? 'bg-[#3B82F6]/15 text-[#F5F7FA] font-medium'
+                    ? 'bg-[#3B82F6]/15 font-medium text-[#F5F7FA]'
                     : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                 }`}
               >
                 <span>{option.label}</span>
                 <Show when={isActive()}>
-                  <CheckIcon class="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
+                  <CheckIcon class="h-3.5 w-3.5 shrink-0 text-[#60A5FA]" />
                 </Show>
               </button>
             );
@@ -1294,58 +1287,54 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
       </div>
 
       {/* Custom range calendar + Timezone */}
-      <div class="sm:col-span-7 p-4 space-y-4">
+      <div class="space-y-4 p-4 sm:col-span-7">
         <div class="grid grid-cols-2 gap-2">
           <div class="space-y-1">
-            <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
+            <span class="block text-[10px] font-medium tracking-wider text-[#6B7280] uppercase">
               From
             </span>
             <button
               type="button"
               onClick={() => focusEdge('start')}
               aria-pressed={editingEdge() === 'start'}
-              class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
+              class={`flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg border bg-[#0A0B0E] px-2.5 text-left transition-colors ${
                 editingEdge() === 'start'
-                  ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
-                  : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
+                  ? 'border-[#3B82F6] text-[#F5F7FA] ring-1 ring-[#3B82F6]/40'
+                  : 'border-white/[0.08] text-[#F5F7FA] hover:border-white/25'
               }`}
             >
               <CalendarIcon
-                class={`w-3.5 h-3.5 shrink-0 ${
+                class={`h-3.5 w-3.5 shrink-0 ${
                   editingEdge() === 'start' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
                 }`}
               />
-              <span class="text-xs font-mono tabular-nums truncate">
-                {CivilCalendar.formatShortDateWithYear(
-                  activeVisualRange().startDay
-                )}
+              <span class="truncate font-mono text-xs tabular-nums">
+                {CivilCalendar.formatShortDateWithYear(activeVisualRange().startDay)}
               </span>
             </button>
           </div>
 
           <div class="space-y-1">
-            <span class="block text-[10px] font-medium uppercase tracking-wider text-[#6B7280]">
+            <span class="block text-[10px] font-medium tracking-wider text-[#6B7280] uppercase">
               To
             </span>
             <button
               type="button"
               onClick={() => focusEdge('end')}
               aria-pressed={editingEdge() === 'end'}
-              class={`w-full h-9 rounded-lg bg-[#0A0B0E] border px-2.5 flex items-center gap-2 text-left transition-colors cursor-pointer ${
+              class={`flex h-9 w-full cursor-pointer items-center gap-2 rounded-lg border bg-[#0A0B0E] px-2.5 text-left transition-colors ${
                 editingEdge() === 'end'
-                  ? 'border-[#3B82F6] ring-1 ring-[#3B82F6]/40 text-[#F5F7FA]'
-                  : 'border-white/[0.08] hover:border-white/25 text-[#F5F7FA]'
+                  ? 'border-[#3B82F6] text-[#F5F7FA] ring-1 ring-[#3B82F6]/40'
+                  : 'border-white/[0.08] text-[#F5F7FA] hover:border-white/25'
               }`}
             >
               <CalendarIcon
-                class={`w-3.5 h-3.5 shrink-0 ${
+                class={`h-3.5 w-3.5 shrink-0 ${
                   editingEdge() === 'end' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
                 }`}
               />
-              <span class="text-xs font-mono tabular-nums truncate">
-                {CivilCalendar.formatShortDateWithYear(
-                  activeVisualRange().endDay
-                )}
+              <span class="truncate font-mono text-xs tabular-nums">
+                {CivilCalendar.formatShortDateWithYear(activeVisualRange().endDay)}
               </span>
             </button>
           </div>
@@ -1357,11 +1346,11 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
               type="button"
               onClick={() => setYmPickerOpen((v) => !v)}
               aria-expanded={ymPickerOpen()}
-              class="inline-flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-lg font-display text-sm font-semibold text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+              class="-ml-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 font-display text-sm font-semibold text-[#F5F7FA] transition-colors hover:bg-white/[0.06]"
             >
               <span>{CivilCalendar.formatMonthYear(viewYear(), viewMonth())}</span>
               <ChevronDownIcon
-                class={`w-3.5 h-3.5 text-[#8E95A5] transition-transform duration-150 ${
+                class={`h-3.5 w-3.5 text-[#8E95A5] transition-transform duration-150 ${
                   ymPickerOpen() ? 'rotate-180 text-[#60A5FA]' : ''
                 }`}
               />
@@ -1377,9 +1366,9 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                   }
                 }}
                 aria-label={ymPickerOpen() ? 'Previous year' : 'Previous month'}
-                class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
+                class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[#8E95A5] transition-colors hover:bg-white/[0.08] hover:text-[#F5F7FA]"
               >
-                <ChevronLeftIcon class="w-4 h-4" />
+                <ChevronLeftIcon class="h-4 w-4" />
               </button>
               <button
                 type="button"
@@ -1391,9 +1380,9 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                   }
                 }}
                 aria-label={ymPickerOpen() ? 'Next year' : 'Next month'}
-                class="w-7 h-7 rounded-lg flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.08] transition-colors cursor-pointer"
+                class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg text-[#8E95A5] transition-colors hover:bg-white/[0.08] hover:text-[#F5F7FA]"
               >
-                <ChevronRightIcon class="w-4 h-4" />
+                <ChevronRightIcon class="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -1401,7 +1390,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
           <Show
             when={!ymPickerOpen()}
             fallback={
-              <div class="rounded-xl bg-[#0A0B0E] border border-white/[0.08] p-2.5 space-y-2.5">
+              <div class="space-y-2.5 rounded-xl border border-white/[0.08] bg-[#0A0B0E] p-2.5">
                 <div class="flex items-center gap-1 overflow-x-auto pb-0.5">
                   <For each={selectableYears()}>
                     {(yr) => (
@@ -1413,10 +1402,10 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                             setViewMonth(todayLocal().month);
                           }
                         }}
-                        class={`px-2 py-1 rounded-md text-xs font-mono tabular-nums transition-colors cursor-pointer shrink-0 ${
+                        class={`shrink-0 cursor-pointer rounded-md px-2 py-1 font-mono text-xs tabular-nums transition-colors ${
                           viewYear() === yr
-                            ? 'bg-[#3B82F6] text-white font-semibold'
-                            : 'text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06]'
+                            ? 'bg-[#3B82F6] font-semibold text-white'
+                            : 'text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                         }`}
                       >
                         {yr}
@@ -1428,23 +1417,22 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                 <div class="grid grid-cols-4 gap-1.5">
                   <For each={MONTH_SHORT_NAMES}>
                     {(mLabel, idx) => {
-                      const monthNum = idx() + 1;
+                      const monthNum = () => idx() + 1;
                       const isFutureMonth = () =>
                         viewYear() > todayLocal().year ||
-                        (viewYear() === todayLocal().year &&
-                          monthNum > todayLocal().month);
-                      const isActiveMonth = () => viewMonth() === monthNum;
+                        (viewYear() === todayLocal().year && monthNum() > todayLocal().month);
+                      const isActiveMonth = () => viewMonth() === monthNum();
                       return (
                         <button
                           type="button"
                           disabled={isFutureMonth()}
                           onClick={() => {
-                            setViewMonth(monthNum);
+                            setViewMonth(monthNum());
                             setYmPickerOpen(false);
                           }}
-                          class={`h-8 rounded-lg text-xs font-medium transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
+                          class={`h-8 cursor-pointer rounded-lg text-xs font-medium transition-colors disabled:cursor-default disabled:opacity-25 ${
                             isActiveMonth()
-                              ? 'bg-[#3B82F6]/20 text-[#60A5FA] border border-[#3B82F6]/40'
+                              ? 'border border-[#3B82F6]/40 bg-[#3B82F6]/20 text-[#60A5FA]'
                               : 'text-[#C8CDD8] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
                           }`}
                         >
@@ -1460,15 +1448,13 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
             <div class="grid grid-cols-7 gap-1 text-center">
               <For each={[0, 1, 2, 3, 4, 5, 6]}>
                 {(bit) => (
-                  <div class="text-[10px] font-medium text-[#6B7280] py-0.5">
+                  <div class="py-0.5 text-[10px] font-medium text-[#6B7280]">
                     {CivilCalendar.weekdayShortLabel(bit).slice(0, 2)}
                   </div>
                 )}
               </For>
 
-              <For each={Array.from({ length: monthGrid().leadingEmpty })}>
-                {() => <div />}
-              </For>
+              <For each={Array.from({ length: monthGrid().leadingEmpty })}>{() => <div />}</For>
 
               <For each={monthGrid().days}>
                 {(dayIndex) => {
@@ -1488,20 +1474,17 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                       disabled={isFuture()}
                       onClick={() => handleDayClick(dayIndex)}
                       onMouseEnter={() => {
-                        if (
-                          (draftStartDay() !== null || editingEdge() !== null) &&
-                          !isFuture()
-                        ) {
+                        if ((draftStartDay() !== null || editingEdge() !== null) && !isFuture()) {
                           setHoverDay(dayIndex);
                         }
                       }}
-                      class={`h-8 rounded-lg text-xs font-mono tabular-nums flex items-center justify-center transition-colors cursor-pointer disabled:opacity-25 disabled:cursor-default ${
+                      class={`flex h-8 cursor-pointer items-center justify-center rounded-lg font-mono text-xs tabular-nums transition-colors disabled:cursor-default disabled:opacity-25 ${
                         isEdge()
-                          ? 'bg-[#3B82F6] text-white font-semibold'
+                          ? 'bg-[#3B82F6] font-semibold text-white'
                           : isInRange()
                             ? 'bg-[#3B82F6]/20 text-[#93C5FD]'
                             : isToday()
-                              ? 'ring-1 ring-[#60A5FA]/60 text-[#60A5FA] hover:bg-[#3B82F6]/15'
+                              ? 'text-[#60A5FA] ring-1 ring-[#60A5FA]/60 hover:bg-[#3B82F6]/15'
                               : 'text-[#C8CDD8] hover:bg-white/[0.08] hover:text-[#F5F7FA]'
                       }`}
                     >
@@ -1513,7 +1496,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
             </div>
           </Show>
 
-          <p class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+          <p class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
             {editingEdge() === 'start'
               ? 'Picking start date (From) — click any day'
               : editingEdge() === 'end'
@@ -1528,25 +1511,25 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
         </div>
 
         {/* Offline IANA Timezone selector */}
-        <div class="pt-3 border-t border-white/[0.08] space-y-2">
+        <div class="space-y-2 border-t border-white/[0.08] pt-3">
           <div class="flex items-center justify-between gap-2">
             <span class="inline-flex items-center gap-1.5 text-xs font-medium text-[#C8CDD8]">
-              <GlobeIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
+              <GlobeIcon class="h-3.5 w-3.5 text-[#60A5FA]" />
               <span>Timezone</span>
             </span>
-            <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+            <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
               {CivilCalendar.formatClockInTimeZone(clockNow(), props.timeZone)}
             </span>
           </div>
 
-          <div class="flex items-center gap-1.5 flex-wrap">
+          <div class="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => props.onChangeTimeZone('UTC')}
-              class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+              class={`h-8 cursor-pointer rounded-lg border px-2.5 text-xs font-medium transition-colors ${
                 props.timeZone === 'UTC'
-                  ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#F5F7FA]'
-                  : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'border-[#3B82F6]/50 bg-[#3B82F6]/15 text-[#F5F7FA]'
+                  : 'border-white/[0.08] bg-[#0A0B0E] text-[#8E95A5] hover:text-[#F5F7FA]'
               }`}
             >
               UTC
@@ -1554,10 +1537,10 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
             <button
               type="button"
               onClick={() => props.onChangeTimeZone('local')}
-              class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+              class={`h-8 cursor-pointer rounded-lg border px-2.5 text-xs font-medium transition-colors ${
                 props.timeZone === 'local'
-                  ? 'bg-[#3B82F6]/15 border-[#3B82F6]/50 text-[#F5F7FA]'
-                  : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'border-[#3B82F6]/50 bg-[#3B82F6]/15 text-[#F5F7FA]'
+                  : 'border-white/[0.08] bg-[#0A0B0E] text-[#8E95A5] hover:text-[#F5F7FA]'
               }`}
             >
               Local ({deviceTimeZone().split('/').pop()?.replace(/_/g, ' ')})
@@ -1565,11 +1548,10 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
             <button
               type="button"
               onClick={() => setTzExpanded((v) => !v)}
-              class={`h-8 px-2.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ml-auto ${
-                tzExpanded() ||
-                (props.timeZone !== 'UTC' && props.timeZone !== 'local')
-                  ? 'bg-[#1C1F26] border-white/20 text-[#F5F7FA]'
-                  : 'bg-[#0A0B0E] border-white/[0.08] text-[#8E95A5] hover:text-[#F5F7FA]'
+              class={`ml-auto h-8 cursor-pointer rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                tzExpanded() || (props.timeZone !== 'UTC' && props.timeZone !== 'local')
+                  ? 'border-white/20 bg-[#1C1F26] text-[#F5F7FA]'
+                  : 'border-white/[0.08] bg-[#0A0B0E] text-[#8E95A5] hover:text-[#F5F7FA]'
               }`}
             >
               {props.timeZone !== 'UTC' && props.timeZone !== 'local'
@@ -1581,16 +1563,16 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
           <Show when={tzExpanded()}>
             <div class="space-y-1.5 pt-1">
               <div class="relative">
-                <SearchIcon class="w-3.5 h-3.5 text-[#6B7280] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <SearchIcon class="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-[#6B7280]" />
                 <input
                   type="text"
                   value={tzQuery()}
                   onInput={(e) => setTzQuery(e.currentTarget.value)}
                   placeholder="Search IANA timezone (e.g. Europe/Kyiv)..."
-                  class="w-full h-8 rounded-lg bg-[#0A0B0E] border border-white/[0.08] pl-8 pr-2.5 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+                  class="h-8 w-full rounded-lg border border-white/[0.08] bg-[#0A0B0E] pr-2.5 pl-8 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
                 />
               </div>
-              <div class="max-h-32 overflow-y-auto overscroll-contain rounded-lg bg-[#0A0B0E] border border-white/[0.08] p-1 space-y-0.5">
+              <div class="max-h-32 space-y-0.5 overflow-y-auto overscroll-contain rounded-lg border border-white/[0.08] bg-[#0A0B0E] p-1">
                 <For each={filteredTimeZones()}>
                   {(tz) => (
                     <button
@@ -1599,7 +1581,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                         props.onChangeTimeZone(tz);
                         setTzExpanded(false);
                       }}
-                      class={`w-full px-2.5 py-1.5 rounded-md text-left text-xs font-mono flex items-center justify-between gap-2 cursor-pointer ${
+                      class={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left font-mono text-xs ${
                         props.timeZone === tz
                           ? 'bg-[#3B82F6]/20 text-[#F5F7FA]'
                           : 'text-[#9AA1B1] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
@@ -1607,7 +1589,7 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                     >
                       <span class="truncate">{tz}</span>
                       <Show when={props.timeZone === tz}>
-                        <CheckIcon class="w-3 h-3 text-[#60A5FA] shrink-0" />
+                        <CheckIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
                       </Show>
                     </button>
                   )}
@@ -1627,28 +1609,26 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
         aria-haspopup="dialog"
         aria-expanded={open()}
         onClick={() => setOpen((v) => !v)}
-        class={`h-10 max-w-full rounded-xl bg-[#14161B] border px-3.5 text-xs font-medium text-[#F5F7FA] flex items-center gap-2 sm:gap-2.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-          open()
-            ? 'border-[#3B82F6]'
-            : 'border-white/[0.08] hover:border-white/20'
+        class={`flex h-10 max-w-full shrink-0 cursor-pointer items-center gap-2 rounded-xl border bg-[#14161B] px-3.5 text-xs font-medium whitespace-nowrap text-[#F5F7FA] transition-colors sm:gap-2.5 ${
+          open() ? 'border-[#3B82F6]' : 'border-white/[0.08] hover:border-white/20'
         }`}
       >
-        <CalendarIcon class="w-3.5 h-3.5 text-[#60A5FA] shrink-0" />
-        <span class="truncate min-w-0">{props.resolvedRange.label}</span>
-        <span class="text-[#6B7280] hidden sm:inline" aria-hidden="true">
+        <CalendarIcon class="h-3.5 w-3.5 shrink-0 text-[#60A5FA]" />
+        <span class="min-w-0 truncate">{props.resolvedRange.label}</span>
+        <span class="hidden text-[#6B7280] sm:inline" aria-hidden="true">
           ·
         </span>
-        <span class="font-mono tabular-nums text-[#9AA1B1] hidden sm:inline">
+        <span class="hidden font-mono text-[#9AA1B1] tabular-nums sm:inline">
           {DateRangeResolver.formatRangeLabel(
             props.resolvedRange.startDay,
             Math.min(props.resolvedRange.endDay, props.todayDay)
           )}
         </span>
-        <span class="px-1.5 py-0.5 rounded-md bg-white/[0.06] text-[10px] font-mono text-[#C8CDD8]">
+        <span class="rounded-md bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-[#C8CDD8]">
           {tzChipLabel()}
         </span>
         <ChevronDownIcon
-          class={`w-3.5 h-3.5 text-[#8E95A5] shrink-0 transition-transform duration-150 ${
+          class={`h-3.5 w-3.5 shrink-0 text-[#8E95A5] transition-transform duration-150 ${
             open() ? 'rotate-180 text-[#60A5FA]' : ''
           }`}
         />
@@ -1669,16 +1649,16 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                   width: `${popoverStyle().width}px`,
                   'max-height': `${popoverStyle().maxHeight}px`,
                 }}
-                class="fixed flex flex-col overflow-hidden rounded-2xl bg-[#181B22]/95 backdrop-blur-xl border border-white/[0.1] shadow-2xl shadow-black/75 z-50"
+                class="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-[#181B22]/95 shadow-2xl shadow-black/75 backdrop-blur-xl"
               >
-                <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                   {renderPickerBody()}
                 </div>
               </div>
             }
           >
             <div
-              class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+              class="fixed inset-0 z-50 flex items-end justify-center overscroll-none bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
               onClick={(e) => {
                 if (e.target === e.currentTarget) {
                   closePicker();
@@ -1690,9 +1670,9 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                 role="dialog"
                 aria-modal="true"
                 aria-label="Choose date range and timezone"
-                class="w-full sm:max-w-[660px] max-h-modal flex flex-col overflow-hidden rounded-t-3xl sm:rounded-2xl bg-[#181B22] border border-white/[0.1] shadow-2xl shadow-black/75"
+                class="max-h-modal flex w-full flex-col overflow-hidden rounded-t-3xl border border-white/[0.1] bg-[#181B22] shadow-2xl shadow-black/75 sm:max-w-[660px] sm:rounded-2xl"
               >
-                <div class="shrink-0 flex items-center justify-between px-4 sm:px-5 py-3 border-b border-white/[0.08]">
+                <div class="flex shrink-0 items-center justify-between border-b border-white/[0.08] px-4 py-3 sm:px-5">
                   <span class="font-display text-sm font-semibold text-[#F5F7FA]">
                     Date Range &amp; Timezone
                   </span>
@@ -1700,12 +1680,12 @@ export function HistoryRangePicker(props: HistoryRangePickerProps): JSX.Element 
                     type="button"
                     onClick={closePicker}
                     aria-label="Close date range picker"
-                    class="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                    class="flex min-h-[36px] min-w-[36px] cursor-pointer items-center justify-center rounded-full text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
                   >
-                    <CloseIcon class="w-4 h-4" />
+                    <CloseIcon class="h-4 w-4" />
                   </button>
                 </div>
-                <div class="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)] sm:pb-0">
+                <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)] sm:pb-0">
                   {renderPickerBody()}
                 </div>
               </div>
@@ -1804,7 +1784,7 @@ export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.El
 
   return (
     <div class="space-y-2">
-      <div class="h-1 w-full rounded-full bg-[#0A0B0E] border border-white/[0.05] overflow-hidden">
+      <div class="h-1 w-full overflow-hidden rounded-full border border-white/[0.05] bg-[#0A0B0E]">
         <div
           class="h-full rounded-full transition-all duration-200"
           style={{
@@ -1821,7 +1801,7 @@ export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.El
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => void handleIncrement(1)}
           aria-label={`Add 1${props.unit ? ` ${props.unit}` : ''} to ${props.habitName}`}
-          class="min-h-[38px] px-3 rounded-xl bg-[#0A0B0E] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-mono tabular-nums font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+          class="min-h-[38px] shrink-0 cursor-pointer rounded-xl border border-white/[0.08] bg-[#0A0B0E] px-3 font-mono text-xs font-medium text-[#F5F7FA] tabular-nums transition-colors hover:bg-[#1C1F26] disabled:opacity-50"
         >
           +1
         </button>
@@ -1832,7 +1812,7 @@ export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.El
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => void handleIncrement(5)}
           aria-label={`Add 5${props.unit ? ` ${props.unit}` : ''} to ${props.habitName}`}
-          class="min-h-[38px] px-3 rounded-xl bg-[#0A0B0E] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-mono tabular-nums font-medium text-[#F5F7FA] transition-colors cursor-pointer disabled:opacity-50 shrink-0"
+          class="min-h-[38px] shrink-0 cursor-pointer rounded-xl border border-white/[0.08] bg-[#0A0B0E] px-3 font-mono text-xs font-medium text-[#F5F7FA] tabular-nums transition-colors hover:bg-[#1C1F26] disabled:opacity-50"
         >
           +5
         </button>
@@ -1863,12 +1843,12 @@ export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.El
                   e.currentTarget.blur();
                 }
               }}
-              class="w-20 min-h-[38px] rounded-xl bg-[#0A0B0E] border border-white/[0.1] px-2.5 text-xs font-mono tabular-nums text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
+              class="min-h-[38px] w-20 rounded-xl border border-white/[0.1] bg-[#0A0B0E] px-2.5 font-mono text-xs text-[#F5F7FA] tabular-nums placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
             />
           </div>
 
           <Show when={props.unit}>
-            <span class="text-[11px] text-[#8E95A5] shrink-0">{props.unit}</span>
+            <span class="shrink-0 text-[11px] text-[#8E95A5]">{props.unit}</span>
           </Show>
 
           <Show when={isDirty()}>
@@ -1881,9 +1861,9 @@ export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.El
                 void commitDraft().then(() => inputRef?.blur());
               }}
               aria-label={`Apply value for ${props.habitName}`}
-              class="min-h-[38px] px-2.5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center justify-center cursor-pointer disabled:opacity-50 shrink-0"
+              class="inline-flex min-h-[38px] shrink-0 cursor-pointer items-center justify-center rounded-xl bg-[#3B82F6] px-2.5 text-xs font-medium text-white hover:bg-[#2563EB] disabled:opacity-50"
             >
-              <CheckIcon class="w-3.5 h-3.5" />
+              <CheckIcon class="h-3.5 w-3.5" />
             </button>
           </Show>
         </div>
@@ -1891,4 +1871,3 @@ export function MeasuredQuickControls(props: MeasuredQuickControlsProps): JSX.El
     </div>
   );
 }
-

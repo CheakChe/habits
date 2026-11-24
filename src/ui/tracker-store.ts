@@ -2,10 +2,7 @@ import { Accessor, Setter, createSignal } from 'solid-js';
 import { SessionManager } from '../auth/session-manager';
 import { HabitDatabase } from '../db/habit-database';
 import { BackupService } from '../sync/backup-service';
-import {
-  CalendarReminderService,
-  CalendarSyncPlan,
-} from '../sync/calendar-reminder-service';
+import { CalendarReminderService, CalendarSyncPlan } from '../sync/calendar-reminder-service';
 import {
   ConcurrentSyncError,
   DriveRevisionInspectResult,
@@ -249,8 +246,7 @@ export class TrackerStore {
 
   private static readStoredTimestamp(key: string): number {
     try {
-      const raw =
-        typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
       const parsed = raw ? Number(raw) : 0;
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
     } catch {
@@ -304,9 +300,7 @@ export class TrackerStore {
         customEndDay?: unknown;
       };
       const isValidPreset = DATE_RANGE_PRESETS.some((p) => p.id === parsed.preset);
-      const preset = isValidPreset
-        ? (parsed.preset as DateRangePresetId)
-        : fallback.preset;
+      const preset = isValidPreset ? (parsed.preset as DateRangePresetId) : fallback.preset;
       const customStartDay = Number.isInteger(parsed.customStartDay)
         ? (parsed.customStartDay as number)
         : fallback.customStartDay;
@@ -380,7 +374,12 @@ export class TrackerStore {
       if (Array.isArray(parsed)) {
         const ids: number[] = [];
         for (const item of parsed) {
-          if (typeof item === 'number' && Number.isInteger(item) && item > 0 && !ids.includes(item)) {
+          if (
+            typeof item === 'number' &&
+            Number.isInteger(item) &&
+            item > 0 &&
+            !ids.includes(item)
+          ) {
             ids.push(item);
           }
         }
@@ -440,15 +439,12 @@ export class TrackerStore {
   }
 
   constructor() {
-    [this.mode, this.setMode] = createSignal<SessionMode | null>(
-      this.session.getRememberedMode()
-    );
+    /* eslint-disable solid/reactivity -- class fields initialized via createSignal destructuring */
+    [this.mode, this.setMode] = createSignal<SessionMode | null>(this.session.getRememberedMode());
     [this.activeTab, this.setActiveTab] = createSignal<ActiveTab>('today');
     [this.snapshot, this.setSnapshot] = createSignal<DomainSnapshot>(EMPTY_SNAPSHOT);
     [this.dbReady, this.setDbReady] = createSignal(false);
-    [this.hasGoogleToken, this.setHasGoogleToken] = createSignal(
-      this.session.hasAccessToken()
-    );
+    [this.hasGoogleToken, this.setHasGoogleToken] = createSignal(this.session.hasAccessToken());
     [this.googleEmail, this.setGoogleEmail] = createSignal<string | null>(
       this.session.getAccountEmail()
     );
@@ -459,15 +455,12 @@ export class TrackerStore {
       kind: 'success' | 'error';
       text: string;
     } | null>(null);
-    [this.pendingSync, this.setPendingSync] = createSignal<SyncPreparationResult | null>(
-      null
-    );
+    [this.pendingSync, this.setPendingSync] = createSignal<SyncPreparationResult | null>(null);
     [this.habitModalOpen, this.setHabitModalOpen] = createSignal(false);
     [this.editingHabit, this.setEditingHabit] = createSignal<Habit | null>(null);
     [this.taskModalOpen, this.setTaskModalOpen] = createSignal(false);
     [this.taskModalMode, this.setTaskModalMode] = createSignal<TaskModalMode>('create');
-    [this.taskDraftPrefill, this.setTaskDraftPrefill] =
-      createSignal<TaskDraftPrefill | null>(null);
+    [this.taskDraftPrefill, this.setTaskDraftPrefill] = createSignal<TaskDraftPrefill | null>(null);
     [this.editingTask, this.setEditingTask] = createSignal<Task | null>(null);
     [this.accountModalOpen, this.setAccountModalOpen] = createSignal(false);
     [this.revisionsModalOpen, this.setRevisionsModalOpen] = createSignal(false);
@@ -487,9 +480,7 @@ export class TrackerStore {
       TrackerStore.readStoredTodayGoalsExpanded()
     );
     const storedRange = TrackerStore.readStoredHistoryRange(initialTodayDay);
-    [this.historyRangePreset, this.setHistoryRangePresetSignal] = createSignal(
-      storedRange.preset
-    );
+    [this.historyRangePreset, this.setHistoryRangePresetSignal] = createSignal(storedRange.preset);
     [this.historyCustomStartDay, this.setHistoryCustomStartDaySignal] = createSignal(
       storedRange.customStartDay
     );
@@ -499,9 +490,9 @@ export class TrackerStore {
     [this.historySubTab, this.setHistorySubTabSignal] = createSignal<HistorySubTab>(
       TrackerStore.readStoredHistorySubTab()
     );
-    [this.historyHabitFilter, this.setHistoryHabitFilterSignal] = createSignal<
-      'all' | number[]
-    >(TrackerStore.readStoredHistoryHabitFilter());
+    [this.historyHabitFilter, this.setHistoryHabitFilterSignal] = createSignal<'all' | number[]>(
+      TrackerStore.readStoredHistoryHabitFilter()
+    );
     [this.tasksStatusFilter, this.setTasksStatusFilterSignal] =
       createSignal<TaskStatusFilterSelection>(TrackerStore.readStoredTasksStatusFilter());
     [this.tasksSortMode, this.setTasksSortModeSignal] = createSignal<TaskSortMode>(
@@ -516,14 +507,15 @@ export class TrackerStore {
     [this.remindersModalOpen, this.setRemindersModalOpen] = createSignal(false);
     [this.calendarBusy, this.setCalendarBusy] = createSignal(false);
     [this.calendarError, this.setCalendarError] = createSignal<string | null>(null);
-    [this.pendingCalendarPlan, this.setPendingCalendarPlan] =
-      createSignal<CalendarSyncPlan | null>(null);
-    [this.confirmDeleteCalendarOpen, this.setConfirmDeleteCalendarOpen] =
-      createSignal(false);
+    [this.pendingCalendarPlan, this.setPendingCalendarPlan] = createSignal<CalendarSyncPlan | null>(
+      null
+    );
+    [this.confirmDeleteCalendarOpen, this.setConfirmDeleteCalendarOpen] = createSignal(false);
     [this.advancedHeatmapMode, this.setAdvancedHeatmapModeSignal] =
       createSignal<AdvancedHeatmapMode>(TrackerStore.readStoredAdvancedHeatmapMode());
     [this.advancedNotesFilter, this.setAdvancedNotesFilterSignal] =
       createSignal<AdvancedNotesFilter>(TrackerStore.readStoredAdvancedNotesFilter());
+    /* eslint-enable solid/reactivity */
   }
 
   private persistReminderPrefs(next: ReminderPreferences): void {
@@ -543,10 +535,7 @@ export class TrackerStore {
       void ReminderPlanner.syncAppBadge(null);
       return;
     }
-    const summary = ReminderPlanner.getTodayPendingSummary(
-      this.snapshot(),
-      this.todayDay()
-    );
+    const summary = ReminderPlanner.getTodayPendingSummary(this.snapshot(), this.todayDay());
     void ReminderPlanner.syncAppBadge(summary.totalPendingCount);
   }
 
@@ -671,10 +660,7 @@ export class TrackerStore {
   public setTodayGoalsExpanded(expanded: boolean): void {
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(
-          TrackerStore.TODAY_GOALS_EXPANDED_KEY,
-          expanded ? 'true' : 'false'
-        );
+        localStorage.setItem(TrackerStore.TODAY_GOALS_EXPANDED_KEY, expanded ? 'true' : 'false');
       }
     } catch {
       // ignore storage errors
@@ -701,11 +687,7 @@ export class TrackerStore {
 
   public setHistoryRangePreset(nextPreset: DateRangePresetId): void {
     this.setHistoryRangePresetSignal(nextPreset);
-    this.persistHistoryRange(
-      nextPreset,
-      this.historyCustomStartDay(),
-      this.historyCustomEndDay()
-    );
+    this.persistHistoryRange(nextPreset, this.historyCustomStartDay(), this.historyCustomEndDay());
   }
 
   public setHistoryCustomRange(startDay: number, endDay: number): void {
@@ -738,15 +720,11 @@ export class TrackerStore {
         }
       }
       const habitCount = this.snapshot().habits.length;
-      normalized =
-        habitCount > 0 && deduped.length === habitCount ? 'all' : deduped;
+      normalized = habitCount > 0 && deduped.length === habitCount ? 'all' : deduped;
     }
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(
-          TrackerStore.HISTORY_HABIT_FILTER_KEY,
-          JSON.stringify(normalized)
-        );
+        localStorage.setItem(TrackerStore.HISTORY_HABIT_FILTER_KEY, JSON.stringify(normalized));
       }
     } catch {
       // ignore storage errors
@@ -785,8 +763,7 @@ export class TrackerStore {
     const snapshot = this.snapshot();
     const todayDay = this.todayDay();
     const timeZone = this.timeZone();
-    const habitFilterKey =
-      habitFilter === 'all' ? 'all' : habitFilter.join(',');
+    const habitFilterKey = habitFilter === 'all' ? 'all' : habitFilter.join(',');
 
     const cachedKey = this.advancedCacheKey;
     if (
@@ -827,10 +804,7 @@ export class TrackerStore {
     const normalized = TodayBoard.normalizeStatusFilterSelection(nextFilter);
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(
-          TrackerStore.TASKS_STATUS_FILTER_KEY,
-          JSON.stringify(normalized)
-        );
+        localStorage.setItem(TrackerStore.TASKS_STATUS_FILTER_KEY, JSON.stringify(normalized));
       }
     } catch {
       // ignore storage errors
@@ -1029,9 +1003,7 @@ export class TrackerStore {
   ): Promise<void> {
     return this.enqueueCheckinWrite(async () => {
       const habit = this.snapshot().habits.find((h) => h.id === habitId);
-      const activeTarget = habit
-        ? HabitSchedule.getAtDay(habit, dayIndex).dailyTarget
-        : null;
+      const activeTarget = habit ? HabitSchedule.getAtDay(habit, dayIndex).dailyTarget : null;
 
       if (activeTarget !== null) {
         if (nextValue !== undefined) {
@@ -1060,11 +1032,7 @@ export class TrackerStore {
     });
   }
 
-  public async setCheckinValue(
-    habitId: number,
-    dayIndex: number,
-    rawValue: number
-  ): Promise<void> {
+  public async setCheckinValue(habitId: number, dayIndex: number, rawValue: number): Promise<void> {
     return this.enqueueCheckinWrite(async () => {
       await this.writeCheckinValue(habitId, dayIndex, rawValue);
     });
@@ -1075,20 +1043,11 @@ export class TrackerStore {
     dayIndex: number,
     rawValue: number
   ): Promise<void> {
-    const cleanVal = Number.isFinite(rawValue)
-      ? Math.max(0, Math.round(rawValue * 100) / 100)
-      : 0;
+    const cleanVal = Number.isFinite(rawValue) ? Math.max(0, Math.round(rawValue * 100) / 100) : 0;
     const habit = this.snapshot().habits.find((h) => h.id === habitId);
-    const activeTarget = habit
-      ? HabitSchedule.getAtDay(habit, dayIndex).dailyTarget
-      : null;
+    const activeTarget = habit ? HabitSchedule.getAtDay(habit, dayIndex).dailyTarget : null;
     const done = activeTarget !== null ? cleanVal >= activeTarget : cleanVal > 0;
-    await this.db.upsertCheckin(
-      habitId,
-      dayIndex,
-      done,
-      cleanVal > 0 ? cleanVal : undefined
-    );
+    await this.db.upsertCheckin(habitId, dayIndex, done, cleanVal > 0 ? cleanVal : undefined);
     await this.reloadFromDb();
   }
 
@@ -1100,9 +1059,7 @@ export class TrackerStore {
     return this.enqueueCheckinWrite(async () => {
       const snap = this.snapshot();
       const habit = snap.habits.find((h) => h.id === habitId);
-      const existing = snap.checkins.find(
-        (c) => c.habitId === habitId && c.dayIndex === dayIndex
-      );
+      const existing = snap.checkins.find((c) => c.habitId === habitId && c.dayIndex === dayIndex);
       const currentVal = habit
         ? HabitSchedule.getCheckinValueForDay(habit, existing, dayIndex)
         : (existing?.value ?? 0);
@@ -1350,11 +1307,7 @@ export class TrackerStore {
     this.setSyncBusy(true);
     this.setSyncBanner(null);
     try {
-      await this.driveSync.confirmAndUpload(
-        this.mode(),
-        this.session.getAccessToken(),
-        pending
-      );
+      await this.driveSync.confirmAndUpload(this.mode(), this.session.getAccessToken(), pending);
       const localPrefs = this.reminderPrefs();
       const syncedMeta = await this.calendarSync.syncRemoteCalendarId(
         this.mode(),
@@ -1363,9 +1316,7 @@ export class TrackerStore {
         this.timeZone(),
         {
           ...localPrefs,
-          timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(
-            TrackerStore.TIMEZONE_UPDATED_AT_KEY
-          ),
+          timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY),
         }
       );
       if (syncedMeta) {
@@ -1451,10 +1402,7 @@ export class TrackerStore {
     this.setRevisionsLoading(true);
 
     try {
-      const result = await this.driveSync.listRevisions(
-        this.mode(),
-        this.session.getAccessToken()
-      );
+      const result = await this.driveSync.listRevisions(this.mode(), this.session.getAccessToken());
       this.setRevisionsFileId(result.fileId);
       this.setRevisions(result.revisions);
     } catch (err) {
@@ -1562,9 +1510,7 @@ export class TrackerStore {
         this.timeZone(),
         {
           ...initialPrefs,
-          timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(
-            TrackerStore.TIMEZONE_UPDATED_AT_KEY
-          ),
+          timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY),
         }
       );
       if (preSyncedMeta) {
@@ -1620,8 +1566,7 @@ export class TrackerStore {
 
       this.setPendingCalendarPlan(plan);
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Failed to prepare Google Calendar sync.';
+      const msg = err instanceof Error ? err.message : 'Failed to prepare Google Calendar sync.';
       if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);
@@ -1649,9 +1594,7 @@ export class TrackerStore {
     );
     const remoteIsNewer =
       typeof syncedMeta.updatedAt === 'number' && syncedMeta.updatedAt > localEditedAt;
-    const localTzUpdatedAt = TrackerStore.readStoredTimestamp(
-      TrackerStore.TIMEZONE_UPDATED_AT_KEY
-    );
+    const localTzUpdatedAt = TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY);
     const remoteTzUpdatedAt = syncedMeta.timeZoneUpdatedAt ?? 0;
 
     if (
@@ -1662,7 +1605,7 @@ export class TrackerStore {
     ) {
       this.applyTimeZoneValue(
         syncedMeta.timeZone,
-        remoteTzUpdatedAt > 0 ? remoteTzUpdatedAt : syncedMeta.updatedAt ?? Date.now()
+        remoteTzUpdatedAt > 0 ? remoteTzUpdatedAt : (syncedMeta.updatedAt ?? Date.now())
       );
     }
 
@@ -1785,8 +1728,7 @@ export class TrackerStore {
         text: 'Habits Reminders calendar deleted from your Google Calendar.',
       });
     } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'Failed to delete Google Calendar.';
+      const msg = err instanceof Error ? err.message : 'Failed to delete Google Calendar.';
       if (this.isAuthErrorMessage(msg)) {
         this.session.clearAccessTokenOnly();
         this.setHasGoogleToken(false);

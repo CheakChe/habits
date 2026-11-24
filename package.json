@@ -6,24 +6,62 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "analyze": "cross-env ANALYZE=true vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit && eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:deadcode": "knip",
+    "check:deps": "depcruise src --config .dependency-cruiser.cjs",
+    "test": "tsx --test tests/*.test.ts",
+    "test:ui": "vitest run",
+    "test:ui:coverage": "vitest run --coverage",
+    "test:all": "npm test && npm run test:ui",
+    "prepare": "husky"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "firebase": "^13.4.0",
     "solid-js": "^1.9.5",
     "vite": "^8.3.0",
     "vite-plugin-solid": "^2.11.17"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@solidjs/testing-library": "^0.8.10",
+    "@testing-library/jest-dom": "^7.0.1",
     "@types/node": "^22.14.0",
+    "@vitest/coverage-v8": "^5.1.1",
     "autoprefixer": "^10.4.21",
+    "cross-env": "^10.1.0",
+    "dependency-cruiser": "^18.9.0",
+    "eslint": "^10.15.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-solid": "^0.20.1",
+    "globals": "^17.14.0",
+    "husky": "^9.1.7",
+    "jsdom": "^31.0.1",
+    "knip": "^6.48.0",
+    "lint-staged": "^17.6.2",
+    "prettier": "^3.10.1",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "rollup-plugin-visualizer": "^7.3.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "vite-plugin-pwa": "^2.0.0"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.74.0",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.1"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md,yml,yaml,html}": [
+      "prettier --write"
+    ]
   }
 }

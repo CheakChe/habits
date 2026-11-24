@@ -13,7 +13,7 @@ export function CheckIcon(props: IconProps): JSX.Element {
       stroke-width="2.4"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <polyline points="20 6 9 17 4 12" />
@@ -30,7 +30,7 @@ export function PlusIcon(props: IconProps): JSX.Element {
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <line x1="12" y1="5" x2="12" y2="19" />
@@ -48,7 +48,7 @@ export function CloseIcon(props: IconProps): JSX.Element {
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <line x1="18" y1="6" x2="6" y2="18" />
@@ -66,7 +66,7 @@ export function NoteIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -83,7 +83,7 @@ export function EditIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
@@ -100,7 +100,7 @@ export function TrashIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M3 6h18" />
@@ -119,7 +119,7 @@ export function ArchiveIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <rect width="20" height="5" x="2" y="3" rx="1" />
@@ -138,7 +138,7 @@ export function RestoreIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <rect width="20" height="5" x="2" y="3" rx="1" />
@@ -158,7 +158,7 @@ export function AlertIcon(props: IconProps): JSX.Element {
       stroke-width="1.9"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="10" />
@@ -177,7 +177,7 @@ export function ChevronLeftIcon(props: IconProps): JSX.Element {
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <polyline points="15 18 9 12 15 6" />
@@ -194,7 +194,7 @@ export function ChevronRightIcon(props: IconProps): JSX.Element {
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <polyline points="9 18 15 12 9 6" />
@@ -211,7 +211,7 @@ export function CloudSyncIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
@@ -230,7 +230,7 @@ export function DriveIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <line x1="22" y1="12" x2="2" y2="12" />
@@ -250,7 +250,7 @@ export function ShieldIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
@@ -268,7 +268,7 @@ export function SwitchAccountIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -287,7 +287,7 @@ export function TodayTabIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-5 h-5'}
+      class={props.class ?? 'h-5 w-5'}
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="9" />
@@ -305,7 +305,7 @@ export function HabitsTabIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-5 h-5'}
+      class={props.class ?? 'h-5 w-5'}
       aria-hidden="true"
     >
       <rect x="3" y="4" width="18" height="16" rx="3" />
@@ -323,7 +323,7 @@ export function TasksTabIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-5 h-5'}
+      class={props.class ?? 'h-5 w-5'}
       aria-hidden="true"
     >
       <line x1="9" y1="6" x2="20" y2="6" />
@@ -345,7 +345,7 @@ export function HistoryTabIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-5 h-5'}
+      class={props.class ?? 'h-5 w-5'}
       aria-hidden="true"
     >
       <path d="M3 3v18h18" />
@@ -365,7 +365,7 @@ export function CalendarIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -385,7 +385,7 @@ export function ChevronDownIcon(props: IconProps): JSX.Element {
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <polyline points="6 9 12 15 18 9" />
@@ -402,7 +402,7 @@ export function SearchIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <circle cx="11" cy="11" r="8" />
@@ -420,7 +420,7 @@ export function DownloadIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -439,7 +439,7 @@ export function UploadIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -458,7 +458,7 @@ export function InstallAppIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <rect x="5" y="2" width="14" height="20" rx="2" />
@@ -478,7 +478,7 @@ export function WifiOffIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <line x1="2" y1="2" x2="22" y2="22" />
@@ -499,7 +499,7 @@ export function HistoryClockIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
@@ -518,7 +518,7 @@ export function GlobeIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="10" />
@@ -537,7 +537,7 @@ export function RepeatIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="m17 2 4 4-4 4" />
@@ -557,7 +557,7 @@ export function BellIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
@@ -575,7 +575,7 @@ export function ClockIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="9" />
@@ -593,7 +593,7 @@ export function LayersIcon(props: IconProps): JSX.Element {
       stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={props.class ?? 'w-4 h-4'}
+      class={props.class ?? 'h-4 w-4'}
       aria-hidden="true"
     >
       <polygon points="12 2 2 7 12 12 22 7 12 2" />
@@ -602,5 +602,3 @@ export function LayersIcon(props: IconProps): JSX.Element {
     </svg>
   );
 }
-
-

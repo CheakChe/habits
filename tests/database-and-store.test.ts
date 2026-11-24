@@ -198,7 +198,7 @@ test('HabitDatabase manages habits, checkins, notes, tasks, monotonic timestamps
   assert.deepEqual(await db.getAllSnapshot(), replacement);
 });
 
-test('SessionManager remembers mode in localStorage and fails cleanly when Firebase is unconfigured', async (t) => {
+test('SessionManager remembers mode in localStorage and fails cleanly when Google OAuth is unconfigured', async (t) => {
   const env = installTestGlobals();
   t.after(env.restore);
 
@@ -226,244 +226,254 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
   try {
     store.init();
     store.selectGuest();
-  assert.equal(store.mode(), 'guest');
+    assert.equal(store.mode(), 'guest');
 
-  // Wait a microtask for reloadFromDb
-  await new Promise((r) => setTimeout(r, 15));
-  assert.equal(store.dbReady(), true);
+    // Wait a microtask for reloadFromDb
+    await new Promise((r) => setTimeout(r, 15));
+    assert.equal(store.dbReady(), true);
 
-  // Default timezone is UTC and setTimeZone persists to localStorage
-  assert.equal(store.timeZone(), 'UTC');
-  store.setTimeZone('America/New_York');
-  assert.equal(store.timeZone(), 'America/New_York');
-  assert.equal(env.storageMap.get('habits.timezone'), 'America/New_York');
-  store.setTimeZone('Invalid/Zone');
-  assert.equal(store.timeZone(), 'UTC');
-  assert.equal(env.storageMap.get('habits.timezone'), 'UTC');
+    // Default timezone is UTC and setTimeZone persists to localStorage
+    assert.equal(store.timeZone(), 'UTC');
+    store.setTimeZone('America/New_York');
+    assert.equal(store.timeZone(), 'America/New_York');
+    assert.equal(env.storageMap.get('habits.timezone'), 'America/New_York');
+    store.setTimeZone('Invalid/Zone');
+    assert.equal(store.timeZone(), 'UTC');
+    assert.equal(env.storageMap.get('habits.timezone'), 'UTC');
 
-  // Create habit & toggle check-in & note
-  store.openCreateHabit();
-  assert.equal(store.habitModalOpen(), true);
-  await store.saveHabit({ name: 'Read', color: '#3B82F6', weekdays: 127, startDay: store.todayDay() });
-  store.closeHabitModal();
-  assert.equal(store.habitModalOpen(), false);
-  assert.equal(store.snapshot().habits.length, 1);
+    // Create habit & toggle check-in & note
+    store.openCreateHabit();
+    assert.equal(store.habitModalOpen(), true);
+    await store.saveHabit({
+      name: 'Read',
+      color: '#3B82F6',
+      weekdays: 127,
+      startDay: store.todayDay(),
+    });
+    store.closeHabitModal();
+    assert.equal(store.habitModalOpen(), false);
+    assert.equal(store.snapshot().habits.length, 1);
 
-  const habit = store.snapshot().habits[0];
-  store.openEditHabit(habit);
-  await store.saveHabit({ name: 'Read Books', color: '#22C55E', weekdays: 127, startDay: habit.startDay });
-  assert.equal(store.snapshot().habits[0].name, 'Read Books');
+    const habit = store.snapshot().habits[0];
+    store.openEditHabit(habit);
+    await store.saveHabit({
+      name: 'Read Books',
+      color: '#22C55E',
+      weekdays: 127,
+      startDay: habit.startDay,
+    });
+    assert.equal(store.snapshot().habits[0].name, 'Read Books');
 
-  await store.toggleCheckin(habit.id, store.todayDay(), true);
-  await store.saveNote(habit.id, store.todayDay(), 'Good session');
-  await store.toggleArchiveHabit(store.snapshot().habits[0]);
-  assert.notEqual(store.snapshot().habits[0].archivedAt, null);
+    await store.toggleCheckin(habit.id, store.todayDay(), true);
+    await store.saveNote(habit.id, store.todayDay(), 'Good session');
+    await store.toggleArchiveHabit(store.snapshot().habits[0]);
+    assert.notEqual(store.snapshot().habits[0].archivedAt, null);
 
-  // Task operations via TrackerStore
-  await store.quickAddTask('Quick task', store.todayDay());
-  assert.equal(store.snapshot().tasks.length, 1);
-  await store.toggleTaskDone(store.snapshot().tasks[0]);
-  assert.equal(store.snapshot().tasks[0].done, true);
-  assert.equal(store.snapshot().tasks[0].completedDay, store.todayDay());
-  await store.deleteTask(store.snapshot().tasks[0].id);
-  assert.notEqual(store.snapshot().tasks[0].deletedAt, null);
+    // Task operations via TrackerStore
+    await store.quickAddTask('Quick task', store.todayDay());
+    assert.equal(store.snapshot().tasks.length, 1);
+    await store.toggleTaskDone(store.snapshot().tasks[0]);
+    assert.equal(store.snapshot().tasks[0].done, true);
+    assert.equal(store.snapshot().tasks[0].completedDay, store.todayDay());
+    await store.deleteTask(store.snapshot().tasks[0].id);
+    assert.notEqual(store.snapshot().tasks[0].deletedAt, null);
 
-  // Export backup & import another snapshot into guest workspace
-  const exported = await store.exportBackup();
-  assert.match(exported.filename, /^habits-backup-\d{4}-\d{2}-\d{2}\.bin$/);
-  const unpackedExport = SnapshotCodec.unpack(exported.bytes);
-  assert.equal(unpackedExport.habits.length, 1);
+    // Export backup & import another snapshot into guest workspace
+    const exported = await store.exportBackup();
+    assert.match(exported.filename, /^habits-backup-\d{4}-\d{2}-\d{2}\.bin$/);
+    const unpackedExport = SnapshotCodec.unpack(exported.bytes);
+    assert.equal(unpackedExport.habits.length, 1);
 
-  const extraBackupBytes = SnapshotCodec.pack({
-    habits: [],
-    checkins: [],
-    notes: [],
-    tasks: [
-      {
-        id: 50,
-        title: 'Imported Task',
-        note: 'From backup',
-        dueDay: store.todayDay(),
-        done: false,
-        status: 'open',
-        completedDay: null,
-        repeatable: false,
-        deletedAt: null,
-        createdAt: 900,
-        updatedAt: 900,
-      },
-    ],
-  });
-  await store.importBackup(extraBackupBytes);
-  assert.equal(store.snapshot().tasks.length, 2);
-  assert.ok(store.snapshot().tasks.some((task) => task.title === 'Imported Task'));
-
-  // Simulate Google mode sync + ConcurrentSyncError re-merge flow through store internals
-  const remoteOnlyHabit: DomainSnapshot = {
-    habits: [
-      {
-        id: 2,
-        name: 'Remote Stretch',
-        color: '#A855F7',
-        weekdays: 127,
-        weeklyTarget: null,
-        startDay: store.todayDay(),
-        archivedAt: null,
-        createdAt: 500,
-        updatedAt: 500,
-      },
-    ],
-    checkins: [],
-    notes: [],
-    tasks: [],
-  };
-
-  const mergedSnap: DomainSnapshot = {
-    habits: [...store.snapshot().habits, ...remoteOnlyHabit.habits],
-    checkins: store.snapshot().checkins,
-    notes: store.snapshot().notes,
-    tasks: store.snapshot().tasks,
-  };
-
-  const mergedPrep: SyncPreparationResult = {
-    status: 'needs-upload-confirm',
-    mergedSnapshot: mergedSnap,
-    mergedBytes: SnapshotCodec.pack(mergedSnap),
-    remoteFileId: 'remote-1',
-    remoteVersion: '2',
-    remoteModifiedTime: '2026-11-20T12:10:00Z',
-    localChanged: true,
-    summary: {
-      habitsCount: mergedSnap.habits.length,
-      checkinsCount: mergedSnap.checkins.length,
-      notesCount: mergedSnap.notes.length,
-      tasksCount: 1,
-      byteSize: 100,
-    },
-  };
-
-  let prepareCalls = 0;
-  const internals = store as unknown as {
-    setMode: (m: 'google' | 'guest' | null) => void;
-    session: { hasAccessToken: () => boolean; getAccessToken: () => string | null };
-    driveSync: {
-      prepareSync: () => Promise<SyncPreparationResult>;
-      confirmAndUpload: () => Promise<void>;
-      listRevisions: () => Promise<{
-        fileId: string | null;
-        revisions: Array<{ id: string; modifiedTime?: string; size?: number }>;
-      }>;
-      inspectRevision: (
-        mode: unknown,
-        token: unknown,
-        fileId: string,
-        revisionId: string
-      ) => Promise<{
-        fileId: string;
-        revisionId: string;
-        snapshot: DomainSnapshot;
-        bytes: Uint8Array;
-        summary: {
-          habitsCount: number;
-          checkinsCount: number;
-          notesCount: number;
-          tasksCount: number;
-          byteSize: number;
-        };
-      }>;
-      restoreRevision: (
-        mode: unknown,
-        token: unknown,
-        fileId: string,
-        revisionId: string,
-        localSnapshot: DomainSnapshot
-      ) => Promise<{
-        fileId: string;
-        revisionId: string;
-        restoredSnapshot: DomainSnapshot;
-        restoredBytes: Uint8Array;
-        summary: {
-          habitsCount: number;
-          checkinsCount: number;
-          notesCount: number;
-          tasksCount: number;
-          byteSize: number;
-        };
-      }>;
-    };
-  };
-
-  internals.setMode('google');
-  internals.session = {
-    hasAccessToken: () => true,
-    getAccessToken: () => 'fake-token',
-  };
-  internals.driveSync = {
-    prepareSync: async () => {
-      prepareCalls += 1;
-      return prepareCalls === 1
-        ? mergedPrep
-        : { ...mergedPrep, status: 'up-to-date', localChanged: false };
-    },
-    confirmAndUpload: async () => {
-      throw new ConcurrentSyncError('Updated concurrently');
-    },
-    listRevisions: async () => ({
-      fileId: 'remote-1',
-      revisions: [
-        { id: 'rev-2', modifiedTime: '2026-11-20T12:10:00Z', size: 120 },
-        { id: 'rev-1', modifiedTime: '2026-11-19T12:10:00Z', size: 90 },
+    const extraBackupBytes = SnapshotCodec.pack({
+      habits: [],
+      checkins: [],
+      notes: [],
+      tasks: [
+        {
+          id: 50,
+          title: 'Imported Task',
+          note: 'From backup',
+          dueDay: store.todayDay(),
+          done: false,
+          status: 'open',
+          completedDay: null,
+          repeatable: false,
+          deletedAt: null,
+          createdAt: 900,
+          updatedAt: 900,
+        },
       ],
-    }),
-    inspectRevision: async (_m, _t, fileId, revisionId) => ({
-      fileId,
-      revisionId,
-      snapshot: remoteOnlyHabit,
-      bytes: SnapshotCodec.pack(remoteOnlyHabit),
+    });
+    await store.importBackup(extraBackupBytes);
+    assert.equal(store.snapshot().tasks.length, 2);
+    assert.ok(store.snapshot().tasks.some((task) => task.title === 'Imported Task'));
+
+    // Simulate Google mode sync + ConcurrentSyncError re-merge flow through store internals
+    const remoteOnlyHabit: DomainSnapshot = {
+      habits: [
+        {
+          id: 2,
+          name: 'Remote Stretch',
+          color: '#A855F7',
+          weekdays: 127,
+          weeklyTarget: null,
+          startDay: store.todayDay(),
+          archivedAt: null,
+          createdAt: 500,
+          updatedAt: 500,
+        },
+      ],
+      checkins: [],
+      notes: [],
+      tasks: [],
+    };
+
+    const mergedSnap: DomainSnapshot = {
+      habits: [...store.snapshot().habits, ...remoteOnlyHabit.habits],
+      checkins: store.snapshot().checkins,
+      notes: store.snapshot().notes,
+      tasks: store.snapshot().tasks,
+    };
+
+    const mergedPrep: SyncPreparationResult = {
+      status: 'needs-upload-confirm',
+      mergedSnapshot: mergedSnap,
+      mergedBytes: SnapshotCodec.pack(mergedSnap),
+      remoteFileId: 'remote-1',
+      remoteVersion: '2',
+      remoteModifiedTime: '2026-11-20T12:10:00Z',
+      localChanged: true,
       summary: {
-        habitsCount: 1,
-        checkinsCount: 0,
-        notesCount: 0,
-        tasksCount: 0,
-        byteSize: 90,
+        habitsCount: mergedSnap.habits.length,
+        checkinsCount: mergedSnap.checkins.length,
+        notesCount: mergedSnap.notes.length,
+        tasksCount: 1,
+        byteSize: 100,
       },
-    }),
-    restoreRevision: async (_m, _t, fileId, revisionId) => ({
-      fileId,
-      revisionId,
-      restoredSnapshot: remoteOnlyHabit,
-      restoredBytes: SnapshotCodec.pack(remoteOnlyHabit),
-      summary: {
-        habitsCount: 1,
-        checkinsCount: 0,
-        notesCount: 0,
-        tasksCount: 0,
-        byteSize: 90,
+    };
+
+    let prepareCalls = 0;
+    const internals = store as unknown as {
+      setMode: (m: 'google' | 'guest' | null) => void;
+      session: { hasAccessToken: () => boolean; getAccessToken: () => string | null };
+      driveSync: {
+        prepareSync: () => Promise<SyncPreparationResult>;
+        confirmAndUpload: () => Promise<void>;
+        listRevisions: () => Promise<{
+          fileId: string | null;
+          revisions: Array<{ id: string; modifiedTime?: string; size?: number }>;
+        }>;
+        inspectRevision: (
+          mode: unknown,
+          token: unknown,
+          fileId: string,
+          revisionId: string
+        ) => Promise<{
+          fileId: string;
+          revisionId: string;
+          snapshot: DomainSnapshot;
+          bytes: Uint8Array;
+          summary: {
+            habitsCount: number;
+            checkinsCount: number;
+            notesCount: number;
+            tasksCount: number;
+            byteSize: number;
+          };
+        }>;
+        restoreRevision: (
+          mode: unknown,
+          token: unknown,
+          fileId: string,
+          revisionId: string,
+          localSnapshot: DomainSnapshot
+        ) => Promise<{
+          fileId: string;
+          revisionId: string;
+          restoredSnapshot: DomainSnapshot;
+          restoredBytes: Uint8Array;
+          summary: {
+            habitsCount: number;
+            checkinsCount: number;
+            notesCount: number;
+            tasksCount: number;
+            byteSize: number;
+          };
+        }>;
+      };
+    };
+
+    internals.setMode('google');
+    internals.session = {
+      hasAccessToken: () => true,
+      getAccessToken: () => 'fake-token',
+    };
+    internals.driveSync = {
+      prepareSync: async () => {
+        prepareCalls += 1;
+        return prepareCalls === 1
+          ? mergedPrep
+          : { ...mergedPrep, status: 'up-to-date', localChanged: false };
       },
-    }),
-  };
+      confirmAndUpload: async () => {
+        throw new ConcurrentSyncError('Updated concurrently');
+      },
+      listRevisions: async () => ({
+        fileId: 'remote-1',
+        revisions: [
+          { id: 'rev-2', modifiedTime: '2026-11-20T12:10:00Z', size: 120 },
+          { id: 'rev-1', modifiedTime: '2026-11-19T12:10:00Z', size: 90 },
+        ],
+      }),
+      inspectRevision: async (_m, _t, fileId, revisionId) => ({
+        fileId,
+        revisionId,
+        snapshot: remoteOnlyHabit,
+        bytes: SnapshotCodec.pack(remoteOnlyHabit),
+        summary: {
+          habitsCount: 1,
+          checkinsCount: 0,
+          notesCount: 0,
+          tasksCount: 0,
+          byteSize: 90,
+        },
+      }),
+      restoreRevision: async (_m, _t, fileId, revisionId) => ({
+        fileId,
+        revisionId,
+        restoredSnapshot: remoteOnlyHabit,
+        restoredBytes: SnapshotCodec.pack(remoteOnlyHabit),
+        summary: {
+          habitsCount: 1,
+          checkinsCount: 0,
+          notesCount: 0,
+          tasksCount: 0,
+          byteSize: 90,
+        },
+      }),
+    };
 
-  await store.startDriveSync();
-  assert.notEqual(store.pendingSync(), null);
-  assert.equal(store.snapshot().habits.length, 2);
+    await store.startDriveSync();
+    assert.notEqual(store.pendingSync(), null);
+    assert.equal(store.snapshot().habits.length, 2);
 
-  await store.confirmUploadSync();
-  assert.equal(store.pendingSync(), null);
-  assert.equal(store.syncBanner()?.kind, 'success');
-  assert.match(store.syncBanner()?.text ?? '', /Merged remote changes/i);
+    await store.confirmUploadSync();
+    assert.equal(store.pendingSync(), null);
+    assert.equal(store.syncBanner()?.kind, 'success');
+    assert.match(store.syncBanner()?.text ?? '', /Merged remote changes/i);
 
-  await store.openDriveRevisions();
-  assert.equal(store.revisionsModalOpen(), true);
-  assert.equal(store.revisions().length, 2);
+    await store.openDriveRevisions();
+    assert.equal(store.revisionsModalOpen(), true);
+    assert.equal(store.revisions().length, 2);
 
-  await store.inspectDriveRevision('rev-1');
-  assert.equal(store.inspectedRevision()?.revisionId, 'rev-1');
+    await store.inspectDriveRevision('rev-1');
+    assert.equal(store.inspectedRevision()?.revisionId, 'rev-1');
 
-  await store.restoreDriveRevision('rev-1');
-  assert.equal(store.revisionsModalOpen(), false);
-  assert.equal(store.snapshot().habits.length, 1);
-  assert.equal(store.snapshot().habits[0].name, 'Remote Stretch');
-  assert.match(store.syncBanner()?.text ?? '', /Restored Drive version/i);
+    await store.restoreDriveRevision('rev-1');
+    assert.equal(store.revisionsModalOpen(), false);
+    assert.equal(store.snapshot().habits.length, 1);
+    assert.equal(store.snapshot().habits[0].name, 'Remote Stretch');
+    assert.match(store.syncBanner()?.text ?? '', /Restored Drive version/i);
   } finally {
     store.dispose();
     env.restore();
@@ -745,10 +755,9 @@ test('TodayBoard filters tasks by arbitrary status combinations and normalizes s
     ]),
     'all'
   );
-  assert.deepEqual(
-    TodayBoard.normalizeStatusFilterSelection(['today', 'invalid_key', 'today']),
-    ['today']
-  );
+  assert.deepEqual(TodayBoard.normalizeStatusFilterSelection(['today', 'invalid_key', 'today']), [
+    'today',
+  ]);
 });
 
 test('TrackerStore persists History multi-habit filter, Tasks multi-status filter, and Tasks sort mode', async (t) => {
@@ -761,9 +770,24 @@ test('TrackerStore persists History multi-habit filter, Tasks multi-status filte
     store.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
-    await store.saveHabit({ name: 'Run', color: '#3B82F6', weekdays: 127, startDay: store.todayDay() });
-    await store.saveHabit({ name: 'Read', color: '#22C55E', weekdays: 127, startDay: store.todayDay() });
-    await store.saveHabit({ name: 'Meditate', color: '#A855F7', weekdays: 127, startDay: store.todayDay() });
+    await store.saveHabit({
+      name: 'Run',
+      color: '#3B82F6',
+      weekdays: 127,
+      startDay: store.todayDay(),
+    });
+    await store.saveHabit({
+      name: 'Read',
+      color: '#22C55E',
+      weekdays: 127,
+      startDay: store.todayDay(),
+    });
+    await store.saveHabit({
+      name: 'Meditate',
+      color: '#A855F7',
+      weekdays: 127,
+      startDay: store.todayDay(),
+    });
 
     const ids = store.snapshot().habits.map((h) => h.id);
     assert.equal(store.historyHabitFilter(), 'all');
@@ -1089,5 +1113,3 @@ test('HabitDatabase and TrackerStore support measured habits, stepped dailyTarge
     store.dispose();
   }
 });
-
-

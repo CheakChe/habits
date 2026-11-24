@@ -28,17 +28,13 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
     () => props.snapshot.habits.filter((h) => h.archivedAt === null).length
   );
 
-  const archivedCount = createMemo(
-    () => props.snapshot.habits.length - activeCount()
-  );
+  const archivedCount = createMemo(() => props.snapshot.habits.length - activeCount());
 
   return (
     <div class="space-y-6">
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-white/[0.08] pb-6">
+      <div class="flex flex-col justify-between gap-4 border-b border-white/[0.08] pb-6 sm:flex-row sm:items-end">
         <div class="space-y-1">
-          <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
-            Habits
-          </h1>
+          <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">Habits</h1>
           <p class="text-sm text-[#8E95A5]">
             <span class="font-mono tabular-nums">{activeCount()}</span> active
             <span aria-hidden="true"> · </span>
@@ -46,12 +42,12 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2.5 sm:gap-3 self-start sm:self-auto max-w-full">
-          <div class="flex items-center gap-1 p-1 bg-[#14161B] border border-white/[0.08] rounded-xl">
+        <div class="flex max-w-full flex-wrap items-center gap-2.5 self-start sm:gap-3 sm:self-auto">
+          <div class="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#14161B] p-1">
             <button
               type="button"
               onClick={() => setFilter('active')}
-              class={`h-8 px-3 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`h-8 shrink-0 cursor-pointer rounded-lg px-3 text-xs font-medium whitespace-nowrap transition-colors ${
                 filter() === 'active'
                   ? 'bg-[#1C1F26] text-[#F5F7FA]'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -62,7 +58,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
             <button
               type="button"
               onClick={() => setFilter('archived')}
-              class={`h-8 px-3 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`h-8 shrink-0 cursor-pointer rounded-lg px-3 text-xs font-medium whitespace-nowrap transition-colors ${
                 filter() === 'archived'
                   ? 'bg-[#1C1F26] text-[#F5F7FA]'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -75,9 +71,9 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           <button
             type="button"
             onClick={() => props.onCreateHabit()}
-            class="h-10 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[#3B82F6] px-4 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-[#2563EB]"
           >
-            <PlusIcon class="w-4 h-4" />
+            <PlusIcon class="h-4 w-4" />
             <span>New Habit</span>
           </button>
         </div>
@@ -86,7 +82,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
       <Show
         when={filtered().length > 0}
         fallback={
-          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] px-6 py-14 text-center space-y-4">
+          <div class="space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] px-6 py-14 text-center">
             <p class="text-sm text-[#8E95A5]">
               {filter() === 'active'
                 ? 'No active habits yet. Create your first routine to start tracking.'
@@ -96,7 +92,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
               <button
                 type="button"
                 onClick={() => props.onCreateHabit()}
-                class="h-10 px-5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-sm font-medium text-white transition-colors cursor-pointer"
+                class="h-10 cursor-pointer rounded-xl bg-[#3B82F6] px-5 text-sm font-medium text-white transition-colors hover:bg-[#2563EB]"
               >
                 Create Habit
               </button>
@@ -104,7 +100,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           </div>
         }
       >
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B]">
           <ul class="divide-y divide-white/[0.06]">
             <For each={filtered()}>
               {(habit) => {
@@ -124,8 +120,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                     props.todayDay
                   )
                 );
-                const milestone = () =>
-                  StreakCalculator.getMilestone(metrics().currentStreak);
+                const milestone = () => StreakCalculator.getMilestone(metrics().currentStreak);
                 const exactMilestone = () =>
                   StreakCalculator.isExactMilestone(metrics().currentStreak);
 
@@ -137,10 +132,8 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                   return '';
                 };
 
-                const streakUnitShort = () =>
-                  metrics().streakUnit === 'weeks' ? 'w' : 'd';
-                const streakUnitLong = () =>
-                  metrics().streakUnit === 'weeks' ? 'week' : 'day';
+                const streakUnitShort = () => (metrics().streakUnit === 'weeks' ? 'w' : 'd');
+                const streakUnitLong = () => (metrics().streakUnit === 'weeks' ? 'week' : 'day');
                 const activeSchedule = createMemo(() =>
                   HabitSchedule.getAtDay(habit, props.todayDay)
                 );
@@ -151,15 +144,15 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
 
                 return (
                   <li
-                    class={`px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/[0.02] transition-colors ${
+                    class={`flex flex-col justify-between gap-4 px-4 py-4 transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:px-6 ${
                       exactMilestone() ? 'bg-white/[0.015]' : ''
                     }`}
                   >
-                    <div class="space-y-2 min-w-0">
+                    <div class="min-w-0 space-y-2">
                       <div class="flex items-start gap-3">
                         <HabitBadge appearanceRaw={habit.color} size="md" />
                         <h2
-                          class="text-base font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                          class="line-clamp-2 text-base font-medium break-words text-[#F5F7FA]"
                           title={habit.name}
                         >
                           {habit.name}
@@ -170,7 +163,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         <span>Started {CivilCalendar.formatShortDate(habit.startDay)}</span>
                         <Show when={activeSchedule().dailyTarget !== null}>
                           <span aria-hidden="true">·</span>
-                          <span class="font-mono tabular-nums text-[#C8CDD8]">
+                          <span class="font-mono text-[#C8CDD8] tabular-nums">
                             Goal {HabitSchedule.formatNumericValue(activeSchedule().dailyTarget!)}
                             {habit.unit ? ` ${habit.unit}` : ''}/day
                           </span>
@@ -178,8 +171,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         <Show when={latestScheduleChangeDay() !== null}>
                           <span aria-hidden="true">·</span>
                           <span>
-                            Updated{' '}
-                            {CivilCalendar.formatShortDate(latestScheduleChangeDay()!)}
+                            Updated {CivilCalendar.formatShortDate(latestScheduleChangeDay()!)}
                           </span>
                         </Show>
                         <span aria-hidden="true">·</span>
@@ -225,15 +217,15 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                       </div>
                     </div>
 
-                    <div class="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-2 sm:gap-4 shrink-0">
+                    <div class="flex shrink-0 flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:justify-end sm:gap-4">
                       <Show
                         when={activeSchedule().weeklyTarget === null}
                         fallback={
                           <div
-                            class="flex items-center gap-2.5 flex-wrap"
+                            class="flex flex-wrap items-center gap-2.5"
                             aria-label="Flexible weekly schedule"
                           >
-                            <span class="text-xs font-mono tabular-nums text-[#C8CDD8] whitespace-nowrap">
+                            <span class="font-mono text-xs whitespace-nowrap text-[#C8CDD8] tabular-nums">
                               {activeSchedule().weeklyTarget}× / week
                             </span>
                             <Show
@@ -242,17 +234,13 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                                 ALL_WEEKDAYS_MASK
                               }
                             >
-                              <div
-                                class="flex items-center gap-1"
-                                aria-label="Allowed weekdays"
-                              >
+                              <div class="flex items-center gap-1" aria-label="Allowed weekdays">
                                 <For each={[0, 1, 2, 3, 4, 5, 6]}>
                                   {(bit) => {
-                                    const active =
-                                      (activeSchedule().weekdays & (1 << bit)) !== 0;
+                                    const active = (activeSchedule().weekdays & (1 << bit)) !== 0;
                                     return (
                                       <span
-                                        class={`w-6 h-6 rounded-md text-[11px] font-mono flex items-center justify-center ${
+                                        class={`flex h-6 w-6 items-center justify-center rounded-md font-mono text-[11px] ${
                                           active
                                             ? 'bg-white/[0.1] text-[#F5F7FA]'
                                             : 'text-[#4B5563]'
@@ -268,19 +256,14 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           </div>
                         }
                       >
-                        <div
-                          class="flex items-center gap-1"
-                          aria-label="Scheduled weekdays"
-                        >
+                        <div class="flex items-center gap-1" aria-label="Scheduled weekdays">
                           <For each={[0, 1, 2, 3, 4, 5, 6]}>
                             {(bit) => {
                               const active = (activeSchedule().weekdays & (1 << bit)) !== 0;
                               return (
                                 <span
-                                  class={`w-6 h-6 rounded-md text-[11px] font-mono flex items-center justify-center ${
-                                    active
-                                      ? 'bg-white/[0.1] text-[#F5F7FA]'
-                                      : 'text-[#4B5563]'
+                                  class={`flex h-6 w-6 items-center justify-center rounded-md font-mono text-[11px] ${
+                                    active ? 'bg-white/[0.1] text-[#F5F7FA]' : 'text-[#4B5563]'
                                   }`}
                                 >
                                   {CivilCalendar.weekdayShortLabel(bit).slice(0, 1)}
@@ -296,9 +279,9 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           type="button"
                           onClick={() => props.onEditHabit(habit)}
                           aria-label={`Edit ${habit.name}`}
-                          class="min-h-[40px] min-w-[40px] rounded-xl flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                          class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
                         >
-                          <EditIcon class="w-4 h-4" />
+                          <EditIcon class="h-4 w-4" />
                         </button>
                         <button
                           type="button"
@@ -308,13 +291,13 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                               ? `Restore ${habit.name}`
                               : `Archive ${habit.name}`
                           }
-                          class="min-h-[40px] min-w-[40px] rounded-xl flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
+                          class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
                         >
                           <Show
                             when={habit.archivedAt !== null}
-                            fallback={<ArchiveIcon class="w-4 h-4" />}
+                            fallback={<ArchiveIcon class="h-4 w-4" />}
                           >
-                            <RestoreIcon class="w-4 h-4" />
+                            <RestoreIcon class="h-4 w-4" />
                           </Show>
                         </button>
                       </div>

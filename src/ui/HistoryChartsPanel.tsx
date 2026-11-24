@@ -1,10 +1,6 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { Habit, HabitCheckin, HabitNote, Task } from '../types/domain';
-import {
-  ChartsAnalytics,
-  HabitRowTrendInfo,
-  PerfectDaysSummary,
-} from '../utils/charts-analytics';
+import { ChartsAnalytics, HabitRowTrendInfo, PerfectDaysSummary } from '../utils/charts-analytics';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { DateRangeResolver, DayCellTone } from '../utils/date-range';
 import { HabitAppearance } from '../utils/habit-appearance';
@@ -146,10 +142,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       props.effectiveRangeStart,
       props.effectiveRangeEnd
     );
-    const maxVal = Math.max(
-      1,
-      ...buckets.map((b) => Math.max(b.actualTotal, b.targetTotal))
-    );
+    const maxVal = Math.max(1, ...buckets.map((b) => Math.max(b.actualTotal, b.targetTotal)));
     const accentColor = HabitAppearance.getColor(habit.color);
     return { habit, buckets, summary, maxVal, accentColor };
   });
@@ -185,12 +178,9 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
 
     const points = buckets.map((bucket, idx) => {
       const x = n <= 1 ? padLeft + plotW / 2 : padLeft + (idx / (n - 1)) * plotW;
-      const y =
-        bucket.rate === null ? null : padTop + (1 - bucket.rate) * plotH;
+      const y = bucket.rate === null ? null : padTop + (1 - bucket.rate) * plotH;
       const maY =
-        bucket.movingAvgRate === null
-          ? null
-          : padTop + (1 - bucket.movingAvgRate) * plotH;
+        bucket.movingAvgRate === null ? null : padTop + (1 - bucket.movingAvgRate) * plotH;
       return { ...bucket, idx, x, y, maY };
     });
 
@@ -323,10 +313,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
   });
 
   const maxBucketCount = createMemo(() =>
-    Math.max(
-      1,
-      ...props.taskOutcomeBuckets.map((b) => b.doneCount + b.notDoneCount)
-    )
+    Math.max(1, ...props.taskOutcomeBuckets.map((b) => b.doneCount + b.notDoneCount))
   );
 
   const hoveredTaskBucket = createMemo(() => {
@@ -368,9 +355,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
     }
     const valid = weekdayTasks().filter((d) => d.rate !== null);
     if (valid.length === 0) return null;
-    const best = valid.reduce((a, b) =>
-      b.doneCount > a.doneCount ? b : a
-    );
+    const best = valid.reduce((a, b) => (b.doneCount > a.doneCount ? b : a));
     const worst = valid.reduce((a, b) => (b.rate! < a.rate! ? b : a));
     return {
       bestLabel: best.label,
@@ -430,56 +415,47 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
   return (
     <div class="space-y-6">
       {/* 4-Column KPI Strip */}
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
+      <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <div class="min-w-0 space-y-1 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-5">
           <span class="text-xs text-[#8E95A5]">
             {props.targetHabits.length === 1 ? 'Current Streak' : 'Best Current Streak'}
           </span>
-          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="font-display font-mono text-xl font-semibold text-[#F5F7FA] tabular-nums sm:text-2xl">
             {props.analyticsSummary.currentStreak}
             {props.analyticsSummary.currentStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
           <Show when={props.perfectDays.longestPerfectStreak > 0}>
-            <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
+            <span class="block font-mono text-[11px] text-[#8E95A5] tabular-nums">
               {props.perfectDays.currentPerfectStreak}d perfect streak
             </span>
           </Show>
         </div>
 
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
+        <div class="min-w-0 space-y-1 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-5">
           <span class="text-xs text-[#8E95A5]">Longest Streak</span>
-          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="font-display font-mono text-xl font-semibold text-[#F5F7FA] tabular-nums sm:text-2xl">
             {props.analyticsSummary.longestStreak}
             {props.analyticsSummary.longestStreakUnit === 'weeks' ? 'w' : 'd'}
           </p>
           <Show when={props.perfectDays.scheduledDaysWithHabits > 0}>
-            <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
-              {props.perfectDays.perfectDays}/{props.perfectDays.scheduledDaysWithHabits} perfect days (
-              {Math.round((props.perfectDays.perfectRate ?? 0) * 100)}%)
+            <span class="block font-mono text-[11px] text-[#8E95A5] tabular-nums">
+              {props.perfectDays.perfectDays}/{props.perfectDays.scheduledDaysWithHabits} perfect
+              days ({Math.round((props.perfectDays.perfectRate ?? 0) * 100)}%)
             </span>
           </Show>
         </div>
 
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
+        <div class="min-w-0 space-y-1 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-5">
           <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <span class="text-xs text-[#8E95A5]">Habit Completion</span>
-            <Show
-              when={
-                props.prevComparison &&
-                props.prevComparison.habitRateDeltaPct !== null
-              }
-            >
+            <Show when={props.prevComparison && props.prevComparison.habitRateDeltaPct !== null}>
               {(() => {
                 const delta = props.prevComparison!.habitRateDeltaPct!;
                 return (
                   <span
                     title={`Compared to ${props.prevComparison!.prevLabel}`}
-                    class={`text-[11px] font-mono tabular-nums ${
-                      delta > 0
-                        ? 'text-[#60A5FA]'
-                        : delta < 0
-                          ? 'text-[#FCA5A5]'
-                          : 'text-[#8E95A5]'
+                    class={`font-mono text-[11px] tabular-nums ${
+                      delta > 0 ? 'text-[#60A5FA]' : delta < 0 ? 'text-[#FCA5A5]' : 'text-[#8E95A5]'
                     }`}
                   >
                     {delta > 0 ? `+${delta}%` : `${delta}%`} vs prev
@@ -488,35 +464,26 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               })()}
             </Show>
           </div>
-          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="font-display font-mono text-xl font-semibold text-[#F5F7FA] tabular-nums sm:text-2xl">
             {Math.round(props.analyticsSummary.completionRate * 100)}%
           </p>
-          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block">
+          <span class="block font-mono text-[11px] text-[#8E95A5] tabular-nums">
             {props.analyticsSummary.completedScheduledDays} done ·{' '}
             {props.analyticsSummary.missedScheduledDays} missed
           </span>
         </div>
 
-        <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-5 space-y-1 min-w-0">
+        <div class="min-w-0 space-y-1 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-5">
           <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <span class="text-xs text-[#8E95A5]">Tasks Done</span>
-            <Show
-              when={
-                props.prevComparison &&
-                props.prevComparison.taskDoneDelta !== null
-              }
-            >
+            <Show when={props.prevComparison && props.prevComparison.taskDoneDelta !== null}>
               {(() => {
                 const delta = props.prevComparison!.taskDoneDelta!;
                 return (
                   <span
                     title={`Compared to ${props.prevComparison!.prevLabel}`}
-                    class={`text-[11px] font-mono tabular-nums ${
-                      delta > 0
-                        ? 'text-[#60A5FA]'
-                        : delta < 0
-                          ? 'text-[#FCA5A5]'
-                          : 'text-[#8E95A5]'
+                    class={`font-mono text-[11px] tabular-nums ${
+                      delta > 0 ? 'text-[#60A5FA]' : delta < 0 ? 'text-[#FCA5A5]' : 'text-[#8E95A5]'
                     }`}
                   >
                     {delta > 0 ? `+${delta}` : `${delta}`} vs prev
@@ -525,7 +492,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               })()}
             </Show>
           </div>
-          <p class="text-xl sm:text-2xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+          <p class="font-display font-mono text-xl font-semibold text-[#F5F7FA] tabular-nums sm:text-2xl">
             {props.taskSummary.doneCount}
             <Show when={props.taskSummary.completionRate !== null}>
               <span class="text-sm font-normal text-[#8E95A5]">
@@ -534,7 +501,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </span>
             </Show>
           </p>
-          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] block truncate">
+          <span class="block truncate font-mono text-[11px] text-[#8E95A5] tabular-nums">
             {props.taskSummary.doneCount} done · {props.taskSummary.notDoneCount} not done
             <Show when={props.taskSummary.archivedCount > 0}>
               {' '}
@@ -545,14 +512,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       </div>
 
       {/* Row 1: Consistency Trend (Area/Line SVG) + Task Discipline (Donut SVG) */}
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
-          <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-12">
+        <section class="flex flex-col justify-between space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6 lg:col-span-7">
+          <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Consistency Trend
-              </h2>
-              <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
+              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Consistency Trend</h2>
+              <p class="font-mono text-xs text-[#8E95A5] tabular-nums">
                 <Show
                   when={activeTrendPoint()}
                   fallback={
@@ -588,7 +553,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </Show>
               <Show when={trendChart().trendDeltaPct !== null}>
                 <span
-                  class={`text-xs font-mono tabular-nums ${
+                  class={`font-mono text-xs tabular-nums ${
                     (trendChart().trendDeltaPct ?? 0) > 0
                       ? 'text-[#60A5FA]'
                       : (trendChart().trendDeltaPct ?? 0) < 0
@@ -609,39 +574,28 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             when={trendChart().hasData}
             fallback={
               <div class="py-12 text-center">
-                <p class="text-sm text-[#8E95A5]">
-                  No scheduled habit days in this date range.
-                </p>
+                <p class="text-sm text-[#8E95A5]">No scheduled habit days in this date range.</p>
               </div>
             }
           >
             <div class="w-full">
               <svg
                 viewBox={`0 0 ${trendChart().width} ${trendChart().height}`}
-                class="w-full h-44 overflow-visible"
+                class="h-44 w-full overflow-visible"
                 role="img"
                 aria-label="Habit consistency completion rate trend chart"
               >
                 <defs>
                   <linearGradient id="consistencyTrendFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="0%"
-                      stop-color={trendChart().accentColor}
-                      stop-opacity="0.28"
-                    />
-                    <stop
-                      offset="100%"
-                      stop-color={trendChart().accentColor}
-                      stop-opacity="0"
-                    />
+                    <stop offset="0%" stop-color={trendChart().accentColor} stop-opacity="0.28" />
+                    <stop offset="100%" stop-color={trendChart().accentColor} stop-opacity="0" />
                   </linearGradient>
                 </defs>
 
                 {/* Horizontal gridlines: 100%, 50%, 0% */}
                 <For each={[1, 0.5, 0]}>
                   {(ratio) => {
-                    const y = () =>
-                      trendChart().padTop + (1 - ratio) * trendChart().plotH;
+                    const y = () => trendChart().padTop + (1 - ratio) * trendChart().plotH;
                     return (
                       <g>
                         <line
@@ -656,7 +610,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                           x={trendChart().padLeft - 8}
                           y={y() + 3.5}
                           text-anchor="end"
-                          class="fill-[#6B7280] text-[10px] font-mono tabular-nums"
+                          class="fill-[#6B7280] font-mono text-[10px] tabular-nums"
                         >
                           {Math.round(ratio * 100)}%
                         </text>
@@ -738,7 +692,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                             x={pt.x}
                             y={trendChart().height - 4}
                             text-anchor="middle"
-                            class="fill-[#6B7280] text-[10px] font-mono tabular-nums"
+                            class="fill-[#6B7280] font-mono text-[10px] tabular-nums"
                           >
                             {pt.shortLabel}
                           </text>
@@ -746,14 +700,10 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                         {/* Generous hit target column */}
                         <rect
                           x={
-                            pt.x -
-                            trendChart().plotW /
-                              Math.max(2, trendChart().points.length * 2)
+                            pt.x - trendChart().plotW / Math.max(2, trendChart().points.length * 2)
                           }
                           y={trendChart().padTop}
-                          width={
-                            trendChart().plotW / Math.max(1, trendChart().points.length)
-                          }
+                          width={trendChart().plotW / Math.max(1, trendChart().points.length)}
                           height={trendChart().plotH}
                           fill="transparent"
                           class="cursor-pointer outline-none"
@@ -773,13 +723,11 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </Show>
         </section>
 
-        <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
+        <section class="flex flex-col justify-between space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6 lg:col-span-5">
           <div class="flex items-start justify-between gap-2">
             <div>
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Task Discipline
-              </h2>
-              <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
+              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Task Discipline</h2>
+              <p class="font-mono text-xs text-[#8E95A5] tabular-nums">
                 {taskSegments().total} total outcomes · Excl. archived from rate
               </p>
             </div>
@@ -789,18 +737,16 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             when={taskSegments().total > 0}
             fallback={
               <div class="py-10 text-center">
-                <p class="text-sm text-[#8E95A5]">
-                  No closed or archived tasks in this period.
-                </p>
+                <p class="text-sm text-[#8E95A5]">No closed or archived tasks in this period.</p>
               </div>
             }
           >
-            <div class="flex flex-col sm:flex-row items-center gap-5">
+            <div class="flex flex-col items-center gap-5 sm:flex-row">
               {/* Donut SVG */}
-              <div class="relative w-32 h-32 shrink-0 flex items-center justify-center">
+              <div class="relative flex h-32 w-32 shrink-0 items-center justify-center">
                 <svg
                   viewBox="0 0 140 140"
-                  class="w-full h-full -rotate-90"
+                  class="h-full w-full -rotate-90"
                   role="img"
                   aria-label="Task outcomes breakdown donut chart"
                 >
@@ -824,7 +770,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                           stroke-width={hoveredTaskSegment() === arc.key ? '19' : '16'}
                           stroke-dasharray={`${arc.length} ${taskSegments().circumference}`}
                           stroke-dashoffset={arc.offset}
-                          class="transition-all duration-150 cursor-pointer"
+                          class="cursor-pointer transition-all duration-150"
                           onMouseEnter={() => setHoveredTaskSegment(arc.key)}
                           onMouseLeave={() => setHoveredTaskSegment(null)}
                         />
@@ -832,12 +778,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                     )}
                   </For>
                 </svg>
-                <div class="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-2">
+                <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-2 text-center">
                   <Show
                     when={hoveredDonutSegment()}
                     fallback={
                       <>
-                        <span class="text-xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+                        <span class="font-display font-mono text-xl font-semibold text-[#F5F7FA] tabular-nums">
                           {props.taskSummary.completionRate !== null
                             ? `${Math.round(props.taskSummary.completionRate * 100)}%`
                             : '—'}
@@ -848,12 +794,10 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                   >
                     {(seg) => (
                       <>
-                        <span class="text-xl font-display font-semibold font-mono tabular-nums text-[#F5F7FA]">
+                        <span class="font-display font-mono text-xl font-semibold text-[#F5F7FA] tabular-nums">
                           {seg().count}
                         </span>
-                        <span class="text-[10px] text-[#C8CDD8] leading-tight">
-                          {seg().label}
-                        </span>
+                        <span class="text-[10px] leading-tight text-[#C8CDD8]">{seg().label}</span>
                       </>
                     )}
                   </Show>
@@ -861,7 +805,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </div>
 
               {/* Clean Legend */}
-              <ul class="flex-1 min-w-0 space-y-2 text-xs">
+              <ul class="min-w-0 flex-1 space-y-2 text-xs">
                 <For each={taskSegments().arcs}>
                   {(arc) => (
                     <li
@@ -875,18 +819,16 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                       }
                       onMouseLeave={() => setHoveredTaskSegment(null)}
                     >
-                      <span class="flex items-center gap-2 min-w-0 text-[#C8CDD8]">
+                      <span class="flex min-w-0 items-center gap-2 text-[#C8CDD8]">
                         <span
-                          class="w-2.5 h-2.5 rounded-[3px] shrink-0"
+                          class="h-2.5 w-2.5 shrink-0 rounded-[3px]"
                           style={{ 'background-color': arc.color }}
                         />
                         <span class="truncate">{arc.label}</span>
                       </span>
-                      <span class="font-mono tabular-nums text-[#F5F7FA] shrink-0">
+                      <span class="shrink-0 font-mono text-[#F5F7FA] tabular-nums">
                         {arc.count}
-                        <span class="text-[#6B7280] ml-1 text-[11px]">
-                          ({arc.sharePct}%)
-                        </span>
+                        <span class="ml-1 text-[11px] text-[#6B7280]">({arc.sharePct}%)</span>
                       </span>
                     </li>
                   )}
@@ -895,19 +837,19 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             </div>
           </Show>
 
-          <div class="grid grid-cols-1 min-[380px]:grid-cols-3 gap-2.5 pt-3 border-t border-white/[0.06] text-[11px]">
+          <div class="grid grid-cols-1 gap-2.5 border-t border-white/[0.06] pt-3 text-[11px] min-[380px]:grid-cols-3">
             <div class="min-w-0">
-              <span class="text-[#6B7280] block">On-Time</span>
-              <span class="font-mono tabular-nums text-[#F5F7FA] break-words block">
+              <span class="block text-[#6B7280]">On-Time</span>
+              <span class="block font-mono break-words text-[#F5F7FA] tabular-nums">
                 {props.taskSummary.onTimeRate !== null
                   ? `${Math.round(props.taskSummary.onTimeRate * 100)}% (${props.taskSummary.onTimeCount}/${props.taskSummary.datedDoneCount})`
                   : '—'}
               </span>
             </div>
             <div class="min-w-0">
-              <span class="text-[#6B7280] block">Goals</span>
+              <span class="block text-[#6B7280]">Goals</span>
               <span
-                class="font-mono tabular-nums text-[#F5F7FA] break-words block"
+                class="block font-mono break-words text-[#F5F7FA] tabular-nums"
                 title={`${props.taskSummary.goalsDoneCount} done, ${props.taskSummary.goalsArchivedCount} archived, ${props.taskSummary.goalsOpenCount} open`}
               >
                 {props.taskSummary.goalsDoneCount}d · {props.taskSummary.goalsArchivedCount}a ·{' '}
@@ -915,8 +857,8 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </span>
             </div>
             <div class="min-w-0">
-              <span class="text-[#6B7280] block">Repeats</span>
-              <span class="font-mono tabular-nums text-[#F5F7FA] break-words block">
+              <span class="block text-[#6B7280]">Repeats</span>
+              <span class="block font-mono break-words text-[#F5F7FA] tabular-nums">
                 {props.taskSummary.repeatableDoneCount} done
               </span>
             </div>
@@ -925,18 +867,13 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       </div>
 
       {/* Row 2: Tasks Overview (Stacked Bars) + Weekday Rhythm */}
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
-          <div class="flex items-start justify-between gap-3 flex-wrap">
+      <div class="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-12">
+        <section class="flex flex-col justify-between space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6 lg:col-span-7">
+          <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Tasks Timeline
-              </h2>
-              <p class="text-xs text-[#8E95A5] font-mono tabular-nums">
-                <Show
-                  when={hoveredTaskBucket()}
-                  fallback={<span>{props.rangeLabel}</span>}
-                >
+              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Tasks Timeline</h2>
+              <p class="font-mono text-xs text-[#8E95A5] tabular-nums">
+                <Show when={hoveredTaskBucket()} fallback={<span>{props.rangeLabel}</span>}>
                   {(b) => (
                     <span class="text-[#F5F7FA]">
                       {b().label} · {b().doneCount} done · {b().notDoneCount} not done
@@ -948,11 +885,11 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             </div>
             <div class="flex items-center gap-3 text-[11px] text-[#8E95A5]">
               <span class="inline-flex items-center gap-1.5">
-                <span class="w-2.5 h-2.5 rounded-[2px] bg-[#3B82F6]" />
+                <span class="h-2.5 w-2.5 rounded-[2px] bg-[#3B82F6]" />
                 <span>Done</span>
               </span>
               <span class="inline-flex items-center gap-1.5">
-                <span class="w-2.5 h-2.5 rounded-[2px] bg-[#EF4444]/80" />
+                <span class="h-2.5 w-2.5 rounded-[2px] bg-[#EF4444]/80" />
                 <span>Not Done</span>
               </span>
             </div>
@@ -966,49 +903,41 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             }
             fallback={
               <div class="py-12 text-center">
-                <p class="text-sm text-[#8E95A5]">
-                  No task outcomes in the selected date range.
-                </p>
+                <p class="text-sm text-[#8E95A5]">No task outcomes in the selected date range.</p>
               </div>
             }
           >
-            <div class="flex items-end gap-2 h-40 pt-4">
+            <div class="flex h-40 items-end gap-2 pt-4">
               <For each={props.taskOutcomeBuckets}>
                 {(bucket) => {
                   const total = () => bucket.doneCount + bucket.notDoneCount;
-                  const totalPct = () =>
-                    Math.round((total() / maxBucketCount()) * 100);
-                  const doneShare = () =>
-                    total() === 0 ? 0 : (bucket.doneCount / total()) * 100;
+                  const totalPct = () => Math.round((total() / maxBucketCount()) * 100);
+                  const doneShare = () => (total() === 0 ? 0 : (bucket.doneCount / total()) * 100);
                   const notDoneShare = () =>
                     total() === 0 ? 0 : (bucket.notDoneCount / total()) * 100;
                   return (
                     <div
-                      class="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5 cursor-pointer"
+                      class="flex h-full min-w-0 flex-1 cursor-pointer flex-col items-center justify-end gap-1.5"
                       onMouseEnter={() => setHoveredTaskBucketKey(bucket.key)}
                       onMouseLeave={() => setHoveredTaskBucketKey(null)}
                     >
-                      <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                      <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
                         {total() > 0 ? total() : ''}
                       </span>
-                      <div class="w-full flex-1 flex items-end">
+                      <div class="flex w-full flex-1 items-end">
                         <Show
                           when={total() > 0}
-                          fallback={
-                            <div class="w-full bg-white/[0.05] h-[3px] rounded-t-md" />
-                          }
+                          fallback={<div class="h-[3px] w-full rounded-t-md bg-white/[0.05]" />}
                         >
                           <div
-                            class={`w-full rounded-t-md overflow-hidden flex flex-col justify-end transition-opacity ${
+                            class={`flex w-full flex-col justify-end overflow-hidden rounded-t-md transition-opacity ${
                               hoveredTaskBucketKey() && hoveredTaskBucketKey() !== bucket.key
                                 ? 'opacity-60'
                                 : 'opacity-100'
                             }`}
                             style={{ height: `${Math.max(12, totalPct())}%` }}
                             title={`${bucket.label}: ${bucket.doneCount} done, ${bucket.notDoneCount} not done${
-                              bucket.archivedCount > 0
-                                ? `, ${bucket.archivedCount} archived`
-                                : ''
+                              bucket.archivedCount > 0 ? `, ${bucket.archivedCount} archived` : ''
                             }`}
                           >
                             <Show when={bucket.notDoneCount > 0}>
@@ -1026,7 +955,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                           </div>
                         </Show>
                       </div>
-                      <span class="text-[10px] font-mono tabular-nums text-[#6B7280] truncate max-w-full">
+                      <span class="max-w-full truncate font-mono text-[10px] text-[#6B7280] tabular-nums">
                         {bucket.shortLabel}
                       </span>
                     </div>
@@ -1037,13 +966,11 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </Show>
         </section>
 
-        <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 flex flex-col justify-between space-y-4">
+        <section class="flex flex-col justify-between space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6 lg:col-span-5">
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Weekday Rhythm
-              </h2>
-              <p class="text-xs text-[#8E95A5] font-mono tabular-nums break-words">
+              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Weekday Rhythm</h2>
+              <p class="font-mono text-xs break-words text-[#8E95A5] tabular-nums">
                 <Show
                   when={hoveredWeekdaySummary()}
                   fallback={
@@ -1059,14 +986,14 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </p>
             </div>
 
-            <div class="inline-flex items-center p-0.5 rounded-xl bg-[#0A0B0E] border border-white/[0.08] shrink-0">
+            <div class="inline-flex shrink-0 items-center rounded-xl border border-white/[0.08] bg-[#0A0B0E] p-0.5">
               <button
                 type="button"
                 onClick={() => {
                   setWeekdayMode('habits');
                   setHoveredWeekday(null);
                 }}
-                class={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                class={`shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
                   weekdayMode() === 'habits'
                     ? 'bg-[#1C1F26] text-[#F5F7FA]'
                     : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -1080,7 +1007,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                   setWeekdayMode('tasks');
                   setHoveredWeekday(null);
                 }}
-                class={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                class={`shrink-0 cursor-pointer rounded-lg px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors ${
                   weekdayMode() === 'tasks'
                     ? 'bg-[#1C1F26] text-[#F5F7FA]'
                     : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -1107,7 +1034,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               </div>
             }
           >
-            <div class="grid grid-cols-7 gap-1 sm:gap-2 h-36 pt-3 items-end">
+            <div class="grid h-36 grid-cols-7 items-end gap-1 pt-3 sm:gap-2">
               <Show
                 when={weekdayMode() === 'habits'}
                 fallback={
@@ -1123,22 +1050,20 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                         d.totalCount === 0 ? 0 : (d.notDoneCount / d.totalCount) * 100;
                       return (
                         <div
-                          class="h-full flex flex-col items-center justify-end gap-1.5 cursor-pointer"
+                          class="flex h-full cursor-pointer flex-col items-center justify-end gap-1.5"
                           onMouseEnter={() => setHoveredWeekday(d.weekdayBit)}
                           onMouseLeave={() => setHoveredWeekday(null)}
                         >
-                          <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                          <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
                             {d.totalCount > 0 ? d.totalCount : ''}
                           </span>
-                          <div class="w-full flex-1 flex items-end">
+                          <div class="flex w-full flex-1 items-end">
                             <Show
                               when={d.totalCount > 0}
-                              fallback={
-                                <div class="w-full h-[3px] rounded-t-md bg-white/[0.06]" />
-                              }
+                              fallback={<div class="h-[3px] w-full rounded-t-md bg-white/[0.06]" />}
                             >
                               <div
-                                class="w-full rounded-t-md overflow-hidden flex flex-col justify-end"
+                                class="flex w-full flex-col justify-end overflow-hidden rounded-t-md"
                                 style={{ height: `${Math.max(12, heightPct())}%` }}
                               >
                                 <Show when={d.notDoneCount > 0}>
@@ -1156,9 +1081,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                               </div>
                             </Show>
                           </div>
-                          <span class="text-[11px] font-mono text-[#8E95A5]">
-                            {d.label}
-                          </span>
+                          <span class="font-mono text-[11px] text-[#8E95A5]">{d.label}</span>
                         </div>
                       );
                     }}
@@ -1167,23 +1090,20 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               >
                 <For each={weekdayHabits()}>
                   {(d) => {
-                    const pct = () =>
-                      d.rate === null ? null : Math.round(d.rate * 100);
+                    const pct = () => (d.rate === null ? null : Math.round(d.rate * 100));
                     return (
                       <div
-                        class="h-full flex flex-col items-center justify-end gap-1.5 cursor-pointer"
+                        class="flex h-full cursor-pointer flex-col items-center justify-end gap-1.5"
                         onMouseEnter={() => setHoveredWeekday(d.weekdayBit)}
                         onMouseLeave={() => setHoveredWeekday(null)}
                       >
-                        <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
+                        <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
                           {pct() !== null ? `${pct()}%` : '—'}
                         </span>
-                        <div class="w-full flex-1 flex items-end">
+                        <div class="flex w-full flex-1 items-end">
                           <Show
                             when={pct() !== null}
-                            fallback={
-                              <div class="w-full h-[3px] rounded-t-md bg-white/[0.06]" />
-                            }
+                            fallback={<div class="h-[3px] w-full rounded-t-md bg-white/[0.06]" />}
                           >
                             <div
                               class="w-full rounded-t-md transition-opacity"
@@ -1191,17 +1111,14 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                                 height: `${Math.max(10, pct()!)}%`,
                                 'background-color': weekdayBarColor(d.rate!),
                                 opacity:
-                                  hoveredWeekday() !== null &&
-                                  hoveredWeekday() !== d.weekdayBit
+                                  hoveredWeekday() !== null && hoveredWeekday() !== d.weekdayBit
                                     ? 0.55
                                     : 1,
                               }}
                             />
                           </Show>
                         </div>
-                        <span class="text-[11px] font-mono text-[#8E95A5]">
-                          {d.label}
-                        </span>
+                        <span class="font-mono text-[11px] text-[#8E95A5]">{d.label}</span>
                       </div>
                     );
                   }}
@@ -1210,7 +1127,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             </div>
           </Show>
 
-          <div class="pt-3 border-t border-white/[0.06] text-[11px] font-mono tabular-nums text-[#8E95A5] flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3 font-mono text-[11px] text-[#8E95A5] tabular-nums">
             <Show
               when={weekdayExtremes()}
               fallback={<span>Not enough data to compare weekdays</span>}
@@ -1218,10 +1135,16 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               {(ex) => (
                 <>
                   <span>
-                    Best: <span class="text-[#93C5FD]">{ex().bestLabel} ({ex().bestPct}%)</span>
+                    Best:{' '}
+                    <span class="text-[#93C5FD]">
+                      {ex().bestLabel} ({ex().bestPct}%)
+                    </span>
                   </span>
                   <span>
-                    Weakest: <span class="text-[#FCA5A5]">{ex().worstLabel} ({ex().worstPct}%)</span>
+                    Weakest:{' '}
+                    <span class="text-[#FCA5A5]">
+                      {ex().worstLabel} ({ex().worstPct}%)
+                    </span>
                   </span>
                 </>
               )}
@@ -1233,8 +1156,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       {/* Row 2.5: Measured Volume Progression (shown when at least one measured habit is in view) */}
       <Show when={volumeData()}>
         {(vol) => {
-          const unitSuffix = () =>
-            vol().summary.unit ? ` ${vol().summary.unit}` : '';
+          const unitSuffix = () => (vol().summary.unit ? ` ${vol().summary.unit}` : '');
           const targetRangeLabel = () => {
             const s = vol().summary.targetStart;
             const e = vol().summary.targetEnd;
@@ -1247,22 +1169,20 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               : null;
           };
           return (
-            <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-4">
+            <section class="space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6">
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0 space-y-0.5">
                   <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
                     Measured Volume
                   </h2>
-                  <p class="text-xs text-[#8E95A5] font-mono tabular-nums break-words">
+                  <p class="font-mono text-xs break-words text-[#8E95A5] tabular-nums">
                     <Show
                       when={hoveredVolumeBucket()}
                       fallback={
                         <span>
                           {HabitSchedule.formatNumericValue(vol().summary.totalVolume)}
                           {unitSuffix()} total ·{' '}
-                          {HabitSchedule.formatNumericValue(
-                            vol().summary.averagePerActiveDay
-                          )}
+                          {HabitSchedule.formatNumericValue(vol().summary.averagePerActiveDay)}
                           {unitSuffix()}/active day
                           {targetRangeLabel() ? ` · ${targetRangeLabel()}` : ''}
                         </span>
@@ -1270,8 +1190,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                     >
                       {(b) => (
                         <span class="text-[#F5F7FA]">
-                          {b().label} ·{' '}
-                          {HabitSchedule.formatNumericValue(b().actualTotal)}
+                          {b().label} · {HabitSchedule.formatNumericValue(b().actualTotal)}
                           {unitSuffix()} logged
                           {b().targetTotal > 0
                             ? ` / ${HabitSchedule.formatNumericValue(b().targetTotal)}${unitSuffix()} target`
@@ -1282,27 +1201,25 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                   </p>
                 </div>
 
-                <div class="flex items-center gap-3 shrink-0">
+                <div class="flex shrink-0 items-center gap-3">
                   <Show
                     when={measuredHabits().length > 1}
                     fallback={
                       <div class="flex items-center gap-2 text-xs text-[#C8CDD8]">
                         <HabitBadge appearanceRaw={vol().habit.color} size="xs" />
-                        <span class="truncate max-w-[160px]">{vol().habit.name}</span>
+                        <span class="max-w-[160px] truncate">{vol().habit.name}</span>
                       </div>
                     }
                   >
                     <CustomSelect<number>
                       ariaLabel="Select measured habit"
                       value={vol().habit.id}
-                      options={measuredHabits().map(
-                        (h): SelectOption<number> => ({
-                          value: h.id,
-                          label: h.name,
-                          hint: h.unit ?? undefined,
-                          dotColor: h.color,
-                        })
-                      )}
+                      options={measuredHabits().map((h): SelectOption<number> => ({
+                        value: h.id,
+                        label: h.name,
+                        hint: h.unit ?? undefined,
+                        dotColor: h.color,
+                      }))}
                       onChange={(id) => {
                         setSelectedVolumeHabitId(id);
                         setHoveredVolumeKey(null);
@@ -1312,7 +1229,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                 </div>
               </div>
 
-              <div class="flex items-end gap-2 h-40 pt-4">
+              <div class="flex h-40 items-end gap-2 pt-4">
                 <For each={vol().buckets}>
                   {(bucket) => {
                     const actualPct = () =>
@@ -1327,21 +1244,19 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                       bucket.targetTotal > 0 && bucket.actualTotal >= bucket.targetTotal;
                     return (
                       <div
-                        class="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5 cursor-pointer"
+                        class="flex h-full min-w-0 flex-1 cursor-pointer flex-col items-center justify-end gap-1.5"
                         onMouseEnter={() => setHoveredVolumeKey(bucket.key)}
                         onMouseLeave={() => setHoveredVolumeKey(null)}
                       >
-                        <span class="text-[10px] font-mono tabular-nums text-[#8E95A5] truncate max-w-full">
+                        <span class="max-w-full truncate font-mono text-[10px] text-[#8E95A5] tabular-nums">
                           {bucket.actualTotal > 0
                             ? HabitSchedule.formatNumericValue(bucket.actualTotal)
                             : ''}
                         </span>
-                        <div class="relative w-full flex-1 flex items-end">
+                        <div class="relative flex w-full flex-1 items-end">
                           <Show
                             when={bucket.actualTotal > 0}
-                            fallback={
-                              <div class="w-full bg-white/[0.05] h-[3px] rounded-t-md" />
-                            }
+                            fallback={<div class="h-[3px] w-full rounded-t-md bg-white/[0.05]" />}
                           >
                             <div
                               class="w-full rounded-t-md transition-opacity"
@@ -1366,12 +1281,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                           <Show when={targetPct() !== null}>
                             <div
                               aria-hidden="true"
-                              class="absolute left-0 right-0 border-t border-dashed border-white/60 pointer-events-none"
+                              class="pointer-events-none absolute right-0 left-0 border-t border-dashed border-white/60"
                               style={{ bottom: `${targetPct()}%` }}
                             />
                           </Show>
                         </div>
-                        <span class="text-[10px] font-mono tabular-nums text-[#6B7280] truncate max-w-full">
+                        <span class="max-w-full truncate font-mono text-[10px] text-[#6B7280] tabular-nums">
                           {bucket.shortLabel}
                         </span>
                       </div>
@@ -1380,7 +1295,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                 </For>
               </div>
 
-              <div class="pt-2 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#8E95A5]">
+              <div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-2 text-[11px] text-[#8E95A5]">
                 <span class="font-mono tabular-nums">
                   {vol().summary.activeDaysLogged}{' '}
                   {vol().summary.activeDaysLogged === 1 ? 'day' : 'days'} logged ·{' '}
@@ -1396,7 +1311,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                 <div class="flex items-center gap-3">
                   <span class="inline-flex items-center gap-1.5">
                     <span
-                      class="w-2.5 h-2.5 rounded-[2px]"
+                      class="h-2.5 w-2.5 rounded-[2px]"
                       style={{ 'background-color': vol().accentColor }}
                     />
                     <span>Logged</span>
@@ -1413,14 +1328,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
       </Show>
 
       {/* Row 3: Full-Width Consistency Heatmap */}
-      <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-5">
-        <div class="flex items-start sm:items-center justify-between flex-wrap gap-3">
+      <section class="space-y-5 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6">
+        <div class="flex flex-wrap items-start justify-between gap-3 sm:items-center">
           <div>
-            <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-              Consistency Heatmap
-            </h2>
+            <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Consistency Heatmap</h2>
             <p class="text-xs text-[#8E95A5]">
-              <span class="font-mono tabular-nums text-[#C8CDD8]">
+              <span class="font-mono text-[#C8CDD8] tabular-nums">
                 {props.heatmapData.totalDone}
               </span>{' '}
               check-ins ·{' '}
@@ -1437,29 +1350,27 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           <button
             type="button"
             onClick={() => props.onInspectDayInCalendar(props.selectedDay)}
-            class="h-9 px-3 rounded-xl bg-[#0A0B0E] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#C8CDD8] hover:text-[#F5F7FA] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-[#0A0B0E] px-3 text-xs font-medium whitespace-nowrap text-[#C8CDD8] transition-colors hover:bg-[#1C1F26] hover:text-[#F5F7FA]"
           >
-            <CalendarIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
-            <span>
-              Inspect {CivilCalendar.formatShortDate(props.selectedDay)} in Calendar
-            </span>
+            <CalendarIcon class="h-3.5 w-3.5 text-[#60A5FA]" />
+            <span>Inspect {CivilCalendar.formatShortDate(props.selectedDay)} in Calendar</span>
           </button>
         </div>
 
         <div class="overflow-x-auto pb-1">
-          <div class="inline-flex gap-2.5 items-start py-1 pl-0.5 pr-2">
-            <div class="flex flex-col gap-[4px] pt-[20px] text-[11px] leading-[18px] text-[#6B7280] select-none shrink-0">
-              <span class="h-[18px] flex items-center">Mon</span>
+          <div class="inline-flex items-start gap-2.5 py-1 pr-2 pl-0.5">
+            <div class="flex shrink-0 flex-col gap-[4px] pt-[20px] text-[11px] leading-[18px] text-[#6B7280] select-none">
+              <span class="flex h-[18px] items-center">Mon</span>
               <span class="h-[18px]" aria-hidden="true" />
-              <span class="h-[18px] flex items-center">Wed</span>
+              <span class="flex h-[18px] items-center">Wed</span>
               <span class="h-[18px]" aria-hidden="true" />
-              <span class="h-[18px] flex items-center">Fri</span>
+              <span class="flex h-[18px] items-center">Fri</span>
               <span class="h-[18px]" aria-hidden="true" />
               <span class="h-[18px]" aria-hidden="true" />
             </div>
 
             <div class="flex flex-col gap-1.5">
-              <div class="flex gap-[4px] h-[14px] text-[10px] leading-[14px] text-[#8E95A5] select-none">
+              <div class="flex h-[14px] gap-[4px] text-[10px] leading-[14px] text-[#8E95A5] select-none">
                 <For each={props.heatmapData.weeks}>
                   {(week) => (
                     <div class="w-[18px] shrink-0 overflow-visible whitespace-nowrap">
@@ -1472,13 +1383,13 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
               <div class="flex gap-[4px]">
                 <For each={props.heatmapData.weeks}>
                   {(week) => (
-                    <div class="flex flex-col gap-[4px] shrink-0">
+                    <div class="flex shrink-0 flex-col gap-[4px]">
                       <For each={week.days}>
                         {(cell) => (
                           <Show
                             when={cell.inRange}
                             fallback={
-                              <div class="w-[18px] h-[18px] rounded-[4px] bg-transparent" />
+                              <div class="h-[18px] w-[18px] rounded-[4px] bg-transparent" />
                             }
                           >
                             <button
@@ -1502,7 +1413,7 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                               onBlur={() => setHoveredCell(null)}
                               title={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done}/${cell.scheduled} scheduled`}
                               aria-label={`${CivilCalendar.formatShortDate(cell.dayIndex)}: ${cell.done} of ${cell.scheduled} completed`}
-                              class={`w-[18px] h-[18px] rounded-[4px] transition-transform duration-100 hover:scale-115 cursor-pointer ${heatmapSquareClass(
+                              class={`h-[18px] w-[18px] cursor-pointer rounded-[4px] transition-transform duration-100 hover:scale-115 ${heatmapSquareClass(
                                 cell.tone
                               )} ${
                                 cell.dayIndex === props.selectedDay
@@ -1521,35 +1432,31 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </div>
         </div>
 
-        <div class="flex items-center justify-between flex-wrap gap-2 text-[11px] text-[#8E95A5] pt-1 border-t border-white/[0.06]">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-1 text-[11px] text-[#8E95A5]">
           <div class="min-w-0 flex-1 space-y-0.5">
             <Show
               when={hoveredCell()}
               fallback={
-                <span class="font-mono tabular-nums block">
+                <span class="block font-mono tabular-nums">
                   Selected: {CivilCalendar.formatShortDate(props.selectedDay)}
                   <Show when={activeHeatmapDayNotes().length > 0}>
                     {' '}
                     · {activeHeatmapDayNotes().length}{' '}
                     {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:{' '}
-                    <span class="text-[#C8CDD8]">
-                      “{activeHeatmapDayNotes()[0]}”
-                    </span>
+                    <span class="text-[#C8CDD8]">“{activeHeatmapDayNotes()[0]}”</span>
                   </Show>
                 </span>
               }
             >
               {(cell) => (
-                <span class="font-mono tabular-nums text-[#F5F7FA] block truncate">
+                <span class="block truncate font-mono text-[#F5F7FA] tabular-nums">
                   {CivilCalendar.formatShortDate(cell().dayIndex)} · {cell().done}/
                   {cell().scheduled} completed
                   <Show when={activeHeatmapDayNotes().length > 0}>
                     {' '}
                     · {activeHeatmapDayNotes().length}{' '}
                     {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:{' '}
-                    <span class="text-[#93C5FD]">
-                      “{activeHeatmapDayNotes()[0]}”
-                    </span>
+                    <span class="text-[#93C5FD]">“{activeHeatmapDayNotes()[0]}”</span>
                   </Show>
                 </span>
               )}
@@ -1557,18 +1464,18 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </div>
 
           <div
-            class="flex items-center gap-1.5 shrink-0"
+            class="flex shrink-0 items-center gap-1.5"
             title="Rest = unscheduled · Red = unclosed severity · Blue = 100% done"
           >
             <span>Rest</span>
-            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#0D1016] border border-white/[0.06]" />
+            <span class="h-[14px] w-[14px] rounded-[3px] border border-white/[0.06] bg-[#0D1016]" />
             <span class="ml-1">0%</span>
-            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#EF4444]" />
-            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#B91C1C]" />
-            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#881B22]" />
-            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#581C24]" />
+            <span class="h-[14px] w-[14px] rounded-[3px] bg-[#EF4444]" />
+            <span class="h-[14px] w-[14px] rounded-[3px] bg-[#B91C1C]" />
+            <span class="h-[14px] w-[14px] rounded-[3px] bg-[#881B22]" />
+            <span class="h-[14px] w-[14px] rounded-[3px] bg-[#581C24]" />
             <span>Done</span>
-            <span class="w-[14px] h-[14px] rounded-[3px] bg-[#3B82F6]" />
+            <span class="h-[14px] w-[14px] rounded-[3px] bg-[#3B82F6]" />
           </div>
         </div>
       </section>
@@ -1580,12 +1487,10 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           (props.habitFilter === 'all' || props.targetHabits.length > 1)
         }
       >
-        <section class="rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-          <div class="px-4 sm:px-6 py-4 border-b border-white/[0.06] flex items-center justify-between gap-4">
+        <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B]">
+          <div class="flex items-center justify-between gap-4 border-b border-white/[0.06] px-4 py-4 sm:px-6">
             <div>
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Habit Breakdown
-              </h2>
+              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Habit Breakdown</h2>
               <p class="text-xs text-[#8E95A5]">
                 {props.rangeLabel} ·{' '}
                 <span class="font-mono tabular-nums">
@@ -1596,9 +1501,8 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                 </span>
               </p>
             </div>
-            <span class="text-xs font-mono tabular-nums text-[#8E95A5]">
-              {props.habitBreakdown.length}{' '}
-              {props.habitBreakdown.length === 1 ? 'habit' : 'habits'}
+            <span class="font-mono text-xs text-[#8E95A5] tabular-nums">
+              {props.habitBreakdown.length} {props.habitBreakdown.length === 1 ? 'habit' : 'habits'}
             </span>
           </div>
 
@@ -1611,24 +1515,22 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                     <button
                       type="button"
                       onClick={() => props.onSelectHabitFilter([row.habit.id])}
-                      class="w-full text-left px-4 sm:px-6 py-4 hover:bg-white/[0.02] transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      class="flex w-full cursor-pointer flex-col justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:px-6"
                     >
-                      <div class="min-w-0 space-y-1 flex-1">
+                      <div class="min-w-0 flex-1 space-y-1">
                         <div class="flex items-start gap-2.5">
                           <HabitBadge appearanceRaw={row.habit.color} size="sm" />
                           <span
-                            class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
+                            class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
                             title={row.habit.name}
                           >
                             {row.habit.name}
                           </span>
                           <Show when={row.habit.archivedAt !== null}>
-                            <span class="text-[11px] text-[#6B7280] shrink-0">
-                              (Archived)
-                            </span>
+                            <span class="shrink-0 text-[11px] text-[#6B7280]">(Archived)</span>
                           </Show>
                         </div>
-                        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs font-mono tabular-nums text-[#8E95A5]">
+                        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-mono text-xs text-[#8E95A5] tabular-nums">
                           <span>
                             {row.completedDays} done · {row.missedDays} missed
                           </span>
@@ -1659,7 +1561,12 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                             {row.longestStreak}
                             {row.streakUnit === 'weeks' ? 'w' : 'd'} best
                           </span>
-                          <Show when={props.habitTrends.get(row.habit.id)?.deltaPct !== null && props.habitTrends.get(row.habit.id)?.deltaPct !== undefined}>
+                          <Show
+                            when={
+                              props.habitTrends.get(row.habit.id)?.deltaPct !== null &&
+                              props.habitTrends.get(row.habit.id)?.deltaPct !== undefined
+                            }
+                          >
                             {(() => {
                               const d = props.habitTrends.get(row.habit.id)!.deltaPct!;
                               return (
@@ -1684,19 +1591,17 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                         </div>
                       </div>
 
-                      <div class="flex items-center gap-3 sm:w-52 shrink-0">
-                        <div class="flex-1 h-2 rounded-full bg-[#0A0B0E] border border-white/[0.06] overflow-hidden">
+                      <div class="flex shrink-0 items-center gap-3 sm:w-52">
+                        <div class="h-2 flex-1 overflow-hidden rounded-full border border-white/[0.06] bg-[#0A0B0E]">
                           <div
                             class="h-full rounded-full transition-all"
                             style={{
                               width: `${pct()}%`,
-                              'background-color': HabitAppearance.getColor(
-                                row.habit.color
-                              ),
+                              'background-color': HabitAppearance.getColor(row.habit.color),
                             }}
                           />
                         </div>
-                        <span class="w-10 text-right text-sm font-mono tabular-nums font-medium text-[#F5F7FA]">
+                        <span class="w-10 text-right font-mono text-sm font-medium text-[#F5F7FA] tabular-nums">
                           {pct()}%
                         </span>
                       </div>

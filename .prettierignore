@@ -1,0 +1,8 @@
+dist/
+dev-dist/
+coverage/
+node_modules/
+workspace/
+public/assets/
+bun.lock
+package-lock.json

@@ -147,18 +147,24 @@ export class FakeIndexedDBFactory {
                 });
               },
               getAll() {
-                return track(() =>
-                  Array.from(schema.records.values()).map((r) => cloneRecord(r))
-                );
+                return track(() => Array.from(schema.records.values()).map((r) => cloneRecord(r)));
               },
               add(value: Record<string, unknown>) {
                 return track(() => {
                   const rec = cloneRecord(value);
                   let key = extractKey(rec, schema.keyPath);
-                  if (key === undefined && schema.autoIncrement && typeof schema.keyPath === 'string') {
+                  if (
+                    key === undefined &&
+                    schema.autoIncrement &&
+                    typeof schema.keyPath === 'string'
+                  ) {
                     key = schema.nextId++;
                     rec[schema.keyPath] = key;
-                  } else if (typeof key === 'number' && schema.autoIncrement && key >= schema.nextId) {
+                  } else if (
+                    typeof key === 'number' &&
+                    schema.autoIncrement &&
+                    key >= schema.nextId
+                  ) {
                     schema.nextId = key + 1;
                   }
                   const encoded = encodeKey(key);
@@ -173,10 +179,18 @@ export class FakeIndexedDBFactory {
                 return track(() => {
                   const rec = cloneRecord(value);
                   let key = extractKey(rec, schema.keyPath);
-                  if (key === undefined && schema.autoIncrement && typeof schema.keyPath === 'string') {
+                  if (
+                    key === undefined &&
+                    schema.autoIncrement &&
+                    typeof schema.keyPath === 'string'
+                  ) {
                     key = schema.nextId++;
                     rec[schema.keyPath] = key;
-                  } else if (typeof key === 'number' && schema.autoIncrement && key >= schema.nextId) {
+                  } else if (
+                    typeof key === 'number' &&
+                    schema.autoIncrement &&
+                    key >= schema.nextId
+                  ) {
                     schema.nextId = key + 1;
                   }
                   schema.records.set(encodeKey(key), rec);

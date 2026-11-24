@@ -65,9 +65,7 @@ export const HABIT_EMOJIS = [
 ] as const;
 
 export type HabitBadge =
-  | { kind: 'none' }
-  | { kind: 'icon'; id: HabitIconId }
-  | { kind: 'emoji'; value: string };
+  { kind: 'none' } | { kind: 'icon'; id: HabitIconId } | { kind: 'emoji'; value: string };
 
 export interface ParsedHabitAppearance {
   color: string;

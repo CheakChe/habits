@@ -1,12 +1,3 @@
-import { initializeApp } from 'firebase/app';
-import {
-  Auth,
-  GoogleAuthProvider,
-  getAuth,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
 import { SessionMode } from '../types/domain';
 
 const SESSION_MODE_KEY = 'habits_session_mode';
@@ -29,12 +20,6 @@ export interface SignInOptions {
 
 export interface SessionManagerDependencies {
   oauthClientId?: string | null;
-  firebaseConfig?: {
-    apiKey: string;
-    authDomain: string;
-    projectId: string;
-    oAuthClientId?: string;
-  } | null;
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   fetchFn?: typeof fetch;
   getGisOAuth2?: () => GisOAuth2 | null;
@@ -42,9 +27,7 @@ export interface SessionManagerDependencies {
   nowFn?: () => number;
 }
 
-type GisOAuth2 = NonNullable<
-  NonNullable<NonNullable<Window['google']>['accounts']>['oauth2']
->;
+type GisOAuth2 = NonNullable<NonNullable<NonNullable<Window['google']>['accounts']>['oauth2']>;
 
 interface PendingGisRequest {
   resolve: (response: GisTokenResponse) => void;
@@ -53,8 +36,6 @@ interface PendingGisRequest {
 
 export class SessionManager {
   private readonly oauthClientId: string | null;
-  private readonly auth: Auth | null;
-  private readonly provider: GoogleAuthProvider | null;
   private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
   private readonly fetchFn: typeof fetch;
   private readonly getGisOAuth2Fn: () => GisOAuth2 | null;
@@ -64,7 +45,6 @@ export class SessionManager {
   private cachedAccessToken: string | null = null;
   private tokenExpiresAt = 0;
   private rememberedEmail: string | null = null;
-  private isSigningIn = false;
   private inFlightSignIn: Promise<string> | null = null;
   private gisTokenClient: GisTokenClient | null = null;
   private pendingGisRequest: PendingGisRequest | null = null;
@@ -78,55 +58,29 @@ export class SessionManager {
           ? localStorage
           : null;
     this.fetchFn =
-      deps.fetchFn ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : (() => {
-        throw new Error('fetch is not available');
-      }) as typeof fetch);
+      deps.fetchFn ??
+      (typeof fetch !== 'undefined'
+        ? fetch.bind(globalThis)
+        : ((() => {
+            throw new Error('fetch is not available');
+          }) as typeof fetch));
     this.nowFn = deps.nowFn ?? (() => Date.now());
     this.getGisOAuth2Fn =
       deps.getGisOAuth2 ??
-      (() =>
-        typeof window !== 'undefined'
-          ? window.google?.accounts?.oauth2 ?? null
-          : null);
+      (() => (typeof window !== 'undefined' ? (window.google?.accounts?.oauth2 ?? null) : null));
     this.loadGisScriptFn = deps.loadGisScript ?? (() => SessionManager.defaultLoadGisScript());
-
-    const buildFirebaseConfig =
-      deps.firebaseConfig !== undefined
-        ? deps.firebaseConfig
-        : typeof __FIREBASE_CONFIG__ !== 'undefined'
-          ? __FIREBASE_CONFIG__
-          : null;
 
     const buildClientId =
       deps.oauthClientId !== undefined
         ? deps.oauthClientId
         : typeof __GOOGLE_OAUTH_CLIENT_ID__ !== 'undefined' && __GOOGLE_OAUTH_CLIENT_ID__
           ? __GOOGLE_OAUTH_CLIENT_ID__
-          : buildFirebaseConfig?.oAuthClientId ?? null;
+          : null;
 
     this.oauthClientId =
       buildClientId && buildClientId.trim().length > 0 ? buildClientId.trim() : null;
 
     this.rememberedEmail = this.readRememberedEmail();
-
-    if (
-      !this.oauthClientId &&
-      buildFirebaseConfig &&
-      buildFirebaseConfig.apiKey &&
-      buildFirebaseConfig.authDomain &&
-      buildFirebaseConfig.projectId
-    ) {
-      const app = initializeApp(buildFirebaseConfig);
-      this.auth = getAuth(app);
-      this.provider = new GoogleAuthProvider();
-      for (const scope of WORKSPACE_SCOPES) {
-        this.provider.addScope(scope);
-      }
-      this.rememberedEmail = this.auth.currentUser?.email ?? this.rememberedEmail;
-    } else {
-      this.auth = null;
-      this.provider = null;
-    }
   }
 
   public isUsingGis(): boolean {
@@ -194,28 +148,8 @@ export class SessionManager {
   public subscribeAuthChanges(onAuthUpdate: (state: SessionAuthState) => void): () => void {
     this.authListeners.add(onAuthUpdate);
 
-    let unsubFirebase: (() => void) | null = null;
-    if (this.auth) {
-      unsubFirebase = onAuthStateChanged(this.auth, (user) => {
-        if (user) {
-          if (user.email) {
-            this.writeRememberedEmail(user.email);
-          }
-          if (!this.isSigningIn) {
-            this.notifyAuthListeners();
-          }
-        } else if (!this.isSigningIn && !this.oauthClientId) {
-          this.cachedAccessToken = null;
-          this.tokenExpiresAt = 0;
-          this.writeRememberedEmail(null);
-          this.notifyAuthListeners();
-        }
-      });
-    }
-
     return () => {
       this.authListeners.delete(onAuthUpdate);
-      unsubFirebase?.();
     };
   }
 
@@ -269,86 +203,78 @@ export class SessionManager {
     if (this.oauthClientId) {
       return this.signInWithGis(options);
     }
-    if (this.auth && this.provider) {
-      return this.signInWithFirebaseFallback();
-    }
     throw new Error(
       'Google Sign-In is not configured in this build. Continue as Guest or provide VITE_GOOGLE_OAUTH_CLIENT_ID during build.'
     );
   }
 
   private async signInWithGis(options: SignInOptions): Promise<string> {
-    this.isSigningIn = true;
+    // Keep requestTokenClient synchronous inside the user click whenever gsi/client is already loaded.
+    let oauth2 = this.getGisOAuth2Fn();
+    if (!oauth2) {
+      await this.loadGisScriptFn();
+      oauth2 = this.getGisOAuth2Fn();
+    }
+    if (!oauth2) {
+      throw new Error(
+        'Google Identity Services failed to initialize. Please check your connection and try again.'
+      );
+    }
+
+    const hintEmail = options.interactiveAccountPicker ? null : this.rememberedEmail;
+    const initialPrompt: '' | 'select_account' =
+      options.interactiveAccountPicker && !hintEmail ? 'select_account' : '';
+
+    let tokenResponse: GisTokenResponse;
     try {
-      // Keep requestTokenClient synchronous inside the user click whenever gsi/client is already loaded.
-      let oauth2 = this.getGisOAuth2Fn();
-      if (!oauth2) {
-        await this.loadGisScriptFn();
-        oauth2 = this.getGisOAuth2Fn();
-      }
-      if (!oauth2) {
-        throw new Error(
-          'Google Identity Services failed to initialize. Please check your connection and try again.'
-        );
-      }
-
-      const hintEmail = options.interactiveAccountPicker ? null : this.rememberedEmail;
-      const initialPrompt: '' | 'select_account' =
-        options.interactiveAccountPicker && !hintEmail ? 'select_account' : '';
-
-      let tokenResponse: GisTokenResponse;
-      try {
+      tokenResponse = await this.requestGisToken(oauth2, {
+        prompt: initialPrompt,
+        ...(hintEmail ? { hint: hintEmail } : {}),
+      });
+    } catch (err) {
+      if (err instanceof GisInteractionRequiredError) {
         tokenResponse = await this.requestGisToken(oauth2, {
-          prompt: initialPrompt,
+          prompt: hintEmail ? 'consent' : 'select_account',
           ...(hintEmail ? { hint: hintEmail } : {}),
         });
-      } catch (err) {
-        if (err instanceof GisInteractionRequiredError) {
-          tokenResponse = await this.requestGisToken(oauth2, {
-            prompt: hintEmail ? 'consent' : 'select_account',
-            ...(hintEmail ? { hint: hintEmail } : {}),
-          });
-        } else {
-          throw err;
-        }
+      } else {
+        throw err;
       }
+    }
 
-      if (!tokenResponse.access_token) {
-        throw new Error('Could not obtain Google Workspace access permission.');
-      }
+    if (!tokenResponse.access_token) {
+      throw new Error('Could not obtain Google Workspace access permission.');
+    }
 
+    if (
+      typeof oauth2.hasGrantedAllScopes === 'function' &&
+      !oauth2.hasGrantedAllScopes(tokenResponse, WORKSPACE_SCOPES[0], WORKSPACE_SCOPES[1])
+    ) {
+      tokenResponse = await this.requestGisToken(oauth2, {
+        prompt: 'consent',
+        ...(hintEmail ? { hint: hintEmail } : {}),
+      });
       if (
-        typeof oauth2.hasGrantedAllScopes === 'function' &&
+        !tokenResponse.access_token ||
         !oauth2.hasGrantedAllScopes(tokenResponse, WORKSPACE_SCOPES[0], WORKSPACE_SCOPES[1])
       ) {
-        tokenResponse = await this.requestGisToken(oauth2, {
-          prompt: 'consent',
-          ...(hintEmail ? { hint: hintEmail } : {}),
-        });
-        if (
-          !tokenResponse.access_token ||
-          !oauth2.hasGrantedAllScopes(tokenResponse, WORKSPACE_SCOPES[0], WORKSPACE_SCOPES[1])
-        ) {
-          throw new Error(
-            'Both Google Drive app-folder and Google Calendar permissions are required.'
-          );
-        }
+        throw new Error(
+          'Both Google Drive app-folder and Google Calendar permissions are required.'
+        );
       }
-
-      const expiresInSec = Number(tokenResponse.expires_in) || 3600;
-      this.cachedAccessToken = tokenResponse.access_token;
-      this.tokenExpiresAt = this.nowFn() + Math.max(30, expiresInSec - 60) * 1000;
-      this.setRememberedMode('google');
-
-      const resolvedEmail = await this.fetchDriveUserEmail(tokenResponse.access_token);
-      if (resolvedEmail) {
-        this.writeRememberedEmail(resolvedEmail);
-      }
-      this.notifyAuthListeners();
-      return tokenResponse.access_token;
-    } finally {
-      this.isSigningIn = false;
     }
+
+    const expiresInSec = Number(tokenResponse.expires_in) || 3600;
+    this.cachedAccessToken = tokenResponse.access_token;
+    this.tokenExpiresAt = this.nowFn() + Math.max(30, expiresInSec - 60) * 1000;
+    this.setRememberedMode('google');
+
+    const resolvedEmail = await this.fetchDriveUserEmail(tokenResponse.access_token);
+    if (resolvedEmail) {
+      this.writeRememberedEmail(resolvedEmail);
+    }
+    this.notifyAuthListeners();
+    return tokenResponse.access_token;
   }
 
   private getOrCreateTokenClient(oauth2: GisOAuth2): GisTokenClient {
@@ -430,8 +356,7 @@ export class SessionManager {
   }
 
   private async fetchDriveUserEmail(accessToken: string): Promise<string | null> {
-    const controller =
-      typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timeoutId =
       controller && typeof setTimeout !== 'undefined'
         ? setTimeout(() => controller.abort(), 2500)
@@ -457,46 +382,12 @@ export class SessionManager {
     }
   }
 
-  private async signInWithFirebaseFallback(): Promise<string> {
-    if (!this.auth || !this.provider) {
-      throw new Error('Firebase fallback is not configured.');
-    }
-    this.isSigningIn = true;
-    try {
-      const hintEmail = this.rememberedEmail ?? this.auth.currentUser?.email ?? null;
-      this.provider.setCustomParameters(hintEmail ? { login_hint: hintEmail } : {});
-      const result = await signInWithPopup(this.auth, this.provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('Could not obtain Google Workspace access permission.');
-      }
-      this.cachedAccessToken = credential.accessToken;
-      this.tokenExpiresAt = this.nowFn() + 55 * 60 * 1000;
-      const resolvedEmail = result.user?.email ?? hintEmail ?? null;
-      if (resolvedEmail) {
-        this.writeRememberedEmail(resolvedEmail);
-      }
-      this.setRememberedMode('google');
-      this.notifyAuthListeners();
-      return credential.accessToken;
-    } finally {
-      this.isSigningIn = false;
-    }
-  }
-
   public async clearSessionAndReturnToEntry(): Promise<void> {
     this.cachedAccessToken = null;
     this.tokenExpiresAt = 0;
     this.writeRememberedEmail(null);
     this.setRememberedMode(null);
     this.notifyAuthListeners();
-    if (this.auth) {
-      try {
-        await signOut(this.auth);
-      } catch {
-        // Safe fallback if already signed out
-      }
-    }
   }
 
   public clearAccessTokenOnly(): void {
@@ -514,9 +405,7 @@ export class SessionManager {
     }
 
     return new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>(
-        `script[src="${GIS_SCRIPT_SRC}"]`
-      );
+      const existing = document.querySelector<HTMLScriptElement>(`script[src="${GIS_SCRIPT_SRC}"]`);
       const script = existing ?? document.createElement('script');
 
       const cleanup = () => {

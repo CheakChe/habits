@@ -227,7 +227,10 @@ test('SnapshotCodec backward-compatibly unpacks v1 snapshots and rejects invalid
   const badVerFrame = new SnapshotBytes(badVerPayload.byteLength + 4);
   badVerFrame.writeBytes(badVerPayload);
   badVerFrame.writeUint32BE(SnapshotBytes.computeChecksum(badVerPayload));
-  assert.throws(() => SnapshotCodec.unpack(badVerFrame.toUint8Array()), /Unsupported snapshot version/);
+  assert.throws(
+    () => SnapshotCodec.unpack(badVerFrame.toUint8Array()),
+    /Unsupported snapshot version/
+  );
 
   // Bad magic header with valid checksum
   const badMagicPayload = payload.slice();
@@ -235,7 +238,10 @@ test('SnapshotCodec backward-compatibly unpacks v1 snapshots and rejects invalid
   const badMagicFrame = new SnapshotBytes(badMagicPayload.byteLength + 4);
   badMagicFrame.writeBytes(badMagicPayload);
   badMagicFrame.writeUint32BE(SnapshotBytes.computeChecksum(badMagicPayload));
-  assert.throws(() => SnapshotCodec.unpack(badMagicFrame.toUint8Array()), /Invalid snapshot header magic/);
+  assert.throws(
+    () => SnapshotCodec.unpack(badMagicFrame.toUint8Array()),
+    /Invalid snapshot header magic/
+  );
 
   // Trailing unread byte with valid checksum
   const trailingPayload = new SnapshotBytes(payload.byteLength + 1);
@@ -736,5 +742,3 @@ test('SnapshotCodec v8 round-trips measured habits, versioned dailyTarget, check
     { habitId: 42, dayIndex: baseDay, done: true, updatedAt: 1500 },
   ]);
 });
-
-

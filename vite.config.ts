@@ -2,71 +2,42 @@ import tailwindcss from '@tailwindcss/vite';
 import solid from 'vite-plugin-solid';
 import fs from 'fs';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
-import {VitePWA} from 'vite-plugin-pwa';
+import { visualizer } from 'rollup-plugin-visualizer';
+import { defineConfig, loadEnv } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
-function loadFirebaseConfig(env: Record<string, string>): Record<string, string> | null {
-  const localConfigPath = path.resolve(__dirname, 'firebase-applet-config.json');
-  if (fs.existsSync(localConfigPath)) {
-    try {
-      return JSON.parse(fs.readFileSync(localConfigPath, 'utf-8'));
-    } catch {
-      // fall through to env vars
-    }
-  }
-  const rawJson = env.FIREBASE_CONFIG_JSON?.trim();
-  if (rawJson) {
-    try {
-      return JSON.parse(rawJson);
-    } catch {
-      // fall through to individual VITE_FIREBASE_* vars
-    }
-  }
-  if (env.VITE_FIREBASE_API_KEY && env.VITE_FIREBASE_PROJECT_ID) {
-    return {
-      apiKey: env.VITE_FIREBASE_API_KEY,
-      authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || `${env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
-      projectId: env.VITE_FIREBASE_PROJECT_ID,
-      appId: env.VITE_FIREBASE_APP_ID ?? '',
-      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET ?? '',
-      messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '',
-    };
-  }
-  return null;
-}
-
-function loadGoogleOAuthClientId(
-  env: Record<string, string>,
-  firebaseConfig: Record<string, string> | null
-): string | null {
+function loadGoogleOAuthClientId(env: Record<string, string>): string | null {
   const fromEnv =
-    env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim() ||
-    env.GOOGLE_OAUTH_CLIENT_ID?.trim() ||
-    '';
-  if (fromEnv) {
-    return fromEnv;
-  }
-  const fromConfig = firebaseConfig?.oAuthClientId?.trim() || '';
-  return fromConfig || null;
+    env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim() || env.GOOGLE_OAUTH_CLIENT_ID?.trim() || '';
+  return fromEnv || null;
 }
 
-export default defineConfig(({mode}) => {
+export default defineConfig(({ mode }) => {
   const env = {
-    ...loadEnv(mode, __dirname, ''),
+    ...loadEnv(mode, import.meta.dirname, ''),
     ...(process.env as Record<string, string>),
   };
-  const firebaseConfig = loadFirebaseConfig(env);
-  const googleOAuthClientId = loadGoogleOAuthClientId(env, firebaseConfig);
+  const googleOAuthClientId = loadGoogleOAuthClientId(env);
+  const analyzeBundle = env.ANALYZE === 'true';
 
   return {
     base: './',
     define: {
-      __FIREBASE_CONFIG__: JSON.stringify(firebaseConfig),
       __GOOGLE_OAUTH_CLIENT_ID__: JSON.stringify(googleOAuthClientId),
     },
     plugins: [
       solid(),
       tailwindcss(),
+      ...(analyzeBundle
+        ? [
+            visualizer({
+              filename: 'dist/stats.html',
+              gzipSize: true,
+              brotliSize: true,
+              open: false,
+            }),
+          ]
+        : []),
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: [
@@ -110,6 +81,7 @@ export default defineConfig(({mode}) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,webmanifest}'],
+          globIgnores: ['**/stats.html'],
           navigateFallbackDenylist: [/\/privacy\.html$/],
           runtimeCaching: [
             {
@@ -157,18 +129,18 @@ export default defineConfig(({mode}) => {
           if (error) {
             return;
           }
-          const distDir = path.resolve(__dirname, 'dist');
-          const srcAssets = path.resolve(__dirname, 'src/assets');
+          const distDir = path.resolve(import.meta.dirname, 'dist');
+          const srcAssets = path.resolve(import.meta.dirname, 'src/assets');
           const distAssets = path.resolve(distDir, 'src/assets');
           if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
-            fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
+            fs.cpSync(srcAssets, distAssets, { recursive: true, force: true });
           }
         },
       },
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
     },
     server: {

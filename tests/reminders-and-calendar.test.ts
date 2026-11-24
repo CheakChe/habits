@@ -683,7 +683,14 @@ test('CalendarReminderService reuses existing secondary calendar on a second dev
   }) as typeof fetch;
 
   const service = new CalendarReminderService();
-  const plan = await service.prepareSyncPlan('google', 'tok-device-2', snap, TUESDAY_DAY, prefs, 'UTC');
+  const plan = await service.prepareSyncPlan(
+    'google',
+    'tok-device-2',
+    snap,
+    TUESDAY_DAY,
+    prefs,
+    'UTC'
+  );
 
   assert.equal(plan.willCreateCalendar, false);
   assert.equal(plan.calendarId, 'cal-a-primary');
@@ -859,7 +866,9 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
     updatedAt: 2000,
   };
 
-  const extractJsonFromMultipart = (body: BodyInit | null | undefined): Record<string, unknown> | null => {
+  const extractJsonFromMultipart = (
+    body: BodyInit | null | undefined
+  ): Record<string, unknown> | null => {
     const raw =
       typeof body === 'string'
         ? body
@@ -898,7 +907,9 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
       return new Response(JSON.stringify({ id: 'meta-tz-1' }), { status: 200 });
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-tz-1')) {
-      return new Response(JSON.stringify({ id: 'cal-tz-1', timeZone: 'Asia/Tokyo' }), { status: 200 });
+      return new Response(JSON.stringify({ id: 'cal-tz-1', timeZone: 'Asia/Tokyo' }), {
+        status: 200,
+      });
     }
     if (method === 'DELETE' && url.endsWith('/calendars/cal-tz-1')) {
       return new Response(null, { status: 204 });
@@ -920,18 +931,12 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
   assert.equal(pulledNoCal?.timeZoneUpdatedAt, 2000);
 
   // 2) Device with a newer local timeZone pushes it to Drive (even with no calendar yet)
-  const pushedNoCal = await service.syncRemoteCalendarId(
-    'google',
-    'tok-1',
-    null,
-    'Europe/Berlin',
-    {
-      calendarEnabled: false,
-      reminderTime: '20:00',
-      horizonDays: 3,
-      timeZoneUpdatedAt: 5000,
-    }
-  );
+  const pushedNoCal = await service.syncRemoteCalendarId('google', 'tok-1', null, 'Europe/Berlin', {
+    calendarEnabled: false,
+    reminderTime: '20:00',
+    horizonDays: 3,
+    timeZoneUpdatedAt: 5000,
+  });
   assert.equal(pushedNoCal?.timeZone, 'Europe/Berlin');
   assert.equal(pushedNoCal?.timeZoneUpdatedAt, 5000);
   assert.equal(remoteMeta?.timeZone, 'Europe/Berlin');
@@ -1107,8 +1112,3 @@ test('ReminderPlanner evaluates measured habit checkins against active dailyTarg
   );
   assert.equal(tueDone.unfinishedHabitsCount, 0);
 });
-
-
-
-
-

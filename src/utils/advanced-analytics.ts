@@ -1,11 +1,4 @@
-import {
-  DomainSnapshot,
-  Habit,
-  HabitCheckin,
-  HabitNote,
-  Task,
-  TaskStatus,
-} from '../types/domain';
+import { DomainSnapshot, Habit, HabitCheckin, HabitNote, Task, TaskStatus } from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
 import { DayCellTone } from './date-range';
 import { HabitSchedule } from './habit-schedule';
@@ -236,16 +229,103 @@ export interface AdvancedAnalyticsReport {
 
 const STOP_WORDS = new Set([
   // English
-  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'have', 'has', 'had', 'was',
-  'were', 'are', 'but', 'not', 'you', 'your', 'all', 'can', 'just', 'very', 'more',
-  'out', 'too', 'day', 'days', 'today', 'did', 'done', 'into', 'after', 'before',
-  'about', 'only', 'then', 'than', 'when', 'what', 'why', 'how', 'some', 'much',
+  'the',
+  'and',
+  'for',
+  'with',
+  'that',
+  'this',
+  'from',
+  'have',
+  'has',
+  'had',
+  'was',
+  'were',
+  'are',
+  'but',
+  'not',
+  'you',
+  'your',
+  'all',
+  'can',
+  'just',
+  'very',
+  'more',
+  'out',
+  'too',
+  'day',
+  'days',
+  'today',
+  'did',
+  'done',
+  'into',
+  'after',
+  'before',
+  'about',
+  'only',
+  'then',
+  'than',
+  'when',
+  'what',
+  'why',
+  'how',
+  'some',
+  'much',
   // Russian
-  'это', 'как', 'так', 'для', 'что', 'или', 'при', 'без', 'под', 'над', 'про', 'уже',
-  'еще', 'ещё', 'был', 'была', 'были', 'было', 'быть', 'все', 'всё', 'очень', 'только',
-  'день', 'дня', 'дней', 'сегодня', 'вчера', 'после', 'перед', 'если', 'когда', 'чтобы',
-  'меня', 'мне', 'мой', 'моя', 'мои', 'свой', 'своя', 'него', 'неё', 'них', 'тоже',
-  'тут', 'там', 'раз', 'два', 'три', 'надо', 'нужно', 'можно', 'нет', 'даже',
+  'это',
+  'как',
+  'так',
+  'для',
+  'что',
+  'или',
+  'при',
+  'без',
+  'под',
+  'над',
+  'про',
+  'уже',
+  'еще',
+  'ещё',
+  'был',
+  'была',
+  'были',
+  'было',
+  'быть',
+  'все',
+  'всё',
+  'очень',
+  'только',
+  'день',
+  'дня',
+  'дней',
+  'сегодня',
+  'вчера',
+  'после',
+  'перед',
+  'если',
+  'когда',
+  'чтобы',
+  'меня',
+  'мне',
+  'мой',
+  'моя',
+  'мои',
+  'свой',
+  'своя',
+  'него',
+  'неё',
+  'них',
+  'тоже',
+  'тут',
+  'там',
+  'раз',
+  'два',
+  'три',
+  'надо',
+  'нужно',
+  'можно',
+  'нет',
+  'даже',
 ]);
 
 function resolveTaskStatus(task: Task): TaskStatus {
@@ -344,10 +424,7 @@ export class AdvancedAnalytics {
     for (const h of targetHabits) {
       const doneSet = new Set<number>();
       for (const c of snapshot.checkins) {
-        if (
-          c.habitId === h.id &&
-          HabitSchedule.isCheckinDoneForDay(h, c, c.dayIndex)
-        ) {
+        if (c.habitId === h.id && HabitSchedule.isCheckinDoneForDay(h, c, c.dayIndex)) {
           doneSet.add(c.dayIndex);
         }
       }
@@ -419,10 +496,7 @@ export class AdvancedAnalytics {
       todayDay,
       timeZone
     );
-    const repeatableTasks = AdvancedAnalytics.computeRepeatableTasks(
-      snapshot.tasks,
-      timeZone
-    );
+    const repeatableTasks = AdvancedAnalytics.computeRepeatableTasks(snapshot.tasks, timeZone);
     const { forecast: workloadForecast, overdueBacklogCount } =
       AdvancedAnalytics.computeWorkloadForecast(
         snapshot.habits,
@@ -544,7 +618,7 @@ export class AdvancedAnalytics {
             const wStart = Math.max(habit.startDay, ws);
             const sched = HabitSchedule.getAtDay(habit, wFullEnd);
             if (sched.weeklyTarget === null) continue;
-            const eligibleMask = (sched.weekdays & 0x7f) || 0x7f;
+            const eligibleMask = sched.weekdays & 0x7f || 0x7f;
             const eligibleDays = CivilCalendar.countScheduledInRange(
               eligibleMask,
               wStart,
@@ -614,9 +688,7 @@ export class AdvancedAnalytics {
         );
         if (baseMetrics.scheduledDays >= 3 && recentMetrics.scheduledDays >= 2) {
           baselineRate = baseMetrics.completionRate;
-          dropPct = Math.round(
-            (recentMetrics.completionRate - baselineRate) * 100
-          );
+          dropPct = Math.round((recentMetrics.completionRate - baselineRate) * 100);
         }
       }
 
@@ -653,9 +725,7 @@ export class AdvancedAnalytics {
     }
 
     return out.sort(
-      (a, b) =>
-        b.consecutiveMisses - a.consecutiveMisses ||
-        (a.dropPct ?? 0) - (b.dropPct ?? 0)
+      (a, b) => b.consecutiveMisses - a.consecutiveMisses || (a.dropPct ?? 0) - (b.dropPct ?? 0)
     );
   }
 
@@ -684,7 +754,7 @@ export class AdvancedAnalytics {
         const segments = HabitSchedule.getSegmentsInRange(habit, effStart, endDay);
         for (const seg of segments) {
           if (seg.weeklyTarget !== null) {
-            allowedWeekdaysMask |= (seg.weekdays & 0x7f) || 0x7f;
+            allowedWeekdaysMask |= seg.weekdays & 0x7f || 0x7f;
           } else {
             allowedWeekdaysMask |= seg.weekdays & 0x7f;
           }
@@ -789,12 +859,8 @@ export class AdvancedAnalytics {
         if (wFullEnd < wFullStart) continue;
         const sc = HabitSchedule.getAtDay(habit, wFullEnd);
         if (sc.weeklyTarget === null) continue;
-        const eligibleMask = (sc.weekdays & 0x7f) || 0x7f;
-        const eligible = CivilCalendar.countScheduledInRange(
-          eligibleMask,
-          wFullStart,
-          ws + 6
-        );
+        const eligibleMask = sc.weekdays & 0x7f || 0x7f;
+        const eligible = CivilCalendar.countScheduledInRange(eligibleMask, wFullStart, ws + 6);
         const target = Math.min(sc.weeklyTarget, eligible);
         if (target <= 0) continue;
 
@@ -882,8 +948,7 @@ export class AdvancedAnalytics {
         exactDays,
         overachievedDays,
         totalLoggedDays,
-        avgPartialPct:
-          partialDays === 0 ? null : Math.round((partialRatioSum / partialDays) * 100),
+        avgPartialPct: partialDays === 0 ? null : Math.round((partialRatioSum / partialDays) * 100),
         bestDayValue: Math.round(bestDayValue * 100) / 100,
         bestDayIndex,
       });
@@ -918,13 +983,7 @@ export class AdvancedAnalytics {
 
         if (beforeEnd < beforeStart || afterEnd < afterStart) continue;
 
-        const beforeM = StreakCalculator.calculate(
-          habit,
-          checkins,
-          beforeStart,
-          beforeEnd,
-          false
-        );
+        const beforeM = StreakCalculator.calculate(habit, checkins, beforeStart, beforeEnd, false);
         const afterM = StreakCalculator.calculate(
           habit,
           checkins,
@@ -1018,8 +1077,7 @@ export class AdvancedAnalytics {
       sameDayCount,
       retroactiveCount,
       earlyOrOtherCount,
-      retroactiveRate:
-        totalDoneCheckins === 0 ? null : retroactiveCount / totalDoneCheckins,
+      retroactiveRate: totalDoneCheckins === 0 ? null : retroactiveCount / totalDoneCheckins,
       timeOfDayBuckets: [
         {
           id: 'morning',
@@ -1078,9 +1136,9 @@ export class AdvancedAnalytics {
       if (status === 'open') continue;
       const closeDay =
         status === 'done'
-          ? task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone)
+          ? (task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone))
           : status === 'not_done'
-            ? task.dueDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone)
+            ? (task.dueDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone))
             : CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
       if (closeDay >= startDay && closeDay <= endDay) {
         events.push({ day: closeDay, kind: status });
@@ -1153,7 +1211,7 @@ export class AdvancedAnalytics {
       for (let m = 0; m < monthCount; m++) {
         const total = startLocal.year * 12 + (startLocal.month - 1) + m;
         const year = Math.floor(total / 12);
-        const month = ((total % 12) + 12) % 12 + 1;
+        const month = (((total % 12) + 12) % 12) + 1;
         const monthStart = CivilCalendar.fromLocalDate(year, month, 1);
         const daysInMonth = CivilCalendar.getMonthDays(year, month).days.length;
         const bs = Math.max(startDay, monthStart);
@@ -1246,9 +1304,9 @@ export class AdvancedAnalytics {
 
       const closeDay =
         status === 'done'
-          ? task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone)
+          ? (task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone))
           : status === 'not_done'
-            ? task.dueDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone)
+            ? (task.dueDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone))
             : CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
 
       if (closeDay < startDay || closeDay > endDay) continue;
@@ -1277,18 +1335,14 @@ export class AdvancedAnalytics {
     const avgLateDays =
       lateTasksCount === 0
         ? null
-        : Math.round(
-            (lateDeltas.reduce((acc, v) => acc + v, 0) / lateTasksCount) * 10
-          ) / 10;
+        : Math.round((lateDeltas.reduce((acc, v) => acc + v, 0) / lateTasksCount) * 10) / 10;
     const medianLateDays =
       lateTasksCount === 0
         ? null
         : lateTasksCount % 2 === 1
           ? lateDeltas[Math.floor(lateTasksCount / 2)]
           : Math.round(
-              ((lateDeltas[lateTasksCount / 2 - 1] + lateDeltas[lateTasksCount / 2]) /
-                2) *
-                10
+              ((lateDeltas[lateTasksCount / 2 - 1] + lateDeltas[lateTasksCount / 2]) / 2) * 10
             ) / 10;
     const maxLateDays = lateTasksCount === 0 ? 0 : lateDeltas[lateTasksCount - 1];
 
@@ -1296,9 +1350,7 @@ export class AdvancedAnalytics {
     const avgDaysEarly =
       earlyTasksCount === 0
         ? null
-        : Math.round(
-            (earlyDeltas.reduce((acc, v) => acc + v, 0) / earlyTasksCount) * 10
-          ) / 10;
+        : Math.round((earlyDeltas.reduce((acc, v) => acc + v, 0) / earlyTasksCount) * 10) / 10;
 
     return {
       totalCreatedInRange,
@@ -1311,35 +1363,24 @@ export class AdvancedAnalytics {
       earlyTasksCount,
       avgDaysEarly,
       datedCycleTimeAvgDays:
-        datedCycleCount === 0
-          ? null
-          : Math.round((datedCycleSum / datedCycleCount) * 10) / 10,
+        datedCycleCount === 0 ? null : Math.round((datedCycleSum / datedCycleCount) * 10) / 10,
       datedCycleCount,
       goalsCycleTimeAvgDays:
-        goalsCycleCount === 0
-          ? null
-          : Math.round((goalsCycleSum / goalsCycleCount) * 10) / 10,
+        goalsCycleCount === 0 ? null : Math.round((goalsCycleSum / goalsCycleCount) * 10) / 10,
       goalsCycleCount,
       openOverdueCount,
       avgOverdueAgeDays:
-        openOverdueCount === 0
-          ? null
-          : Math.round((overdueAgeSum / openOverdueCount) * 10) / 10,
+        openOverdueCount === 0 ? null : Math.round((overdueAgeSum / openOverdueCount) * 10) / 10,
       maxOverdueAgeDays,
       oldestOverdueTitle,
       openGoalsCount,
       avgGoalAgeDays:
-        openGoalsCount === 0
-          ? null
-          : Math.round((goalAgeSum / openGoalsCount) * 10) / 10,
+        openGoalsCount === 0 ? null : Math.round((goalAgeSum / openGoalsCount) * 10) / 10,
       oldestGoalTitle,
     };
   }
 
-  private static computeRepeatableTasks(
-    tasks: Task[],
-    timeZone: string
-  ): RepeatableTaskStat[] {
+  private static computeRepeatableTasks(tasks: Task[], timeZone: string): RepeatableTaskStat[] {
     interface Group {
       title: string;
       doneDays: number[];
@@ -1366,8 +1407,7 @@ export class AdvancedAnalytics {
       }
       const status = resolveTaskStatus(task);
       if (status === 'done') {
-        const day =
-          task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
+        const day = task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
         g.doneDays.push(day);
       } else if (status === 'not_done') {
         g.notDoneCount += 1;
@@ -1395,18 +1435,14 @@ export class AdvancedAnalytics {
         notDoneCount: g.notDoneCount,
         openCount: g.openCount,
         archivedCount: g.archivedCount,
-        lastDoneDay:
-          g.doneDays.length > 0 ? g.doneDays[g.doneDays.length - 1] : null,
+        lastDoneDay: g.doneDays.length > 0 ? g.doneDays[g.doneDays.length - 1] : null,
         avgGapDays,
       });
     }
 
     return out.sort(
       (a, b) =>
-        b.doneCount +
-          b.notDoneCount +
-          b.openCount -
-          (a.doneCount + a.notDoneCount + a.openCount) ||
+        b.doneCount + b.notDoneCount + b.openCount - (a.doneCount + a.notDoneCount + a.openCount) ||
         b.doneCount - a.doneCount
     );
   }
@@ -1461,7 +1497,7 @@ export class AdvancedAnalytics {
             fixedHabitsCount += 1;
           }
         } else {
-          const eligibleMask = (sc.weekdays & 0x7f) || 0x7f;
+          const eligibleMask = sc.weekdays & 0x7f || 0x7f;
           if (!CivilCalendar.isScheduled(eligibleMask, dayIndex)) continue;
           if (dayWs === todayWs) {
             const doneSoFar = doneInCurrentWeekByHabit.get(h.id) ?? 0;
@@ -1511,9 +1547,27 @@ export class AdvancedAnalytics {
 
     if (endDay < startDay || habits.length === 0) {
       return [
-        { id: 'light', label: 'Light Days', taskCountLabel: '0–1 tasks', ...buckets.light, habitRate: null },
-        { id: 'medium', label: 'Medium Days', taskCountLabel: '2–3 tasks', ...buckets.medium, habitRate: null },
-        { id: 'heavy', label: 'Heavy Days', taskCountLabel: '4+ tasks', ...buckets.heavy, habitRate: null },
+        {
+          id: 'light',
+          label: 'Light Days',
+          taskCountLabel: '0–1 tasks',
+          ...buckets.light,
+          habitRate: null,
+        },
+        {
+          id: 'medium',
+          label: 'Medium Days',
+          taskCountLabel: '2–3 tasks',
+          ...buckets.medium,
+          habitRate: null,
+        },
+        {
+          id: 'heavy',
+          label: 'Heavy Days',
+          taskCountLabel: '4+ tasks',
+          ...buckets.heavy,
+          habitRate: null,
+        },
       ];
     }
 
@@ -1544,8 +1598,7 @@ export class AdvancedAnalytics {
         registerTaskDay(task.dueDay, task.id);
       }
       if (status === 'done') {
-        const doneDay =
-          task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
+        const doneDay = task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
         registerTaskDay(doneDay, task.id);
       }
     }
@@ -1624,10 +1677,7 @@ export class AdvancedAnalytics {
       todayDay
     );
 
-    const taskDayMap = new Map<
-      number,
-      { done: number; notDone: number; dueOpen: number }
-    >();
+    const taskDayMap = new Map<number, { done: number; notDone: number; dueOpen: number }>();
     const getT = (d: number) => {
       let item = taskDayMap.get(d);
       if (!item) {
@@ -1641,8 +1691,7 @@ export class AdvancedAnalytics {
       if (task.deletedAt !== null) continue;
       const status = resolveTaskStatus(task);
       if (status === 'done') {
-        const day =
-          task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
+        const day = task.completedDay ?? CivilCalendar.fromTimestamp(task.updatedAt, timeZone);
         if (day >= clampedStart && day <= effectiveEnd) {
           getT(day).done += 1;
         }
@@ -1710,22 +1759,10 @@ export class AdvancedAnalytics {
         const tasksDueOpen = tEntry?.dueOpen ?? 0;
         totalTaskDone += tasksDone;
 
-        const habitTone = classifyRatioTone(
-          dayIndex,
-          todayDay,
-          habitsScheduled,
-          habitsDone,
-          false
-        );
+        const habitTone = classifyRatioTone(dayIndex, todayDay, habitsScheduled, habitsDone, false);
 
         const taskTotal = tasksDone + tasksNotDone + tasksDueOpen;
-        const taskTone = classifyRatioTone(
-          dayIndex,
-          todayDay,
-          taskTotal,
-          tasksDone,
-          false
-        );
+        const taskTone = classifyRatioTone(dayIndex, todayDay, taskTotal, tasksDone, false);
 
         const combinedTotal = habitsScheduled + taskTotal;
         const combinedDone = habitsDone + tasksDone;
@@ -1777,10 +1814,7 @@ export class AdvancedAnalytics {
     let notesOnDoneDays = 0;
     let notesOnMissedDays = 0;
     let notesOnUnscheduledDays = 0;
-    const keywordMap = new Map<
-      string,
-      { count: number; missedCount: number; doneCount: number }
-    >();
+    const keywordMap = new Map<string, { count: number; missedCount: number; doneCount: number }>();
     const entries: NoteInsightEntry[] = [];
 
     for (const note of notes) {
@@ -1797,7 +1831,7 @@ export class AdvancedAnalytics {
       const sched = HabitSchedule.getAtDay(habit, note.dayIndex);
       const isScheduled =
         sched.weeklyTarget !== null
-          ? CivilCalendar.isScheduled((sched.weekdays & 0x7f) || 0x7f, note.dayIndex)
+          ? CivilCalendar.isScheduled(sched.weekdays & 0x7f || 0x7f, note.dayIndex)
           : CivilCalendar.isScheduled(sched.weekdays, note.dayIndex);
 
       let status: NoteInsightEntry['status'];
@@ -1821,9 +1855,7 @@ export class AdvancedAnalytics {
         status,
       });
 
-      const tokens = trimmed
-        .toLowerCase()
-        .match(/#?[\p{L}\p{N}_]{3,}/gu);
+      const tokens = trimmed.toLowerCase().match(/#?[\p{L}\p{N}_]{3,}/gu);
       if (tokens) {
         const seenInNote = new Set<string>();
         for (const clean of tokens) {

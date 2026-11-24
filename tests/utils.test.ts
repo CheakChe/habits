@@ -14,11 +14,7 @@ import {
 import { AdvancedAnalytics } from '../src/utils/advanced-analytics';
 import { ChartsAnalytics } from '../src/utils/charts-analytics';
 import { CivilCalendar } from '../src/utils/civil-calendar';
-import {
-  DATE_RANGE_PRESETS,
-  DateRangeResolver,
-  DayCellClassifier,
-} from '../src/utils/date-range';
+import { DATE_RANGE_PRESETS, DateRangeResolver, DayCellClassifier } from '../src/utils/date-range';
 import { HabitAppearance } from '../src/utils/habit-appearance';
 import { HabitSchedule } from '../src/utils/habit-schedule';
 import { Helpers, NonRetryableError } from '../src/utils/helpers';
@@ -487,16 +483,136 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
   );
 
   const tasks: Task[] = [
-    { id: 5, title: 'Future', note: 'Call dentist', dueDay: today + 2, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 4, title: 'No date', note: 'Read spec', dueDay: null, done: false, status: 'open', completedDay: null, repeatable: true, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 3, title: 'Today B', note: '', dueDay: today, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 1, title: 'Today A', note: 'Dentist receipt', dueDay: today, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 6, title: 'Overdue newer', note: '', dueDay: today - 1, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 2, title: 'Overdue older', note: '', dueDay: today - 5, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 1 },
-    { id: 7, title: 'Done overdue', note: '', dueDay: today - 3, done: true, status: 'done', completedDay: today - 1, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 10 },
-    { id: 8, title: 'Deleted today', note: 'Dentist', dueDay: today, done: false, status: 'open', completedDay: null, repeatable: false, deletedAt: 100, createdAt: 1, updatedAt: 100 },
-    { id: 9, title: 'Missed deadline', note: 'Too late', dueDay: today - 2, done: false, status: 'not_done', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 20 },
-    { id: 10, title: 'Archived goal', note: 'Not relevant', dueDay: null, done: false, status: 'archived', completedDay: null, repeatable: false, deletedAt: null, createdAt: 1, updatedAt: 30 },
+    {
+      id: 5,
+      title: 'Future',
+      note: 'Call dentist',
+      dueDay: today + 2,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 4,
+      title: 'No date',
+      note: 'Read spec',
+      dueDay: null,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: true,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 3,
+      title: 'Today B',
+      note: '',
+      dueDay: today,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 1,
+      title: 'Today A',
+      note: 'Dentist receipt',
+      dueDay: today,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 6,
+      title: 'Overdue newer',
+      note: '',
+      dueDay: today - 1,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 2,
+      title: 'Overdue older',
+      note: '',
+      dueDay: today - 5,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 7,
+      title: 'Done overdue',
+      note: '',
+      dueDay: today - 3,
+      done: true,
+      status: 'done',
+      completedDay: today - 1,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 10,
+    },
+    {
+      id: 8,
+      title: 'Deleted today',
+      note: 'Dentist',
+      dueDay: today,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: 100,
+      createdAt: 1,
+      updatedAt: 100,
+    },
+    {
+      id: 9,
+      title: 'Missed deadline',
+      note: 'Too late',
+      dueDay: today - 2,
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 20,
+    },
+    {
+      id: 10,
+      title: 'Archived goal',
+      note: 'Not relevant',
+      dueDay: null,
+      done: false,
+      status: 'archived',
+      completedDay: null,
+      repeatable: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 30,
+    },
   ];
 
   const partition = TodayBoard.getTodayAndOverdueTasks(tasks, today);
@@ -518,13 +634,34 @@ test('TodayBoard filters scheduled habits and sorts overdue/today tasks cleanly'
   assert.equal(TodayBoard.suggestNextOccurrenceDueDay(tasks[0], today), today + 3);
 
   // Filter modes + search query across title & notes + deleted exclusion
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'all').map((t) => t.id), [2, 6, 1, 3, 5, 4]);
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'today').map((t) => t.id), [1, 3]);
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'overdue').map((t) => t.id), [2, 6]);
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'nodate').map((t) => t.id), [4]);
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'completed').map((t) => t.id), [7]);
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'not_done').map((t) => t.id), [9]);
-  assert.deepEqual(TodayBoard.filterTasks(tasks, today, 'archived').map((t) => t.id), [10]);
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'all').map((t) => t.id),
+    [2, 6, 1, 3, 5, 4]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'today').map((t) => t.id),
+    [1, 3]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'overdue').map((t) => t.id),
+    [2, 6]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'nodate').map((t) => t.id),
+    [4]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'completed').map((t) => t.id),
+    [7]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'not_done').map((t) => t.id),
+    [9]
+  );
+  assert.deepEqual(
+    TodayBoard.filterTasks(tasks, today, 'archived').map((t) => t.id),
+    [10]
+  );
   assert.deepEqual(
     TodayBoard.filterTasks(tasks, today, 'all', '  DENTIST  ').map((t) => t.id),
     [1, 5]
@@ -1296,20 +1433,11 @@ test('Flexible weekly target habits work across TodayBoard, StreakCalculator, Da
 
   // 4. TodayBoard scheduling & deadline hints
   // Week 1 Wed (w1Mon + 2): 3rd check-in happened on Wed -> MUST still stay visible on Wed (checked today!)
-  assert.equal(
-    TodayBoard.getScheduledHabits([flexHabit], w1Mon + 2, checkins).length,
-    1
-  );
+  assert.equal(TodayBoard.getScheduledHabits([flexHabit], w1Mon + 2, checkins).length, 1);
   // Week 1 Thu (w1Mon + 3): target 3/3 was already closed Mon-Wed & Thu is unchecked -> hidden from Today!
-  assert.equal(
-    TodayBoard.getScheduledHabits([flexHabit], w1Mon + 3, checkins).length,
-    0
-  );
+  assert.equal(TodayBoard.getScheduledHabits([flexHabit], w1Mon + 3, checkins).length, 0);
   // Week 2 Sat (w2Mon + 5): only 1/3 done in Mon, 2 days left (Sat & Sun) for 2 remaining -> visible & mustDoToday = true!
-  assert.equal(
-    TodayBoard.getScheduledHabits([flexHabit], w2Mon + 5, checkins).length,
-    1
-  );
+  assert.equal(TodayBoard.getScheduledHabits([flexHabit], w2Mon + 5, checkins).length, 1);
   const satStatus = TodayBoard.getFlexibleWeekStatus(flexHabit, checkins, w2Mon + 5);
   assert.ok(satStatus);
   assert.equal(satStatus.remainingDays, 2);
@@ -1318,13 +1446,7 @@ test('Flexible weekly target habits work across TodayBoard, StreakCalculator, Da
 
   // 5. getPeriodDayStats & ChartsAnalytics:
   // In Week 2 (Mon done, Tue-Fri rest, Sat-Sun shortfall 2), Tue-Fri have scheduled=0, Mon=1/1, Sat & Sun=0/1!
-  const w2Stats = StreakCalculator.getPeriodDayStats(
-    [flexHabit],
-    checkins,
-    w2Mon,
-    w2Sun,
-    w2Sun
-  );
+  const w2Stats = StreakCalculator.getPeriodDayStats([flexHabit], checkins, w2Mon, w2Sun, w2Sun);
   assert.deepEqual(w2Stats.get(w2Mon), { scheduled: 1, done: 1 });
   assert.equal(w2Stats.get(w2Mon + 1), undefined); // Tue rest
   assert.equal(w2Stats.get(w2Mon + 4), undefined); // Fri rest
@@ -1580,13 +1702,7 @@ test('HabitSchedule and versioned schedules work across Fixed<->Flex cross-week 
   assert.equal(metricsDoneW2.completionRate, 1);
 
   // PeriodDayStats & ChartsAnalytics respect Week 1 fixed days vs Week 2 flex days
-  const stats = StreakCalculator.getPeriodDayStats(
-    [fixedToFlexHabit],
-    c1Done,
-    w1Mon,
-    w2Sun,
-    w2Sun
-  );
+  const stats = StreakCalculator.getPeriodDayStats([fixedToFlexHabit], c1Done, w1Mon, w2Sun, w2Sun);
   assert.deepEqual(stats.get(w1Mon), { scheduled: 1, done: 1 });
   assert.equal(stats.get(w1Mon + 1), undefined); // Week 1 Tue was off-schedule fixed
   assert.deepEqual(stats.get(w2Tue), { scheduled: 1, done: 1 });
@@ -1668,13 +1784,7 @@ test('HabitSchedule and versioned schedules work across Fixed<->Flex cross-week 
     { habitId: 32, dayIndex: w2Mon, done: true, updatedAt: 1 },
   ];
   // Current streak is measured in 'days' (latest schedule is Fixed), carrying 2 done from passed Flex Week 1 + Mon Week 2 = 3d!
-  const mFlexToFixed = StreakCalculator.calculate(
-    flexToFixed,
-    cFlexToFixed,
-    w1Mon,
-    w2Wed,
-    true
-  );
+  const mFlexToFixed = StreakCalculator.calculate(flexToFixed, cFlexToFixed, w1Mon, w2Wed, true);
   assert.equal(mFlexToFixed.streakUnit, 'days');
   assert.equal(mFlexToFixed.currentStreak, 3);
   assert.equal(mFlexToFixed.scheduledDays, 4); // 2 in W1 + Mon & Wed in W2
@@ -1806,7 +1916,13 @@ test('Measured habits domain helpers, stepped dailyTarget discipline metrics, an
   assert.equal(flexStatus.remainingNeeded, 2);
 
   // Flexible weekly volume bucket target over W2 (full week 7 days -> 3 * 20 = 60)
-  const flexVol = ChartsAnalytics.habitVolumeBuckets(flexMeasured, flexCheckins, w2Mon, w2Mon + 6, 4);
+  const flexVol = ChartsAnalytics.habitVolumeBuckets(
+    flexMeasured,
+    flexCheckins,
+    w2Mon,
+    w2Mon + 6,
+    4
+  );
   assert.equal(flexVol.length, 1);
   assert.equal(flexVol[0].actualTotal, 32); // 20 + 12 actual pages logged
   assert.equal(flexVol[0].targetTotal, 60); // 3 * 20
@@ -1981,16 +2097,112 @@ test('AdvancedAnalytics computes bounce-back, at-risk, matrix, flex/measured, sc
 
   const tasks: Task[] = [
     // Heavy task day on w1Thu (4 tasks due/done)
-    { id: 1, title: 'T1', note: '', dueDay: w1Thu, done: true, status: 'done', completedDay: w1Thu, repeatable: false, createdAt: dayMidUtcMs(w1Mon, 10), updatedAt: dayMidUtcMs(w1Thu, 15), deletedAt: null },
-    { id: 2, title: 'T2', note: '', dueDay: w1Thu, done: true, status: 'done', completedDay: w1Fri, repeatable: false, createdAt: dayMidUtcMs(w1Tue, 10), updatedAt: dayMidUtcMs(w1Fri, 12), deletedAt: null }, // 1d late
-    { id: 3, title: 'T3', note: '', dueDay: w1Thu, done: false, status: 'not_done', completedDay: null, repeatable: false, createdAt: dayMidUtcMs(w1Wed, 10), updatedAt: dayMidUtcMs(w1Thu, 21), deletedAt: null },
-    { id: 4, title: 'T4', note: '', dueDay: w1Thu, done: false, status: 'open', completedDay: null, repeatable: false, createdAt: dayMidUtcMs(w1Wed, 10), updatedAt: dayMidUtcMs(w1Wed, 10), deletedAt: null }, // overdue by 2d on w1Sat
+    {
+      id: 1,
+      title: 'T1',
+      note: '',
+      dueDay: w1Thu,
+      done: true,
+      status: 'done',
+      completedDay: w1Thu,
+      repeatable: false,
+      createdAt: dayMidUtcMs(w1Mon, 10),
+      updatedAt: dayMidUtcMs(w1Thu, 15),
+      deletedAt: null,
+    },
+    {
+      id: 2,
+      title: 'T2',
+      note: '',
+      dueDay: w1Thu,
+      done: true,
+      status: 'done',
+      completedDay: w1Fri,
+      repeatable: false,
+      createdAt: dayMidUtcMs(w1Tue, 10),
+      updatedAt: dayMidUtcMs(w1Fri, 12),
+      deletedAt: null,
+    }, // 1d late
+    {
+      id: 3,
+      title: 'T3',
+      note: '',
+      dueDay: w1Thu,
+      done: false,
+      status: 'not_done',
+      completedDay: null,
+      repeatable: false,
+      createdAt: dayMidUtcMs(w1Wed, 10),
+      updatedAt: dayMidUtcMs(w1Thu, 21),
+      deletedAt: null,
+    },
+    {
+      id: 4,
+      title: 'T4',
+      note: '',
+      dueDay: w1Thu,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      createdAt: dayMidUtcMs(w1Wed, 10),
+      updatedAt: dayMidUtcMs(w1Wed, 10),
+      deletedAt: null,
+    }, // overdue by 2d on w1Sat
     // Early finish & goal
-    { id: 5, title: 'Early Task', note: '', dueDay: todayDay + 2, done: true, status: 'done', completedDay: w1Fri, repeatable: false, createdAt: dayMidUtcMs(w1Thu, 10), updatedAt: dayMidUtcMs(w1Fri, 10), deletedAt: null }, // 3d early
-    { id: 6, title: 'Open Goal', note: '', dueDay: null, done: false, status: 'open', completedDay: null, repeatable: false, createdAt: dayMidUtcMs(w0Mon, 10), updatedAt: dayMidUtcMs(w0Mon, 10), deletedAt: null },
+    {
+      id: 5,
+      title: 'Early Task',
+      note: '',
+      dueDay: todayDay + 2,
+      done: true,
+      status: 'done',
+      completedDay: w1Fri,
+      repeatable: false,
+      createdAt: dayMidUtcMs(w1Thu, 10),
+      updatedAt: dayMidUtcMs(w1Fri, 10),
+      deletedAt: null,
+    }, // 3d early
+    {
+      id: 6,
+      title: 'Open Goal',
+      note: '',
+      dueDay: null,
+      done: false,
+      status: 'open',
+      completedDay: null,
+      repeatable: false,
+      createdAt: dayMidUtcMs(w0Mon, 10),
+      updatedAt: dayMidUtcMs(w0Mon, 10),
+      deletedAt: null,
+    },
     // Repeatable tasks
-    { id: 7, title: 'Pay bills', note: '', dueDay: w0Mon, done: true, status: 'done', completedDay: w0Mon, repeatable: true, createdAt: dayMidUtcMs(w0Mon, 9), updatedAt: dayMidUtcMs(w0Mon, 11), deletedAt: null },
-    { id: 8, title: 'Pay bills', note: '', dueDay: w1Mon, done: true, status: 'done', completedDay: w1Mon, repeatable: true, createdAt: dayMidUtcMs(w1Mon, 9), updatedAt: dayMidUtcMs(w1Mon, 11), deletedAt: null },
+    {
+      id: 7,
+      title: 'Pay bills',
+      note: '',
+      dueDay: w0Mon,
+      done: true,
+      status: 'done',
+      completedDay: w0Mon,
+      repeatable: true,
+      createdAt: dayMidUtcMs(w0Mon, 9),
+      updatedAt: dayMidUtcMs(w0Mon, 11),
+      deletedAt: null,
+    },
+    {
+      id: 8,
+      title: 'Pay bills',
+      note: '',
+      dueDay: w1Mon,
+      done: true,
+      status: 'done',
+      completedDay: w1Mon,
+      repeatable: true,
+      createdAt: dayMidUtcMs(w1Mon, 9),
+      updatedAt: dayMidUtcMs(w1Mon, 11),
+      deletedAt: null,
+    },
   ];
 
   const snapshot: DomainSnapshot = {
@@ -2178,11 +2390,3 @@ test('Helpers.formatByteSize scales across B, KB, MB, and GB cleanly', () => {
   assert.equal(Helpers.formatByteSize(1024 * 1024 * 1024), '1 GB');
   assert.equal(Helpers.formatByteSize(2.45 * 1024 * 1024 * 1024), '2.45 GB');
 });
-
-
-
-
-
-
-
-

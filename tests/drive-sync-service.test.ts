@@ -26,7 +26,10 @@ function makeSnapshot(overrides?: Partial<DomainSnapshot>): DomainSnapshot {
   };
 }
 
-function extractMultipartPayload(body: Uint8Array, contentType: string): {
+function extractMultipartPayload(
+  body: Uint8Array,
+  contentType: string
+): {
   metadata: Record<string, unknown>;
   snapshotBytes: Uint8Array;
 } {
@@ -94,7 +97,12 @@ test('DriveSyncService creates remote snapshot via POST on first sync and skips 
     globalThis.fetch = originalFetch;
   });
 
-  const requests: { url: string; method: string; headers: Record<string, string>; body?: Uint8Array }[] = [];
+  const requests: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body?: Uint8Array;
+  }[] = [];
 
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
@@ -216,9 +224,7 @@ test('DriveSyncService detects optimistic concurrency conflicts before POST/PATC
     if (url.includes('spaces=appDataFolder')) {
       lookupCall += 1;
       const files =
-        lookupCall === 1
-          ? []
-          : [{ id: 'race-file', name: 'habits-snapshot.bin', version: '1' }];
+        lookupCall === 1 ? [] : [{ id: 'race-file', name: 'habits-snapshot.bin', version: '1' }];
       return new Response(JSON.stringify({ files }), { status: 200 });
     }
     throw new Error(`Should not attempt upload on concurrent create: ${url}`);
@@ -334,8 +340,7 @@ test('DriveSyncService protects local data on corrupt/empty remote snapshots and
   const service = new DriveSyncService();
   await assert.rejects(
     () => service.prepareSync('google', 'tok', makeSnapshot()),
-    (err: unknown) =>
-      err instanceof NonRetryableError && /could not be read/i.test(err.message)
+    (err: unknown) => err instanceof NonRetryableError && /could not be read/i.test(err.message)
   );
 
   // Empty remote file
@@ -625,8 +630,16 @@ test('DriveSyncService lists, inspects, and restores historical revisions cleanl
       return new Response(
         JSON.stringify({
           revisions: [
-            { id: 'rev-1', modifiedTime: '2026-11-19T10:00:00Z', size: String(rev1Bytes.byteLength) },
-            { id: 'rev-2', modifiedTime: '2026-11-20T10:00:00Z', size: String(rev2Bytes.byteLength) },
+            {
+              id: 'rev-1',
+              modifiedTime: '2026-11-19T10:00:00Z',
+              size: String(rev1Bytes.byteLength),
+            },
+            {
+              id: 'rev-2',
+              modifiedTime: '2026-11-20T10:00:00Z',
+              size: String(rev2Bytes.byteLength),
+            },
           ],
         }),
         { status: 200 }
@@ -661,18 +674,9 @@ test('DriveSyncService lists, inspects, and restores historical revisions cleanl
   assert.equal(inspected.summary.habitsCount, 1);
   assert.equal(inspected.snapshot.habits[0].name, 'Clean Old State');
 
-  const restored = await service.restoreRevision(
-    'google',
-    'tok',
-    'file-1',
-    'rev-1',
-    rev2HeadSnap
-  );
+  const restored = await service.restoreRevision('google', 'tok', 'file-1', 'rev-1', rev2HeadSnap);
   assert.equal(restored.restoredSnapshot.habits[0].name, 'Clean Old State');
   assert.ok(restored.restoredSnapshot.habits[0].updatedAt > 9000);
   assert.ok(restoredPatchBytes);
-  assert.equal(
-    SnapshotCodec.unpack(restoredPatchBytes).habits[0].name,
-    'Clean Old State'
-  );
+  assert.equal(SnapshotCodec.unpack(restoredPatchBytes).habits[0].name, 'Clean Old State');
 });

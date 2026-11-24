@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-For Google Sign-In, Drive sync, and Calendar reminders locally, copy `.env.example` to `.env.local` and set `VITE_GOOGLE_OAUTH_CLIENT_ID` (or provide `FIREBASE_CONFIG_JSON` with `oAuthClientId`). Without OAuth config, **Guest Mode** (IndexedDB) works fully offline.
+For Google Sign-In, Drive sync, and Calendar reminders locally, copy `.env.example` to `.env.local` and set `VITE_GOOGLE_OAUTH_CLIENT_ID`. Without OAuth config, **Guest Mode** (IndexedDB) works fully offline.
 
 ## Deploying to GitHub Pages
 
@@ -23,11 +23,10 @@ This repository includes `.github/workflows/deploy.yml` configured with `base: '
    - In GitHub **Settings → Secrets and variables → Actions**, add:
      - `VITE_GOOGLE_OAUTH_CLIENT_ID` (Web application OAuth 2.0 Client ID from Google Cloud Console).
    - You may store it in either **Secrets** or **Variables** (Variables is fine since a Web OAuth Client ID is public).
-   - Legacy `FIREBASE_CONFIG_JSON` / `VITE_FIREBASE_*` variables remain supported as an optional fallback.
 
 3. **Configure Google Cloud Console**
    - Enable **Google Drive API** and **Google Calendar API** in **APIs & Services → Library**.
-   - In **Google Auth Platform / OAuth consent screen**: add scopes `https://www.googleapis.com/auth/drive.appdata` and `https://www.googleapis.com/auth/calendar.app.created` (and add your Google email to **Test users** while publishing status is *Testing*).
+   - In **Google Auth Platform / OAuth consent screen**: add scopes `https://www.googleapis.com/auth/drive.appdata` and `https://www.googleapis.com/auth/calendar.app.created` (and add your Google email to **Test users** while publishing status is _Testing_).
    - In **Clients → your Web OAuth Client → Authorized JavaScript origins**, add `https://<your-username>.github.io` (origin only, without `/<repo>` path) and `http://localhost:3000` for local dev.
 
 4. **Trigger deployment**

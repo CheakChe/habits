@@ -3,21 +3,9 @@ import { CivilCalendar } from './civil-calendar';
 import { HabitSchedule } from './habit-schedule';
 
 export type TaskFilterMode =
-  | 'all'
-  | 'today'
-  | 'overdue'
-  | 'nodate'
-  | 'completed'
-  | 'not_done'
-  | 'archived';
+  'all' | 'today' | 'overdue' | 'nodate' | 'completed' | 'not_done' | 'archived';
 export type TaskStatusBucket =
-  | 'overdue'
-  | 'today'
-  | 'upcoming'
-  | 'nodate'
-  | 'completed'
-  | 'not_done'
-  | 'archived';
+  'overdue' | 'today' | 'upcoming' | 'nodate' | 'completed' | 'not_done' | 'archived';
 export type TaskStatusFilterSelection = 'all' | TaskStatusBucket[];
 
 export const TASK_STATUS_BUCKETS: readonly TaskStatusBucket[] = [
@@ -30,12 +18,7 @@ export const TASK_STATUS_BUCKETS: readonly TaskStatusBucket[] = [
   'archived',
 ] as const;
 
-export const OPEN_TASK_BUCKETS: TaskStatusBucket[] = [
-  'overdue',
-  'today',
-  'upcoming',
-  'nodate',
-];
+export const OPEN_TASK_BUCKETS: TaskStatusBucket[] = ['overdue', 'today', 'upcoming', 'nodate'];
 
 export type TaskSortMode = 'default' | 'due_asc' | 'due_desc' | 'newest' | 'title';
 
@@ -92,7 +75,7 @@ export class TodayBoard {
       segments.find((s) => dayIndex >= s.start && dayIndex <= s.end) ??
       segments[segments.length - 1];
 
-    const eligibleMask = (activeSeg.weekdays & 0x7f) || 0x7f;
+    const eligibleMask = activeSeg.weekdays & 0x7f || 0x7f;
     const isEligibleDay = CivilCalendar.isScheduled(eligibleMask, dayIndex);
     const availableDays = CivilCalendar.countScheduledInRange(
       eligibleMask,
@@ -119,9 +102,7 @@ export class TodayBoard {
           isDoneOnDay = true;
         }
       } else {
-        const entrySeg = segments.find(
-          (s) => entry.dayIndex >= s.start && entry.dayIndex <= s.end
-        );
+        const entrySeg = segments.find((s) => entry.dayIndex >= s.start && entry.dayIndex <= s.end);
         if (entrySeg) {
           if (
             entrySeg.weeklyTarget !== null ||
@@ -143,10 +124,7 @@ export class TodayBoard {
     );
     const remainingNeeded = Math.max(0, effectiveTarget - doneInWeek);
     const mustDoToday =
-      isEligibleDay &&
-      !isDoneOnDay &&
-      remainingNeeded > 0 &&
-      remainingDays <= remainingNeeded;
+      isEligibleDay && !isDoneOnDay && remainingNeeded > 0 && remainingDays <= remainingNeeded;
 
     return {
       target,
@@ -173,10 +151,7 @@ export class TodayBoard {
         }
         const flex = TodayBoard.getFlexibleWeekStatus(habit, checkins, dayIndex);
         if (flex !== null) {
-          return (
-            flex.isDoneOnDay ||
-            (flex.isEligibleDay && flex.doneInWeek < flex.effectiveTarget)
-          );
+          return flex.isDoneOnDay || (flex.isEligibleDay && flex.doneInWeek < flex.effectiveTarget);
         }
         const sched = HabitSchedule.getAtDay(habit, dayIndex);
         return CivilCalendar.isScheduled(sched.weekdays, dayIndex);
@@ -213,9 +188,7 @@ export class TodayBoard {
     return tasks
       .filter(
         (task) =>
-          task.deletedAt === null &&
-          TodayBoard.getStatus(task) === 'open' &&
-          task.dueDay === null
+          task.deletedAt === null && TodayBoard.getStatus(task) === 'open' && task.dueDay === null
       )
       .sort((a, b) => a.id - b.id);
   }
@@ -316,9 +289,7 @@ export class TodayBoard {
     return 'upcoming';
   }
 
-  public static normalizeStatusFilterSelection(
-    raw: unknown
-  ): TaskStatusFilterSelection {
+  public static normalizeStatusFilterSelection(raw: unknown): TaskStatusFilterSelection {
     if (raw === 'all') return 'all';
     if (!Array.isArray(raw)) {
       return [...OPEN_TASK_BUCKETS];
@@ -347,8 +318,7 @@ export class TodayBoard {
     sort: TaskSortMode = 'default'
   ): Task[] {
     const q = searchQuery.trim().toLowerCase();
-    const activeSet =
-      selection === 'all' ? null : new Set<TaskStatusBucket>(selection);
+    const activeSet = selection === 'all' ? null : new Set<TaskStatusBucket>(selection);
 
     if (activeSet && activeSet.size === 0) {
       return [];

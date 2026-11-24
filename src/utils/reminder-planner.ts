@@ -47,7 +47,10 @@ export const DEFAULT_REMINDER_PREFERENCES: ReminderPreferences = {
   lastSyncedAt: null,
 };
 
-function addMinutesToTime(hhmm: string, deltaMinutes: number): {
+function addMinutesToTime(
+  hhmm: string,
+  deltaMinutes: number
+): {
   timeStr: string;
   dayCarry: number;
 } {
@@ -149,10 +152,7 @@ export class ReminderPlanner {
     }
 
     const unfinishedHabits = scheduledToday.filter((h) => !doneTodayIds.has(h.id));
-    const { overdue, dueToday } = TodayBoard.getTodayAndOverdueTasks(
-      snapshot.tasks,
-      todayDay
-    );
+    const { overdue, dueToday } = TodayBoard.getTodayAndOverdueTasks(snapshot.tasks, todayDay);
 
     return {
       unfinishedHabits,
@@ -180,9 +180,9 @@ export class ReminderPlanner {
 
     for (let offset = 0; offset < horizonDays; offset++) {
       const dayIndex = todayDay + offset;
-      let pendingHabits: Habit[] = [];
+      let pendingHabits: Habit[];
       let overdueTasks: Task[] = [];
-      let dueOnDayTasks: Task[] = [];
+      let dueOnDayTasks: Task[];
 
       if (offset === 0) {
         const pending = ReminderPlanner.getTodayPendingSummary(snapshot, todayDay);
@@ -200,7 +200,7 @@ export class ReminderPlanner {
           }
           const sched = HabitSchedule.getAtDay(habit, dayIndex);
           if (sched.weeklyTarget !== null) {
-            const eligibleMask = (sched.weekdays & 0x7f) || 0x7f;
+            const eligibleMask = sched.weekdays & 0x7f || 0x7f;
             if (!CivilCalendar.isScheduled(eligibleMask, dayIndex)) {
               return false;
             }
@@ -248,9 +248,7 @@ export class ReminderPlanner {
       const tasksCount = overdueTasks.length + dueOnDayTasks.length;
       const countPhrase = buildCountPhrase(pendingHabits.length, tasksCount);
       const summary =
-        offset === 0
-          ? `Habits — ${countPhrase} left today`
-          : `Habits — ${countPhrase} planned`;
+        offset === 0 ? `Habits — ${countPhrase} left today` : `Habits — ${countPhrase} planned`;
 
       const lines: string[] = [];
       if (pendingHabits.length > 0) {
@@ -286,14 +284,9 @@ export class ReminderPlanner {
       }
 
       const description = lines.join('\n');
-      const signature = [
-        dayIndex,
-        startDateTime,
-        endDateTime,
-        timeZone,
-        summary,
-        description,
-      ].join('|');
+      const signature = [dayIndex, startDateTime, endDateTime, timeZone, summary, description].join(
+        '|'
+      );
 
       results.push({
         dayIndex,
@@ -317,12 +310,7 @@ export class ReminderPlanner {
     trackerTimeZone: string
   ): string {
     const timeZone = ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone);
-    const events = ReminderPlanner.buildDesiredEvents(
-      snapshot,
-      todayDay,
-      prefs,
-      trackerTimeZone
-    );
+    const events = ReminderPlanner.buildDesiredEvents(snapshot, todayDay, prefs, trackerTimeZone);
     return JSON.stringify({
       todayDay,
       reminderTime: ReminderPlanner.normalizeTime(prefs.reminderTime),

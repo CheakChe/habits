@@ -85,7 +85,9 @@ export class DriveSyncService {
 
   private async handleResponseError(res: Response): Promise<never> {
     if (res.status === 401 || res.status === 403) {
-      throw new NonRetryableError('Google Drive authorization expired or insufficient permissions.');
+      throw new NonRetryableError(
+        'Google Drive authorization expired or insufficient permissions.'
+      );
     }
     if (res.status === 412) {
       throw new ConcurrentSyncError('Google Drive snapshot changed concurrently.');
@@ -167,10 +169,7 @@ export class DriveSyncService {
     });
   }
 
-  private async fetchRevisionsForFile(
-    token: string,
-    fileId: string
-  ): Promise<DriveRevisionMeta[]> {
+  private async fetchRevisionsForFile(token: string, fileId: string): Promise<DriveRevisionMeta[]> {
     const collected: DriveRevisionMeta[] = [];
     let pageToken: string | undefined;
 
@@ -246,9 +245,7 @@ export class DriveSyncService {
       if (revisions.length <= keepCount) return;
 
       // Never delete the newest `keepCount` revisions or pinned (`keepForever`) revisions.
-      const toDelete = revisions
-        .slice(keepCount)
-        .filter((rev) => rev.keepForever !== true);
+      const toDelete = revisions.slice(keepCount).filter((rev) => rev.keepForever !== true);
 
       for (const rev of toDelete) {
         const url = `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}/revisions/${encodeURIComponent(rev.id)}`;
@@ -286,9 +283,7 @@ export class DriveSyncService {
     );
     const footerPart = encoder.encode(`\r\n--${boundary}--`);
 
-    const body = new Uint8Array(
-      headerPart.byteLength + bytes.byteLength + footerPart.byteLength
-    );
+    const body = new Uint8Array(headerPart.byteLength + bytes.byteLength + footerPart.byteLength);
     body.set(headerPart, 0);
     body.set(bytes, headerPart.byteLength);
     body.set(footerPart, headerPart.byteLength + bytes.byteLength);
@@ -372,16 +367,11 @@ export class DriveSyncService {
     }
 
     if (decodedFiles.length === 0) {
-      throw new NonRetryableError(
-        'Remote Drive snapshot is empty. Local data was kept intact.'
-      );
+      throw new NonRetryableError('Remote Drive snapshot is empty. Local data was kept intact.');
     }
 
     const primary = decodedFiles[0];
-    const duplicateFileIds = [
-      ...decodedFiles.slice(1).map((d) => d.meta.id),
-      ...emptyFileIds,
-    ];
+    const duplicateFileIds = [...decodedFiles.slice(1).map((d) => d.meta.id), ...emptyFileIds];
 
     let mergedSnapshot = localSnapshot;
     for (const entry of decodedFiles) {
@@ -456,9 +446,7 @@ export class DriveSyncService {
     if (remoteFileId !== null) {
       const latestPrimary = latestFiles.find((f) => f.id === remoteFileId);
       if (!latestPrimary) {
-        throw new ConcurrentSyncError(
-          'Remote Google Drive snapshot changed. Re-merging changes.'
-        );
+        throw new ConcurrentSyncError('Remote Google Drive snapshot changed. Re-merging changes.');
       }
       const versionChanged =
         remoteVersion !== null &&
@@ -554,10 +542,7 @@ export class DriveSyncService {
       // Current remote HEAD might be the corrupted file we are rolling back from.
     }
 
-    const restoredSnapshot = SnapshotMerger.rebaseForRestore(
-      inspected.snapshot,
-      againstSnapshots
-    );
+    const restoredSnapshot = SnapshotMerger.rebaseForRestore(inspected.snapshot, againstSnapshots);
     const restoredBytes = SnapshotCodec.pack(restoredSnapshot);
 
     await this.uploadMultipartSnapshot(token, fileId, restoredBytes);

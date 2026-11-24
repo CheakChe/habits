@@ -28,11 +28,7 @@ export function acquireBodyScrollLock(): () => void {
     const html = document.documentElement;
     const body = document.body;
 
-    savedScrollY =
-      window.scrollY ||
-      window.pageYOffset ||
-      html.scrollTop ||
-      0;
+    savedScrollY = window.scrollY || window.pageYOffset || html.scrollTop || 0;
 
     savedStyles = {
       htmlOverflow: html.style.overflow,

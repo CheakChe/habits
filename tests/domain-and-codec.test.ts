@@ -213,9 +213,7 @@ test('SnapshotMerger keeps newest updatedAt, propagates task tombstones, and res
       { habitId: 1, dayIndex: day2, done: false, updatedAt: 300 },
       { habitId: 2, dayIndex: day1, done: true, updatedAt: 1600 },
     ],
-    notes: [
-      { habitId: 2, dayIndex: day1, text: '10 mins breathing', updatedAt: 1600 },
-    ],
+    notes: [{ habitId: 2, dayIndex: day1, text: '10 mins breathing', updatedAt: 1600 }],
     tasks: [
       {
         id: 1,
@@ -316,14 +314,8 @@ test('SnapshotMerger keeps newest updatedAt, propagates task tombstones, and res
   assert.equal(merged.habits.find((h) => h.id === 3)?.name, 'Local Meditate');
 
   // Check-ins & notes for reassigned habit 2 -> 3 moved cleanly!
-  assert.equal(
-    merged.checkins.find((c) => c.habitId === 3 && c.dayIndex === day1)?.done,
-    true
-  );
-  assert.equal(
-    merged.checkins.find((c) => c.habitId === 2 && c.dayIndex === day2)?.done,
-    true
-  );
+  assert.equal(merged.checkins.find((c) => c.habitId === 3 && c.dayIndex === day1)?.done, true);
+  assert.equal(merged.checkins.find((c) => c.habitId === 2 && c.dayIndex === day2)?.done, true);
   assert.equal(
     merged.notes.find((n) => n.habitId === 3 && n.dayIndex === day1)?.text,
     '10 mins breathing'
@@ -456,11 +448,7 @@ test('SnapshotMerger.rebaseForRestore ensures restored historical records beat n
     ],
   };
 
-  const rebased = SnapshotMerger.rebaseForRestore(
-    oldGoodRevision,
-    [badNewerOtherDevice],
-    1000
-  );
+  const rebased = SnapshotMerger.rebaseForRestore(oldGoodRevision, [badNewerOtherDevice], 1000);
   assert.equal(rebased.habits[0].updatedAt, 100000);
   assert.equal(rebased.habits[0].createdAt, 100);
   assert.equal(rebased.tasks[0].completedDay, day1);

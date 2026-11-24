@@ -172,9 +172,7 @@ export class HabitSchedule {
     if (norm.scheduleHistory && norm.scheduleHistory.length > 0) {
       return norm.scheduleHistory;
     }
-    return [
-      buildVersionEntry(habit.startDay, norm.weekdays, norm.weeklyTarget, norm.dailyTarget),
-    ];
+    return [buildVersionEntry(habit.startDay, norm.weekdays, norm.weeklyTarget, norm.dailyTarget)];
   }
 
   public static getAtDay(habit: Habit, dayIndex: number): ResolvedHabitSchedule {
@@ -260,9 +258,8 @@ export class HabitSchedule {
   public static hasAnyDailyTarget(habit: Habit): boolean {
     if (normalizeDailyTarget(habit.dailyTarget) !== null) return true;
     return (
-      habit.scheduleHistory?.some(
-        (entry) => normalizeDailyTarget(entry.dailyTarget) !== null
-      ) ?? false
+      habit.scheduleHistory?.some((entry) => normalizeDailyTarget(entry.dailyTarget) !== null) ??
+      false
     );
   }
 
@@ -337,29 +334,17 @@ export class HabitSchedule {
     const cleanWt = normalizeWeeklyTarget(params.nextWeeklyTarget);
     const cleanWd = HabitSchedule.normalizeWeekdays(params.nextWeekdays, cleanWt);
     const cleanDt =
-      params.nextDailyTarget !== undefined
-        ? normalizeDailyTarget(params.nextDailyTarget)
-        : prevDt;
+      params.nextDailyTarget !== undefined ? normalizeDailyTarget(params.nextDailyTarget) : prevDt;
 
-    const scheduleChanged =
-      cleanWd !== prevWd || cleanWt !== prevWt || cleanDt !== prevDt;
+    const scheduleChanged = cleanWd !== prevWd || cleanWt !== prevWt || cleanDt !== prevDt;
 
     if (scope === 'from_day') {
-      const fromDay = Math.max(
-        nextStartDay,
-        Math.trunc(effectiveFromDay ?? nextStartDay)
-      );
+      const fromDay = Math.max(nextStartDay, Math.trunc(effectiveFromDay ?? nextStartDay));
       const baseTimeline = HabitSchedule.getTimeline(existing).filter(
         (entry) => entry.fromDay < fromDay
       );
       baseTimeline.push(buildVersionEntry(fromDay, cleanWd, cleanWt, cleanDt));
-      return HabitSchedule.normalizeHistory(
-        nextStartDay,
-        cleanWd,
-        cleanWt,
-        baseTimeline,
-        cleanDt
-      );
+      return HabitSchedule.normalizeHistory(nextStartDay, cleanWd, cleanWt, baseTimeline, cleanDt);
     }
 
     if (scope === 'all' || scheduleChanged) {
@@ -380,4 +365,3 @@ export class HabitSchedule {
     );
   }
 }
-

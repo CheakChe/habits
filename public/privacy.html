@@ -21,8 +21,7 @@
         margin: 0;
         background: #0a0b0e;
         color: #f5f7fa;
-        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto,
-          sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
         line-height: 1.65;
         -webkit-font-smoothing: antialiased;
       }
@@ -150,14 +149,14 @@
         <h2>1. Overview &amp; Local-First Architecture</h2>
         <p>
           <strong>Habits</strong> (&ldquo;Habits — Habit &amp; Task Tracker&rdquo;) is a
-          client-side, local-first web application. Your habits, check-ins, daily notes,
-          and tasks are stored directly inside your browser&rsquo;s
-          <code>IndexedDB</code> storage and preferences in <code>localStorage</code>.
+          client-side, local-first web application. Your habits, check-ins, daily notes, and tasks
+          are stored directly inside your browser&rsquo;s <code>IndexedDB</code> storage and
+          preferences in <code>localStorage</code>.
         </p>
         <p>
-          Habits does not operate an application backend server. The developer does not
-          collect, store, sell, rent, or share your personal habit records, tasks, or
-          Google account credentials.
+          Habits does not operate an application backend server. The developer does not collect,
+          store, sell, rent, or share your personal habit records, tasks, or Google account
+          credentials.
         </p>
       </section>
 
@@ -165,13 +164,13 @@
         <h2>2. Guest Mode vs. Google Sign-In Mode</h2>
         <ul>
           <li>
-            <strong>Guest Mode:</strong> Operates completely offline in your browser and
-            never sends requests to Google APIs or external servers.
+            <strong>Guest Mode:</strong> Operates completely offline in your browser and never sends
+            requests to Google APIs or external servers.
           </li>
           <li>
-            <strong>Google Sign-In Mode (Optional):</strong> Uses Google Identity Services
-            directly in your browser to sync encrypted/binary backups with your personal
-            Google Drive and optionally schedule reminders in an isolated calendar.
+            <strong>Google Sign-In Mode (Optional):</strong> Uses Google Identity Services directly
+            in your browser to sync encrypted/binary backups with your personal Google Drive and
+            optionally schedule reminders in an isolated calendar.
           </li>
         </ul>
       </section>
@@ -179,30 +178,30 @@
       <section>
         <h2>3. Google User Data &amp; Permissions Accessed</h2>
         <p>
-          When you choose to connect your Google account, Habits requests only the
-          minimum permissions required for these user-initiated features:
+          When you choose to connect your Google account, Habits requests only the minimum
+          permissions required for these user-initiated features:
         </p>
         <ul>
           <li>
             <strong>Google Drive App Data Folder</strong>
-            (<code>https://www.googleapis.com/auth/drive.appdata</code>): Used exclusively
-            to store, merge, inspect version history of, and restore your personal
-            <code>habits-snapshot.bin</code> backup file inside Google Drive&rsquo;s
-            hidden app-specific folder. Habits cannot view, read, or modify any other
-            files on your Google Drive.
+            (<code>https://www.googleapis.com/auth/drive.appdata</code>): Used exclusively to store,
+            merge, inspect version history of, and restore your personal
+            <code>habits-snapshot.bin</code> backup file inside Google Drive&rsquo;s hidden
+            app-specific folder. Habits cannot view, read, or modify any other files on your Google
+            Drive.
           </li>
           <li>
             <strong>App-Created Google Calendar</strong>
-            (<code>https://www.googleapis.com/auth/calendar.app.created</code>): Used only
-            when you enable Calendar reminders to create and manage a dedicated
-            <strong>Habits Reminders</strong> secondary calendar and add/update/delete
-            reminder events for pending habits and tasks. Habits cannot access or modify
-            your personal Google Calendars.
+            (<code>https://www.googleapis.com/auth/calendar.app.created</code>): Used only when you
+            enable Calendar reminders to create and manage a dedicated
+            <strong>Habits Reminders</strong> secondary calendar and add/update/delete reminder
+            events for pending habits and tasks. Habits cannot access or modify your personal Google
+            Calendars.
           </li>
           <li>
-            <strong>Account Email Hint:</strong> Obtained from Google Drive&rsquo;s
-            account metadata solely to display which Google account is connected and
-            pre-fill reconnection prompts inside your browser.
+            <strong>Account Email Hint:</strong> Obtained from Google Drive&rsquo;s account metadata
+            solely to display which Google account is connected and pre-fill reconnection prompts
+            inside your browser.
           </li>
         </ul>
       </section>
@@ -210,19 +209,18 @@
       <section>
         <h2>4. Token Handling &amp; Security</h2>
         <p>
-          OAuth access tokens granted by Google are kept exclusively in your browser&rsquo;s
-          active memory (RAM) for the duration of the session and expire automatically.
-          Access tokens are never stored in browser storage, cookies, or any third-party
-          server. All API calls run directly from your browser over HTTPS to official
-          Google endpoints.
+          OAuth access tokens granted by Google are kept exclusively in your browser&rsquo;s active
+          memory (RAM) for the duration of the session and expire automatically. Access tokens are
+          never stored in browser storage, cookies, or any third-party server. All API calls run
+          directly from your browser over HTTPS to official Google endpoints.
         </p>
       </section>
 
       <section>
         <h2>5. Google API Services User Data Policy (Limited Use)</h2>
         <p>
-          Habits&rsquo; use and transfer to any other app of information received from
-          Google APIs adhere to the
+          Habits&rsquo; use and transfer to any other app of information received from Google APIs
+          adhere to the
           <a
             href="https://developers.google.com/terms/api-services-user-data-policy"
             target="_blank"
@@ -230,8 +228,8 @@
           >
             Google API Services User Data Policy
           </a>
-          , including the Limited Use requirements. Google user data is never used for
-          advertising, analytics profiling, data brokering, or training AI/ML models.
+          , including the Limited Use requirements. Google user data is never used for advertising,
+          analytics profiling, data brokering, or training AI/ML models.
         </p>
       </section>
 
@@ -244,12 +242,12 @@
           </li>
           <li>
             <strong>Google Calendar Data:</strong> You can delete the dedicated
-            <strong>Habits Reminders</strong> calendar directly inside the app&rsquo;s
-            Reminders settings or from Google Calendar.
+            <strong>Habits Reminders</strong> calendar directly inside the app&rsquo;s Reminders
+            settings or from Google Calendar.
           </li>
           <li>
-            <strong>Revoking Access:</strong> You can revoke Habits&rsquo; access to your
-            Google account at any time from
+            <strong>Revoking Access:</strong> You can revoke Habits&rsquo; access to your Google
+            account at any time from
             <a
               href="https://myaccount.google.com/permissions"
               target="_blank"
@@ -265,10 +263,9 @@
       <section>
         <h2>7. Changes &amp; Contact</h2>
         <p>
-          If this policy is updated, the revised version and effective date will be
-          published on this page. For privacy questions or support, please use the
-          support contact listed on the application&rsquo;s repository or Google OAuth
-          consent screen.
+          If this policy is updated, the revised version and effective date will be published on
+          this page. For privacy questions or support, please use the support contact listed on the
+          application&rsquo;s repository or Google OAuth consent screen.
         </p>
       </section>
 

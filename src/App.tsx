@@ -47,15 +47,15 @@ export default function App(): JSX.Element {
         />
       }
     >
-      <div class="min-h-screen bg-[#0A0B0E] text-[#F5F7FA] pb-24 md:pb-12 overflow-x-clip">
+      <div class="min-h-screen overflow-x-clip bg-[#0A0B0E] pb-24 text-[#F5F7FA] md:pb-12">
         {/* Top Bar Contract: 3 zones separated by gap-8 */}
-        <header class="sticky top-0 z-30 h-14 bg-[#0A0B0E]/85 backdrop-blur-md border-b border-white/[0.08]">
-          <div class="max-w-6xl mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-8">
+        <header class="sticky top-0 z-30 h-14 border-b border-white/[0.08] bg-[#0A0B0E]/85 backdrop-blur-md">
+          <div class="mx-auto flex h-full max-w-6xl items-center justify-between gap-4 px-4 sm:gap-8 sm:px-6">
             {/* Zone 1: Brand Wordmark */}
             <button
               type="button"
               onClick={() => store.setActiveTab('today')}
-              class="font-display text-lg font-semibold tracking-tight text-[#F5F7FA] whitespace-nowrap shrink-0 cursor-pointer"
+              class="shrink-0 cursor-pointer font-display text-lg font-semibold tracking-tight whitespace-nowrap text-[#F5F7FA]"
             >
               Habits
             </button>
@@ -63,15 +63,15 @@ export default function App(): JSX.Element {
             {/* Zone 2: 4 single-line nav links */}
             <nav
               aria-label="Primary navigation"
-              class="hidden md:flex items-center gap-6 text-sm font-medium"
+              class="hidden items-center gap-6 text-sm font-medium md:flex"
             >
               <button
                 type="button"
                 onClick={() => store.setActiveTab('today')}
-                class={`py-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer border-b-2 ${
+                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
                   store.activeTab() === 'today'
-                    ? 'text-[#F5F7FA] border-[#3B82F6]'
-                    : 'text-[#8E95A5] border-transparent hover:text-[#F5F7FA]'
+                    ? 'border-[#3B82F6] text-[#F5F7FA]'
+                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
                 }`}
               >
                 Today
@@ -79,10 +79,10 @@ export default function App(): JSX.Element {
               <button
                 type="button"
                 onClick={() => store.setActiveTab('habits')}
-                class={`py-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer border-b-2 ${
+                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
                   store.activeTab() === 'habits'
-                    ? 'text-[#F5F7FA] border-[#3B82F6]'
-                    : 'text-[#8E95A5] border-transparent hover:text-[#F5F7FA]'
+                    ? 'border-[#3B82F6] text-[#F5F7FA]'
+                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
                 }`}
               >
                 Habits
@@ -90,10 +90,10 @@ export default function App(): JSX.Element {
               <button
                 type="button"
                 onClick={() => store.setActiveTab('tasks')}
-                class={`py-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer border-b-2 ${
+                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
                   store.activeTab() === 'tasks'
-                    ? 'text-[#F5F7FA] border-[#3B82F6]'
-                    : 'text-[#8E95A5] border-transparent hover:text-[#F5F7FA]'
+                    ? 'border-[#3B82F6] text-[#F5F7FA]'
+                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
                 }`}
               >
                 Tasks
@@ -101,10 +101,10 @@ export default function App(): JSX.Element {
               <button
                 type="button"
                 onClick={() => store.setActiveTab('history')}
-                class={`py-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer border-b-2 ${
+                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
                   store.activeTab() === 'history'
-                    ? 'text-[#F5F7FA] border-[#3B82F6]'
-                    : 'text-[#8E95A5] border-transparent hover:text-[#F5F7FA]'
+                    ? 'border-[#3B82F6] text-[#F5F7FA]'
+                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
                 }`}
               >
                 Progress
@@ -112,7 +112,7 @@ export default function App(): JSX.Element {
             </nav>
 
             {/* Zone 3: Primary action (+ optional install trigger when available) */}
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex shrink-0 items-center gap-2">
               <PWAInstallButton variant="compact" />
               <Show
                 when={store.mode() === 'google'}
@@ -120,9 +120,9 @@ export default function App(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => store.setAccountModalOpen(true)}
-                    class="h-9 px-3.5 rounded-xl bg-[#14161B] hover:bg-[#1C1F26] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                    class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-[#14161B] px-3.5 text-xs font-medium whitespace-nowrap text-[#F5F7FA] transition-colors hover:bg-[#1C1F26]"
                   >
-                    <DriveIcon class="w-3.5 h-3.5 text-[#8E95A5]" />
+                    <DriveIcon class="h-3.5 w-3.5 text-[#8E95A5]" />
                     <span>Guest Mode</span>
                   </button>
                 }
@@ -135,9 +135,9 @@ export default function App(): JSX.Element {
                     store.setAccountModalOpen(true);
                   }}
                   disabled={store.syncBusy()}
-                  class="h-9 px-3.5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white inline-flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+                  class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[#3B82F6] px-3.5 text-xs font-medium whitespace-nowrap text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
                 >
-                  <CloudSyncIcon class="w-3.5 h-3.5" />
+                  <CloudSyncIcon class="h-3.5 w-3.5" />
                   <span>
                     {store.syncBusy()
                       ? 'Syncing...'
@@ -152,21 +152,21 @@ export default function App(): JSX.Element {
         </header>
 
         {/* Main Viewport */}
-        <main class="max-w-6xl mx-auto px-4 sm:px-6 pt-6 sm:pt-8 space-y-6">
+        <main class="mx-auto max-w-6xl space-y-6 px-4 pt-6 sm:px-6 sm:pt-8">
           <OfflineBanner />
 
           <Show when={store.mode() === 'google'}>
             <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-[#8E95A5]">
-              <span class="min-w-0 break-anywhere">
+              <span class="break-anywhere min-w-0">
                 {store.googleEmail()
                   ? `Google Mode (${store.googleEmail()}) · Private Drive snapshots`
                   : 'Google Sync Mode · Snapshot stored in private app folder'}
               </span>
-              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 shrink-0">
+              <div class="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1">
                 <button
                   type="button"
                   onClick={() => store.openRemindersModal()}
-                  class={`whitespace-nowrap shrink-0 cursor-pointer ${
+                  class={`shrink-0 cursor-pointer whitespace-nowrap ${
                     store.isCalendarSyncNeeded()
                       ? 'text-[#F59E0B] hover:underline'
                       : 'text-[#8E95A5] hover:text-[#F5F7FA]'
@@ -177,14 +177,14 @@ export default function App(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => void store.openDriveRevisions()}
-                  class="text-[#8E95A5] hover:text-[#F5F7FA] whitespace-nowrap shrink-0 cursor-pointer"
+                  class="shrink-0 cursor-pointer whitespace-nowrap text-[#8E95A5] hover:text-[#F5F7FA]"
                 >
                   Version History
                 </button>
                 <button
                   type="button"
                   onClick={() => store.setAccountModalOpen(true)}
-                  class="text-[#60A5FA] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                  class="shrink-0 cursor-pointer whitespace-nowrap text-[#60A5FA] hover:underline"
                 >
                   Account &amp; Mode
                 </button>
@@ -196,20 +196,20 @@ export default function App(): JSX.Element {
             {(banner) => (
               <div
                 role="status"
-                class={`rounded-2xl px-4 py-3 flex items-center justify-between gap-3 text-xs border ${
+                class={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-xs ${
                   banner().kind === 'error'
-                    ? 'bg-[#EF4444]/10 border-[#EF4444]/25 text-[#FCA5A5]'
-                    : 'bg-[#3B82F6]/10 border-[#3B82F6]/30 text-[#93C5FD]'
+                    ? 'border-[#EF4444]/25 bg-[#EF4444]/10 text-[#FCA5A5]'
+                    : 'border-[#3B82F6]/30 bg-[#3B82F6]/10 text-[#93C5FD]'
                 }`}
               >
-                <span class="min-w-0 flex-1 break-anywhere">{banner().text}</span>
+                <span class="break-anywhere min-w-0 flex-1">{banner().text}</span>
                 <button
                   type="button"
                   onClick={() => store.setSyncBanner(null)}
                   aria-label="Dismiss message"
-                  class="p-1 rounded-lg hover:bg-white/[0.08] cursor-pointer shrink-0"
+                  class="shrink-0 cursor-pointer rounded-lg p-1 hover:bg-white/[0.08]"
                 >
-                  <CloseIcon class="w-3.5 h-3.5" />
+                  <CloseIcon class="h-3.5 w-3.5" />
                 </button>
               </div>
             )}
@@ -218,7 +218,7 @@ export default function App(): JSX.Element {
           <Show
             when={store.dbReady()}
             fallback={
-              <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] p-12 text-center text-sm text-[#8E95A5]">
+              <div class="rounded-2xl border border-white/[0.08] bg-[#14161B] p-12 text-center text-sm text-[#8E95A5]">
                 Opening local IndexedDB store...
               </div>
             }
@@ -304,46 +304,46 @@ export default function App(): JSX.Element {
         {/* Mobile Bottom Tab Bar */}
         <nav
           aria-label="Mobile navigation"
-          class="md:hidden fixed bottom-0 left-0 right-0 z-40 h-16 bg-[#0A0B0E]/92 backdrop-blur-md border-t border-white/[0.08] grid grid-cols-4 items-center"
+          class="fixed right-0 bottom-0 left-0 z-40 grid h-16 grid-cols-4 items-center border-t border-white/[0.08] bg-[#0A0B0E]/92 backdrop-blur-md md:hidden"
         >
           <button
             type="button"
             onClick={() => store.setActiveTab('today')}
-            class={`h-full flex flex-col items-center justify-center gap-1 text-[11px] font-medium cursor-pointer ${
+            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
               store.activeTab() === 'today' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
             }`}
           >
-            <TodayTabIcon class="w-5 h-5" />
+            <TodayTabIcon class="h-5 w-5" />
             <span>Today</span>
           </button>
           <button
             type="button"
             onClick={() => store.setActiveTab('habits')}
-            class={`h-full flex flex-col items-center justify-center gap-1 text-[11px] font-medium cursor-pointer ${
+            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
               store.activeTab() === 'habits' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
             }`}
           >
-            <HabitsTabIcon class="w-5 h-5" />
+            <HabitsTabIcon class="h-5 w-5" />
             <span>Habits</span>
           </button>
           <button
             type="button"
             onClick={() => store.setActiveTab('tasks')}
-            class={`h-full flex flex-col items-center justify-center gap-1 text-[11px] font-medium cursor-pointer ${
+            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
               store.activeTab() === 'tasks' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
             }`}
           >
-            <TasksTabIcon class="w-5 h-5" />
+            <TasksTabIcon class="h-5 w-5" />
             <span>Tasks</span>
           </button>
           <button
             type="button"
             onClick={() => store.setActiveTab('history')}
-            class={`h-full flex flex-col items-center justify-center gap-1 text-[11px] font-medium cursor-pointer ${
+            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
               store.activeTab() === 'history' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
             }`}
           >
-            <HistoryTabIcon class="w-5 h-5" />
+            <HistoryTabIcon class="h-5 w-5" />
             <span>Progress</span>
           </button>
         </nav>

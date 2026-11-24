@@ -1,16 +1,6 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
-interface FirebaseClientConfig {
-  projectId: string;
-  appId: string;
-  apiKey: string;
-  authDomain: string;
-  storageBucket?: string;
-  messagingSenderId?: string;
-  oAuthClientId?: string;
-}
-
 interface GisTokenResponse {
   access_token?: string;
   expires_in?: number | string;
@@ -59,5 +49,4 @@ interface Window {
   };
 }
 
-declare const __FIREBASE_CONFIG__: FirebaseClientConfig | null;
 declare const __GOOGLE_OAUTH_CLIENT_ID__: string | null;

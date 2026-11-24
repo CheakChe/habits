@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["tests/*.test.ts", "tests/ui/**/*.test.{ts,tsx}"],
+  "project": ["src/**/*.{ts,tsx,css}", "tests/**/*.{ts,tsx}"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreBinaries": ["tsc"],
+  "ignoreDependencies": ["autoprefixer"]
+}

@@ -64,19 +64,17 @@ function mapHttpError(status: number, bodyText: string, action: string): Error {
     if (/rateLimitExceeded|userRateLimitExceeded|quota/i.test(bodyText)) {
       return new Error(`Google Calendar rate limit reached while ${action}. Retrying...`);
     }
-    return new NonRetryableError(
-      `Google Calendar denied access (${status}): ${details || action}`
-    );
+    return new NonRetryableError(`Google Calendar denied access (${status}): ${details || action}`);
   }
   if (status === 404 || status === 410) {
-    return new NonRetryableError(`Google Calendar resource not found (${status}) during ${action}.`);
+    return new NonRetryableError(
+      `Google Calendar resource not found (${status}) during ${action}.`
+    );
   }
   if (status === 429 || status >= 500) {
     return new Error(`Google Calendar temporary error (${status}) while ${action}.`);
   }
-  return new NonRetryableError(
-    `Google Calendar error (${status}) while ${action}: ${details}`
-  );
+  return new NonRetryableError(`Google Calendar error (${status}) while ${action}: ${details}`);
 }
 
 interface GoogleCalendarResource {
@@ -149,10 +147,9 @@ export class CalendarReminderService {
     accessToken: string,
     calendarId: string
   ): Promise<GoogleCalendarResource | null> {
-    const res = await fetch(
-      `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}`,
-      { headers: this.authHeaders(accessToken) }
-    );
+    const res = await fetch(`${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}`, {
+      headers: this.authHeaders(accessToken),
+    });
     if (res.status === 404 || res.status === 410) {
       return null;
     }
@@ -163,9 +160,7 @@ export class CalendarReminderService {
   }
 
   private async findRemoteMetaFiles(token: string): Promise<DriveMetaFileEntry[]> {
-    const query = encodeURIComponent(
-      `name='${REMOTE_REMINDER_META_FILENAME}' and trashed=false`
-    );
+    const query = encodeURIComponent(`name='${REMOTE_REMINDER_META_FILENAME}' and trashed=false`);
     const url = `${DRIVE_FILES_URL}?spaces=appDataFolder&q=${query}&fields=files(id,modifiedTime)&pageSize=20`;
 
     return Helpers.withRetry(async () => {
@@ -179,7 +174,11 @@ export class CalendarReminderService {
         return [];
       }
       if (!response.ok) {
-        throw mapHttpError(response.status, await response.text(), 'reading synced reminder config');
+        throw mapHttpError(
+          response.status,
+          await response.text(),
+          'reading synced reminder config'
+        );
       }
       const data = (await response.json()) as { files?: DriveMetaFileEntry[] };
       return [...(data.files ?? [])].sort((a, b) => {
@@ -234,9 +233,7 @@ export class CalendarReminderService {
           calendarId,
           timeZone: typeof parsed.timeZone === 'string' ? parsed.timeZone : null,
           timeZoneUpdatedAt:
-            typeof parsed.timeZoneUpdatedAt === 'number'
-              ? parsed.timeZoneUpdatedAt
-              : undefined,
+            typeof parsed.timeZoneUpdatedAt === 'number' ? parsed.timeZoneUpdatedAt : undefined,
           reminderTime:
             typeof parsed.reminderTime === 'string'
               ? ReminderPlanner.normalizeTime(parsed.reminderTime)
@@ -374,7 +371,7 @@ export class CalendarReminderService {
         typeof state.meta?.timeZoneUpdatedAt === 'number'
           ? state.meta.timeZoneUpdatedAt
           : remoteTz
-            ? state.meta?.updatedAt ?? 0
+            ? (state.meta?.updatedAt ?? 0)
             : 0;
 
       // Determine winning timezone: remote wins if newer; local wins if newer (or remote unset and local non-UTC/explicit).
@@ -417,9 +414,7 @@ export class CalendarReminderService {
             }
           }
 
-          const effectiveTz = remoteTz
-            ? winningTz
-            : remoteCalMeta.timeZone ?? winningTz;
+          const effectiveTz = remoteTz ? winningTz : (remoteCalMeta.timeZone ?? winningTz);
           const now = Date.now();
           if (needsRemoteWrite) {
             await this.writeRemoteReminderMetaBestEffort(
@@ -455,9 +450,8 @@ export class CalendarReminderService {
         if (localCalMeta && !localCalMeta.deleted && localCalMeta.id) {
           const resolvedTz = tzChangedLocallyNeedsPush
             ? winningTz
-            : localCalMeta.timeZone ?? winningTz;
-          const resolvedTzUpdatedAt =
-            winningTzUpdatedAt > 0 ? winningTzUpdatedAt : Date.now();
+            : (localCalMeta.timeZone ?? winningTz);
+          const resolvedTzUpdatedAt = winningTzUpdatedAt > 0 ? winningTzUpdatedAt : Date.now();
           const now = Date.now();
           await this.writeRemoteReminderMetaBestEffort(
             accessToken,
@@ -605,8 +599,7 @@ export class CalendarReminderService {
       if (!item.id || item.status === 'cancelled') continue;
       const priv = item.extendedProperties?.private;
       const rawDay = priv?.habitsDayIndex;
-      const parsedDay =
-        rawDay !== undefined && /^-?\d+$/.test(rawDay) ? Number(rawDay) : null;
+      const parsedDay = rawDay !== undefined && /^-?\d+$/.test(rawDay) ? Number(rawDay) : null;
       events.push({
         id: item.id,
         dayIndex: parsedDay,
@@ -677,9 +670,7 @@ export class CalendarReminderService {
         liveCalendars.push(fromList);
         continue;
       }
-      const meta = await Helpers.withRetry(() =>
-        this.fetchCalendarMeta(token, candidateId)
-      );
+      const meta = await Helpers.withRetry(() => this.fetchCalendarMeta(token, candidateId));
       if (meta && !meta.deleted && meta.id) {
         liveCalendars.push(meta);
       }
@@ -688,8 +679,7 @@ export class CalendarReminderService {
     const resolvedMeta = liveCalendars[0] ?? null;
     const resolvedCalendarId = resolvedMeta?.id ?? null;
     const willCreateCalendar = resolvedCalendarId === null;
-    const willUpdateCalendarTz =
-      resolvedMeta !== null && resolvedMeta.timeZone !== timeZone;
+    const willUpdateCalendarTz = resolvedMeta !== null && resolvedMeta.timeZone !== timeZone;
     const duplicateCalendarIds = liveCalendars
       .slice(1)
       .map((c) => c.id)
@@ -933,9 +923,7 @@ export class CalendarReminderService {
       calendarId,
       timeZone: plan.timeZone,
       timeZoneUpdatedAt:
-        prefs?.timeZoneUpdatedAt && prefs.timeZoneUpdatedAt > 0
-          ? prefs.timeZoneUpdatedAt
-          : now,
+        prefs?.timeZoneUpdatedAt && prefs.timeZoneUpdatedAt > 0 ? prefs.timeZoneUpdatedAt : now,
       ...(prefs
         ? {
             reminderTime: prefs.reminderTime,
@@ -957,20 +945,14 @@ export class CalendarReminderService {
     };
   }
 
-  private async deleteCalendarResource(
-    token: string,
-    calendarId: string
-  ): Promise<void> {
+  private async deleteCalendarResource(token: string, calendarId: string): Promise<void> {
     if (!calendarId.trim()) return;
 
     await Helpers.withRetry(async () => {
-      const res = await fetch(
-        `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}`,
-        {
-          method: 'DELETE',
-          headers: this.authHeaders(token),
-        }
-      );
+      const res = await fetch(`${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}`, {
+        method: 'DELETE',
+        headers: this.authHeaders(token),
+      });
       if (res.status === 404 || res.status === 410) {
         return res;
       }

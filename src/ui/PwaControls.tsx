@@ -9,8 +9,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] =
-    createSignal<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = createSignal<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = createSignal(false);
   const [isIOS, setIsIOS] = createSignal(false);
 
@@ -95,19 +94,15 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
         when={isInstallable()}
         fallback={
           <>
-            <button
-              type="button"
-              onClick={() => setShowIOSGuide(true)}
-              class={buttonClass()}
-            >
-              <InstallAppIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
+            <button type="button" onClick={() => setShowIOSGuide(true)} class={buttonClass()}>
+              <InstallAppIcon class="h-3.5 w-3.5 text-[#60A5FA]" />
               <span>Install App</span>
             </button>
 
             <Show when={showIOSGuide()}>
               <Portal>
                 <div
-                  class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4 overscroll-none"
+                  class="fixed inset-0 z-[60] flex items-end justify-center overscroll-none bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4"
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="ios-install-title"
@@ -115,7 +110,7 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
                     if (e.target === e.currentTarget) setShowIOSGuide(false);
                   }}
                 >
-                  <div class="w-full sm:max-w-sm max-h-modal overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl bg-[#14161B] border border-white/[0.08] p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 space-y-4">
+                  <div class="max-h-modal w-full space-y-4 overflow-y-auto overscroll-contain rounded-t-3xl border border-white/[0.08] bg-[#14161B] p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:max-w-sm sm:rounded-3xl sm:pb-6">
                     <div class="flex items-center justify-between">
                       <h3
                         id="ios-install-title"
@@ -127,12 +122,12 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
                         type="button"
                         onClick={() => setShowIOSGuide(false)}
                         aria-label="Close instructions"
-                        class="min-h-[36px] min-w-[36px] rounded-full flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] cursor-pointer"
+                        class="flex min-h-[36px] min-w-[36px] cursor-pointer items-center justify-center rounded-full text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]"
                       >
-                        <CloseIcon class="w-4 h-4" />
+                        <CloseIcon class="h-4 w-4" />
                       </button>
                     </div>
-                    <ol class="text-xs text-[#C8CDD8] space-y-2.5 leading-relaxed list-decimal list-inside">
+                    <ol class="list-inside list-decimal space-y-2.5 text-xs leading-relaxed text-[#C8CDD8]">
                       <li>
                         Tap the <strong class="text-[#F5F7FA]">Share</strong> button in
                         Safari&apos;s toolbar (or inside the{' '}
@@ -146,7 +141,7 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
                     <button
                       type="button"
                       onClick={() => setShowIOSGuide(false)}
-                      class="w-full h-10 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white transition-colors cursor-pointer"
+                      class="h-10 w-full cursor-pointer rounded-xl bg-[#3B82F6] text-xs font-medium text-white transition-colors hover:bg-[#2563EB]"
                     >
                       Done
                     </button>
@@ -158,7 +153,7 @@ export function PWAInstallButton(props: PWAInstallButtonProps): JSX.Element {
         }
       >
         <button type="button" onClick={() => void install()} class={buttonClass()}>
-          <InstallAppIcon class="w-3.5 h-3.5 text-[#60A5FA]" />
+          <InstallAppIcon class="h-3.5 w-3.5 text-[#60A5FA]" />
           <span>Install App</span>
         </button>
       </Show>
@@ -188,9 +183,9 @@ export function OfflineBanner(): JSX.Element {
     <Show when={!isOnline()}>
       <div
         role="status"
-        class="rounded-2xl px-4 py-2.5 bg-[#F59E0B]/10 border border-[#F59E0B]/25 text-xs text-[#FCD34D] flex items-center gap-2.5"
+        class="flex items-center gap-2.5 rounded-2xl border border-[#F59E0B]/25 bg-[#F59E0B]/10 px-4 py-2.5 text-xs text-[#FCD34D]"
       >
-        <WifiOffIcon class="w-4 h-4 shrink-0" />
+        <WifiOffIcon class="h-4 w-4 shrink-0" />
         <span>Offline Mode — Local IndexedDB changes are saved automatically.</span>
       </div>
     </Show>

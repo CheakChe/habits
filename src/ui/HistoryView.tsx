@@ -1,4 +1,14 @@
-import { For, JSX, Match, Show, Switch, createEffect, createMemo, createSignal } from 'solid-js';
+import {
+  For,
+  JSX,
+  Match,
+  Show,
+  Switch,
+  createEffect,
+  createMemo,
+  createSignal,
+  untrack,
+} from 'solid-js';
 import { DomainSnapshot, Habit, HabitCheckin, HistorySubTab } from '../types/domain';
 import {
   AdvancedAnalyticsReport,
@@ -94,13 +104,15 @@ function calendarTileClass(tone: DayCellTone, isSelected: boolean): string {
 }
 
 export function HistoryView(props: HistoryViewProps): JSX.Element {
-  const initialRange = DateRangeResolver.resolve(props.rangePreset, props.todayDay, {
-    customStartDay: props.customStartDay,
-    customEndDay: props.customEndDay,
-    snapshot: props.snapshot,
-    timeZone: props.timeZone,
+  const initialDay = untrack(() => {
+    const initialRange = DateRangeResolver.resolve(props.rangePreset, props.todayDay, {
+      customStartDay: props.customStartDay,
+      customEndDay: props.customEndDay,
+      snapshot: props.snapshot,
+      timeZone: props.timeZone,
+    });
+    return Math.min(initialRange.endDay, props.todayDay);
   });
-  const initialDay = Math.min(initialRange.endDay, props.todayDay);
   const initialLocal = CivilCalendar.toLocalDate(initialDay);
   const [viewYear, setViewYear] = createSignal(initialLocal.year);
   const [viewMonth, setViewMonth] = createSignal(initialLocal.month);
@@ -123,9 +135,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     })
   );
 
-  const effectiveRangeEnd = createMemo(() =>
-    Math.min(resolvedRange().endDay, props.todayDay)
-  );
+  const effectiveRangeEnd = createMemo(() => Math.min(resolvedRange().endDay, props.todayDay));
   const effectiveRangeStart = createMemo(() =>
     Math.min(resolvedRange().startDay, effectiveRangeEnd())
   );
@@ -308,9 +318,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     const curHabitsSummary = analyticsSummary();
     const habitRateDeltaPct =
       prevScheduled > 0 && curHabitsSummary.scheduledDays > 0
-        ? Math.round(
-            (curHabitsSummary.completionRate - prevCompleted / prevScheduled) * 100
-          )
+        ? Math.round((curHabitsSummary.completionRate - prevCompleted / prevScheduled) * 100)
         : null;
 
     const prevTasks = TaskAnalytics.summarizeRange(
@@ -348,11 +356,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   );
 
   const selectedDayTasks = createMemo(() =>
-    TaskAnalytics.tasksForDay(
-      props.snapshot.tasks,
-      selectedDay(),
-      props.timeZone
-    )
+    TaskAnalytics.tasksForDay(props.snapshot.tasks, selectedDay(), props.timeZone)
   );
 
   const selectedDayTasksCount = createMemo(() => {
@@ -370,10 +374,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
 
     const firstWeekStart = CivilCalendar.startOfWeek(clampedStart);
     const endWeekStart = CivilCalendar.startOfWeek(effectiveEnd);
-    const weeksCount = Math.max(
-      1,
-      Math.floor((endWeekStart - firstWeekStart) / 7) + 1
-    );
+    const weeksCount = Math.max(1, Math.floor((endWeekStart - firstWeekStart) / 7) + 1);
     const habits = targetHabits();
     const dayStats = StreakCalculator.getPeriodDayStats(
       habits,
@@ -439,12 +440,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         const scheduled = entry?.scheduled ?? 0;
         const done = entry?.done ?? 0;
         totalDone += done;
-        const tone = DayCellClassifier.classify(
-          dayIndex,
-          props.todayDay,
-          scheduled,
-          done
-        );
+        const tone = DayCellClassifier.classify(dayIndex, props.todayDay, scheduled, done);
         days.push({ dayIndex, inRange: true, done, scheduled, tone });
       }
       weeks.push({ weekStart, monthLabel, days });
@@ -453,9 +449,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     return { weeks, totalDone, clampedStart, effectiveEnd, isCapped };
   });
 
-  const monthGrid = createMemo(() =>
-    CivilCalendar.getMonthDays(viewYear(), viewMonth())
-  );
+  const monthGrid = createMemo(() => CivilCalendar.getMonthDays(viewYear(), viewMonth()));
 
   const monthDayStats = createMemo(() => {
     const days = monthGrid().days;
@@ -495,8 +489,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
 
   const isDatabaseEmpty = createMemo(
     () =>
-      props.snapshot.habits.length === 0 &&
-      props.snapshot.tasks.every((t) => t.deletedAt !== null)
+      props.snapshot.habits.length === 0 && props.snapshot.tasks.every((t) => t.deletedAt !== null)
   );
 
   const inspectDayInCalendar = (dayIndex: number) => {
@@ -512,8 +505,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   return (
     <div class="space-y-6">
       <div class="flex flex-col gap-4 border-b border-white/[0.08] pb-5">
-        <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-          <div class="space-y-1 min-w-0">
+        <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+          <div class="min-w-0 space-y-1">
             <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
               Progress
             </h1>
@@ -530,20 +523,20 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           <div
             role="tablist"
             aria-label="Progress view mode"
-            class="inline-flex items-center p-1 rounded-xl bg-[#14161B] border border-white/[0.08] self-start lg:self-auto max-w-full overflow-x-auto shrink-0"
+            class="inline-flex max-w-full shrink-0 items-center self-start overflow-x-auto rounded-xl border border-white/[0.08] bg-[#14161B] p-1 lg:self-auto"
           >
             <button
               type="button"
               role="tab"
               aria-selected={props.subTab === 'calendar'}
               onClick={() => props.onSelectSubTab('calendar')}
-              class={`h-9 px-2.5 sm:px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3.5 ${
                 props.subTab === 'calendar'
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
               }`}
             >
-              <CalendarIcon class="w-3.5 h-3.5" />
+              <CalendarIcon class="h-3.5 w-3.5" />
               <span>Calendar</span>
             </button>
             <button
@@ -551,13 +544,13 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               role="tab"
               aria-selected={props.subTab === 'charts'}
               onClick={() => props.onSelectSubTab('charts')}
-              class={`h-9 px-2.5 sm:px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3.5 ${
                 props.subTab === 'charts'
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
               }`}
             >
-              <HistoryTabIcon class="w-3.5 h-3.5" />
+              <HistoryTabIcon class="h-3.5 w-3.5" />
               <span>Charts</span>
             </button>
             <button
@@ -565,32 +558,30 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               role="tab"
               aria-selected={props.subTab === 'advanced'}
               onClick={() => props.onSelectSubTab('advanced')}
-              class={`h-9 px-2.5 sm:px-3.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              class={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3.5 ${
                 props.subTab === 'advanced'
                   ? 'bg-[#3B82F6] text-white'
                   : 'text-[#8E95A5] hover:text-[#F5F7FA]'
               }`}
             >
-              <LayersIcon class="w-3.5 h-3.5" />
+              <LayersIcon class="h-3.5 w-3.5" />
               <span>Advanced</span>
             </button>
           </div>
         </div>
 
         {/* Context Filters Row */}
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-3">
             <CustomMultiSelect<number>
               ariaLabel="Filter by habits"
               value={props.habitFilter}
-              options={props.snapshot.habits.map(
-                (h): SelectOption<number> => ({
-                  value: h.id,
-                  label: h.name,
-                  hint: h.archivedAt !== null ? 'Archived' : undefined,
-                  dotColor: h.color,
-                })
-              )}
+              options={props.snapshot.habits.map((h): SelectOption<number> => ({
+                value: h.id,
+                label: h.name,
+                hint: h.archivedAt !== null ? 'Archived' : undefined,
+                dotColor: h.color,
+              }))}
               allLabel={`All Habits (${props.snapshot.habits.length})`}
               emptyLabel="No habits selected"
               selectedNoun={{ one: 'habit', many: 'habits' }}
@@ -614,7 +605,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </div>
 
           <Show when={props.subTab === 'calendar'}>
-            <span class="text-xs font-mono tabular-nums text-[#8E95A5]">
+            <span class="font-mono text-xs text-[#8E95A5] tabular-nums">
               Best streak: {analyticsSummary().currentStreak}
               {analyticsSummary().currentStreakUnit === 'weeks' ? 'w' : 'd'} current ·{' '}
               {analyticsSummary().longestStreak}
@@ -627,10 +618,11 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       <Show
         when={!isDatabaseEmpty()}
         fallback={
-          <div class="rounded-2xl bg-[#14161B] border border-white/[0.08] px-6 py-14 text-center space-y-2">
+          <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-[#14161B] px-6 py-14 text-center">
             <p class="text-sm font-medium text-[#F5F7FA]">Empty Period</p>
-            <p class="text-sm text-[#8E95A5] max-w-md mx-auto">
-              Create habits and check them off or complete tasks to see real streaks, heatmaps, and weekly completion charts.
+            <p class="mx-auto max-w-md text-sm text-[#8E95A5]">
+              Create habits and check them off or complete tasks to see real streaks, heatmaps, and
+              weekly completion charts.
             </p>
           </div>
         }
@@ -686,495 +678,477 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </Match>
 
           <Match when={props.subTab === 'calendar'}>
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <section class="lg:col-span-7 rounded-2xl bg-[#14161B] border border-white/[0.08] p-4 sm:p-6 space-y-5">
-            <div class="flex items-center justify-between">
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
-              </h2>
-              <div class="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={goPrevMonth}
-                  aria-label="Previous month"
-                  class="min-h-[40px] min-w-[40px] rounded-xl flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-                >
-                  <ChevronLeftIcon class="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={goNextMonth}
-                  aria-label="Next month"
-                  class="min-h-[40px] min-w-[40px] rounded-xl flex items-center justify-center text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.06] transition-colors cursor-pointer"
-                >
-                  <ChevronRightIcon class="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div class="grid grid-cols-7 gap-1 sm:gap-1.5 text-center">
-              <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                {(bit) => (
-                  <div class="text-[11px] font-medium text-[#6B7280] py-1">
-                    {CivilCalendar.weekdayShortLabel(bit)}
+            <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
+              <section class="space-y-5 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6 lg:col-span-7">
+                <div class="flex items-center justify-between">
+                  <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
+                    {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
+                  </h2>
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={goPrevMonth}
+                      aria-label="Previous month"
+                      class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                    >
+                      <ChevronLeftIcon class="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goNextMonth}
+                      aria-label="Next month"
+                      class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                    >
+                      <ChevronRightIcon class="h-4 w-4" />
+                    </button>
                   </div>
-                )}
-              </For>
-
-              <For each={Array.from({ length: monthGrid().leadingEmpty })}>
-                {() => <div />}
-              </For>
-
-              <For each={monthGrid().days}>
-                {(dayIndex) => {
-                  const local = CivilCalendar.toLocalDate(dayIndex);
-                  const isFuture = () => dayIndex > props.todayDay;
-                  const isSelected = () => dayIndex === selectedDay();
-
-                  const stats = () => {
-                    if (isFuture()) return { scheduled: 0, done: 0 };
-                    return monthDayStats().get(dayIndex) ?? { scheduled: 0, done: 0 };
-                  };
-
-                  const tone = createMemo(() =>
-                    DayCellClassifier.classify(
-                      dayIndex,
-                      props.todayDay,
-                      stats().scheduled,
-                      stats().done
-                    )
-                  );
-
-                  return (
-                    <button
-                      type="button"
-                      disabled={isFuture()}
-                      onClick={() => {
-                        setSelectedDay(dayIndex);
-                        setEditingNoteHabitId(null);
-                      }}
-                      class={`h-11 rounded-xl flex flex-col items-center justify-center gap-0.5 text-xs font-mono tabular-nums transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default border ${calendarTileClass(
-                        tone(),
-                        isSelected()
-                      )}`}
-                    >
-                      <span>{local.day}</span>
-                      <Show when={stats().scheduled > 0 && !isFuture()}>
-                        <span
-                          class={`text-[9px] ${
-                            tone() === 'complete'
-                              ? 'text-[#93C5FD]'
-                              : tone().startsWith('missed')
-                                ? 'text-[#FCA5A5]'
-                                : 'text-[#8E95A5]'
-                          }`}
-                        >
-                          {stats().done}/{stats().scheduled}
-                        </span>
-                      </Show>
-                    </button>
-                  );
-                }}
-              </For>
-            </div>
-          </section>
-
-          <section class="lg:col-span-5 rounded-2xl bg-[#14161B] border border-white/[0.08] overflow-hidden">
-            <div class="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between">
-              <div>
-                <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                  {selectedDay() === props.todayDay
-                    ? 'Today'
-                    : CivilCalendar.formatShortDate(selectedDay())}
-                </h2>
-                <p class="text-xs text-[#8E95A5]">
-                  {CivilCalendar.formatFullDate(selectedDay())}
-                </p>
-              </div>
-            </div>
-
-            <Show
-              when={selectedDayHabits().length > 0}
-              fallback={
-                <div class="px-6 py-10 text-center space-y-3">
-                  <p class="text-sm text-[#8E95A5]">
-                    {props.habitFilter !== 'all' && targetHabits().length === 0
-                      ? 'No habits selected in filter.'
-                      : 'No habits were active on this date.'}
-                  </p>
-                  <Show when={props.habitFilter !== 'all'}>
-                    <button
-                      type="button"
-                      onClick={() => props.onChangeHabitFilter('all')}
-                      class="h-9 px-3.5 rounded-xl bg-[#1C1F26] hover:bg-[#252933] border border-white/[0.08] text-xs font-medium text-[#F5F7FA] transition-colors cursor-pointer"
-                    >
-                      Show All Habits
-                    </button>
-                  </Show>
                 </div>
-              }
-            >
-              <ul class="divide-y divide-white/[0.06]">
-                <For each={selectedDayHabits()}>
-                  {(habit) => {
-                    const checkinEntry = () =>
-                      checkinIndex().get(`${habit.id}:${selectedDay()}`);
-                    const activeTarget = () =>
-                      HabitSchedule.getAtDay(habit, selectedDay()).dailyTarget;
-                    const currentValue = () =>
-                      HabitSchedule.getCheckinValueForDay(
-                        habit,
-                        checkinEntry(),
-                        selectedDay()
-                      );
-                    const isDone = () =>
-                      HabitSchedule.isCheckinDoneForDay(
-                        habit,
-                        checkinEntry(),
-                        selectedDay()
-                      );
-                    const isPartial = () => {
-                      const target = activeTarget();
-                      return target !== null && !isDone() && currentValue() > 0;
-                    };
-                    const partialPct = () => {
-                      const target = activeTarget();
-                      if (target === null || target <= 0) return 0;
-                      return Math.min(100, Math.round((currentValue() / target) * 100));
-                    };
-                    const accentColor = () => HabitAppearance.getColor(habit.color);
-                    const scheduleStatusLabel = () => {
-                      const day = selectedDay();
-                      const sched = HabitSchedule.getAtDay(habit, day);
-                      const valPrefix =
-                        sched.dailyTarget !== null
-                          ? `${HabitSchedule.formatNumericValue(currentValue())}/${HabitSchedule.formatNumericValue(sched.dailyTarget)}${habit.unit ? ` ${habit.unit}` : ''} · `
-                          : '';
-                      if (sched.weeklyTarget !== null) {
-                        const weekStart = CivilCalendar.startOfWeek(day);
-                        const weekEnd = weekStart + 6;
-                        const segs = HabitSchedule.getSegmentsInRange(
-                          habit,
-                          Math.max(habit.startDay, weekStart),
-                          weekEnd
-                        );
-                        const activeSeg =
-                          segs.find((s) => day >= s.start && day <= s.end) ??
-                          segs[segs.length - 1];
-                        const evalDay =
-                          day <= props.todayDay
-                            ? Math.min(activeSeg ? activeSeg.end : weekEnd, props.todayDay)
-                            : day;
-                        const wk = StreakCalculator.calculateWeeklyProgress(
-                          habit,
-                          props.snapshot.checkins,
-                          evalDay
-                        );
-                        const flexLabel = wk.isComplete
-                          ? `Flexible (${wk.completedDays}/${wk.scheduledDays} wk complete)`
-                          : `Flexible (${wk.completedDays}/${wk.scheduledDays} wk)`;
-                        const eligibleMask = (sched.weekdays & 0x7f) || 0x7f;
-                        return (
-                          valPrefix +
-                          (CivilCalendar.isScheduled(eligibleMask, day)
-                            ? flexLabel
-                            : `Off-schedule day · ${flexLabel}`)
-                        );
-                      }
-                      return (
-                        valPrefix +
-                        (CivilCalendar.isScheduled(sched.weekdays, day)
-                          ? 'Scheduled'
-                          : 'Off-schedule day')
-                      );
-                    };
-                    const noteText = () =>
-                      noteIndex().get(`${habit.id}:${selectedDay()}`) ?? '';
-                    const isEditingNote = () => editingNoteHabitId() === habit.id;
 
-                    return (
-                      <li class="px-5 py-3.5 space-y-2.5">
-                        <div class="flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void props.onToggleCheckin(
-                                habit.id,
-                                selectedDay(),
-                                !isDone()
-                              )
-                            }
-                            aria-pressed={isDone()}
-                            aria-label={`Toggle ${habit.name} for ${CivilCalendar.formatShortDate(selectedDay())}`}
-                            class={`relative overflow-hidden w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors cursor-pointer border ${
-                              isDone()
-                                ? 'border-transparent'
-                                : isPartial()
-                                  ? 'bg-[#0A0B0E] border-white/[0.22] text-[#C8CDD8] hover:border-white/40'
-                                  : 'bg-[#0A0B0E] border-white/[0.12] text-transparent hover:border-white/30'
-                            }`}
-                            style={
-                              isDone()
-                                ? {
-                                    'background-color': accentColor(),
-                                    color: HabitAppearance.getContrastTextColor(
-                                      accentColor()
-                                    ),
-                                  }
-                                : undefined
-                            }
-                          >
-                            <Show when={isPartial()}>
-                              <span
-                                aria-hidden="true"
-                                class="absolute inset-x-0 bottom-0 opacity-25 transition-all"
-                                style={{
-                                  height: `${partialPct()}%`,
-                                  'background-color': accentColor(),
-                                }}
-                              />
-                            </Show>
-                            <CheckIcon class="w-4 h-4 relative z-10" />
-                          </button>
+                <div class="grid grid-cols-7 gap-1 text-center sm:gap-1.5">
+                  <For each={[0, 1, 2, 3, 4, 5, 6]}>
+                    {(bit) => (
+                      <div class="py-1 text-[11px] font-medium text-[#6B7280]">
+                        {CivilCalendar.weekdayShortLabel(bit)}
+                      </div>
+                    )}
+                  </For>
 
-                          <div class="min-w-0 flex-1">
-                            <div class="flex items-start gap-2">
-                              <HabitBadge appearanceRaw={habit.color} size="xs" />
-                              <p
-                                class="text-sm font-medium text-[#F5F7FA] line-clamp-2 break-words"
-                                title={habit.name}
-                              >
-                                {habit.name}
-                              </p>
-                            </div>
-                            <p
-                              class="text-xs text-[#8E95A5] font-mono tabular-nums line-clamp-2 break-words"
-                              title={
-                                noteText() && !isEditingNote()
-                                  ? `${scheduleStatusLabel()} · ${noteText()}`
-                                  : scheduleStatusLabel()
-                              }
-                            >
-                              {scheduleStatusLabel()}
-                              {noteText() && !isEditingNote() ? ` · ${noteText()}` : ''}
-                            </p>
-                          </div>
+                  <For each={Array.from({ length: monthGrid().leadingEmpty })}>{() => <div />}</For>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isEditingNote()) {
-                                setEditingNoteHabitId(null);
-                              } else {
-                                setNoteDraft(noteText());
-                                setEditingNoteHabitId(habit.id);
-                              }
-                            }}
-                            aria-label={`Edit note for ${habit.name}`}
-                            class={`min-h-[40px] min-w-[40px] rounded-xl flex items-center justify-center cursor-pointer transition-colors ${
-                              noteText() || isEditingNote()
-                                ? 'text-[#60A5FA] bg-[#3B82F6]/10'
-                                : 'text-[#8E95A5] hover:text-[#F5F7FA] hover:bg-white/[0.05]'
-                            }`}
-                          >
-                            <NoteIcon class="w-4 h-4" />
-                          </button>
-                        </div>
+                  <For each={monthGrid().days}>
+                    {(dayIndex) => {
+                      const local = CivilCalendar.toLocalDate(dayIndex);
+                      const isFuture = () => dayIndex > props.todayDay;
+                      const isSelected = () => dayIndex === selectedDay();
 
-                        <Show when={activeTarget() !== null || currentValue() > 0}>
-                          <div class="pl-[3.25rem]">
-                            <MeasuredQuickControls
-                              habitName={habit.name}
-                              accentColor={accentColor()}
-                              unit={habit.unit}
-                              value={currentValue()}
-                              target={activeTarget() ?? Math.max(1, currentValue())}
-                              onIncrement={(delta) =>
-                                props.onIncrementCheckinValue(
-                                  habit.id,
-                                  selectedDay(),
-                                  delta
-                                )
-                              }
-                              onSetValue={(val) =>
-                                props.onSetCheckinValue(habit.id, selectedDay(), val)
-                              }
-                            />
-                          </div>
-                        </Show>
-
-                        <Show when={isEditingNote()}>
-                          <div class="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={noteDraft()}
-                              onInput={(e) => setNoteDraft(e.currentTarget.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  void props
-                                    .onSaveNote(habit.id, selectedDay(), noteDraft())
-                                    .then(() => setEditingNoteHabitId(null));
-                                }
-                              }}
-                              placeholder="Day note..."
-                              autofocus
-                              class="flex-1 h-9 rounded-xl bg-[#0A0B0E] border border-white/[0.1] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:outline-none focus:border-[#3B82F6]"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void props
-                                  .onSaveNote(habit.id, selectedDay(), noteDraft())
-                                  .then(() => setEditingNoteHabitId(null))
-                              }
-                              class="h-9 px-3.5 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB] text-xs font-medium text-white cursor-pointer"
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </Show>
-                      </li>
-                    );
-                  }}
-                </For>
-              </ul>
-            </Show>
-
-            <div class="border-t border-white/[0.06]">
-              <div class="px-6 py-3 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
-                <span class="text-xs font-medium text-[#9AA1B1]">Tasks</span>
-                <span class="text-[11px] font-mono tabular-nums text-[#8E95A5]">
-                  {selectedDayTasksCount() === 0
-                    ? 'None on this day'
-                    : `${selectedDayTasks().done.length} done${
-                        selectedDayTasks().notDone.length > 0
-                          ? ` · ${selectedDayTasks().notDone.length} not done`
-                          : ''
-                      }${
-                        selectedDayTasks().archived.length > 0
-                          ? ` · ${selectedDayTasks().archived.length} arch`
-                          : ''
-                      }${
-                        selectedDayTasks().dueOpen.length > 0
-                          ? ` · ${selectedDayTasks().dueOpen.length} due`
-                          : ''
-                      }`}
-                </span>
-              </div>
-
-              <Show when={selectedDayTasksCount() > 0}>
-                <ul class="divide-y divide-white/[0.06]">
-                  <For each={selectedDayTasks().done}>
-                    {(task) => {
-                      const doneDay = () =>
-                        task.completedDay ??
-                        CivilCalendar.fromTimestamp(task.updatedAt, props.timeZone);
-                      const timingHint = () => {
-                        if (task.dueDay === null) return 'Goal';
-                        return doneDay() <= task.dueDay ? 'On time' : 'Late';
+                      const stats = () => {
+                        if (isFuture()) return { scheduled: 0, done: 0 };
+                        return monthDayStats().get(dayIndex) ?? { scheduled: 0, done: 0 };
                       };
+
+                      const tone = createMemo(() =>
+                        DayCellClassifier.classify(
+                          dayIndex,
+                          props.todayDay,
+                          stats().scheduled,
+                          stats().done
+                        )
+                      );
+
                       return (
-                        <li class="px-5 py-2.5 flex items-center gap-3">
-                          <span class="w-6 h-6 rounded-lg bg-[#3B82F6]/20 border border-[#3B82F6]/40 text-[#93C5FD] flex items-center justify-center shrink-0">
-                            <CheckIcon class="w-3.5 h-3.5" />
-                          </span>
-                          <div class="min-w-0 flex-1">
-                            <p
-                              class="text-xs font-medium text-[#9AA1B1] line-through line-clamp-2 break-words"
-                              title={task.title}
+                        <button
+                          type="button"
+                          disabled={isFuture()}
+                          onClick={() => {
+                            setSelectedDay(dayIndex);
+                            setEditingNoteHabitId(null);
+                          }}
+                          class={`flex h-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border font-mono text-xs tabular-nums transition-colors disabled:cursor-default disabled:opacity-30 ${calendarTileClass(
+                            tone(),
+                            isSelected()
+                          )}`}
+                        >
+                          <span>{local.day}</span>
+                          <Show when={stats().scheduled > 0 && !isFuture()}>
+                            <span
+                              class={`text-[9px] ${
+                                tone() === 'complete'
+                                  ? 'text-[#93C5FD]'
+                                  : tone().startsWith('missed')
+                                    ? 'text-[#FCA5A5]'
+                                    : 'text-[#8E95A5]'
+                              }`}
                             >
-                              {task.title}
-                            </p>
-                            <p class="text-[11px] text-[#6B7280] line-clamp-2 break-words">
-                              Done · {timingHint()}
-                              {task.repeatable ? ' · Repeats' : ''}
-                              {task.note ? ` · ${task.note}` : ''}
-                            </p>
-                          </div>
-                        </li>
+                              {stats().done}/{stats().scheduled}
+                            </span>
+                          </Show>
+                        </button>
                       );
                     }}
                   </For>
+                </div>
+              </section>
 
-                  <For each={selectedDayTasks().notDone}>
-                    {(task) => (
-                      <li class="px-5 py-2.5 flex items-center gap-3">
-                        <span class="w-6 h-6 rounded-lg bg-[#EF4444]/10 border border-[#EF4444]/30 text-[#FCA5A5] flex items-center justify-center shrink-0">
-                          <CloseIcon class="w-3.5 h-3.5" />
-                        </span>
-                        <div class="min-w-0 flex-1">
-                          <p
-                            class="text-xs font-medium text-[#C8CDD8] line-clamp-2 break-words"
-                            title={task.title}
-                          >
-                            {task.title}
-                          </p>
-                          <p class="text-[11px] text-[#FCA5A5]/80 line-clamp-2 break-words">
-                            Not Done
-                            {task.note ? ` · ${task.note}` : ''}
-                          </p>
-                        </div>
-                      </li>
-                    )}
-                  </For>
+              <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B] lg:col-span-5">
+                <div class="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
+                  <div>
+                    <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
+                      {selectedDay() === props.todayDay
+                        ? 'Today'
+                        : CivilCalendar.formatShortDate(selectedDay())}
+                    </h2>
+                    <p class="text-xs text-[#8E95A5]">
+                      {CivilCalendar.formatFullDate(selectedDay())}
+                    </p>
+                  </div>
+                </div>
 
-                  <For each={selectedDayTasks().archived}>
-                    {(task) => (
-                      <li class="px-5 py-2.5 flex items-center gap-3">
-                        <span class="w-6 h-6 rounded-lg bg-[#1C1F26] border border-white/[0.08] text-[#8E95A5] flex items-center justify-center shrink-0">
-                          <ArchiveIcon class="w-3.5 h-3.5" />
-                        </span>
-                        <div class="min-w-0 flex-1">
-                          <p
-                            class="text-xs font-medium text-[#8E95A5] line-clamp-2 break-words"
-                            title={task.title}
-                          >
-                            {task.title}
-                          </p>
-                          <p class="text-[11px] text-[#6B7280] line-clamp-2 break-words">
-                            Archived
-                            {task.note ? ` · ${task.note}` : ''}
-                          </p>
-                        </div>
-                      </li>
-                    )}
-                  </For>
+                <Show
+                  when={selectedDayHabits().length > 0}
+                  fallback={
+                    <div class="space-y-3 px-6 py-10 text-center">
+                      <p class="text-sm text-[#8E95A5]">
+                        {props.habitFilter !== 'all' && targetHabits().length === 0
+                          ? 'No habits selected in filter.'
+                          : 'No habits were active on this date.'}
+                      </p>
+                      <Show when={props.habitFilter !== 'all'}>
+                        <button
+                          type="button"
+                          onClick={() => props.onChangeHabitFilter('all')}
+                          class="h-9 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-3.5 text-xs font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933]"
+                        >
+                          Show All Habits
+                        </button>
+                      </Show>
+                    </div>
+                  }
+                >
+                  <ul class="divide-y divide-white/[0.06]">
+                    <For each={selectedDayHabits()}>
+                      {(habit) => {
+                        const checkinEntry = () =>
+                          checkinIndex().get(`${habit.id}:${selectedDay()}`);
+                        const activeTarget = () =>
+                          HabitSchedule.getAtDay(habit, selectedDay()).dailyTarget;
+                        const currentValue = () =>
+                          HabitSchedule.getCheckinValueForDay(habit, checkinEntry(), selectedDay());
+                        const isDone = () =>
+                          HabitSchedule.isCheckinDoneForDay(habit, checkinEntry(), selectedDay());
+                        const isPartial = () => {
+                          const target = activeTarget();
+                          return target !== null && !isDone() && currentValue() > 0;
+                        };
+                        const partialPct = () => {
+                          const target = activeTarget();
+                          if (target === null || target <= 0) return 0;
+                          return Math.min(100, Math.round((currentValue() / target) * 100));
+                        };
+                        const accentColor = () => HabitAppearance.getColor(habit.color);
+                        const scheduleStatusLabel = () => {
+                          const day = selectedDay();
+                          const sched = HabitSchedule.getAtDay(habit, day);
+                          const valPrefix =
+                            sched.dailyTarget !== null
+                              ? `${HabitSchedule.formatNumericValue(currentValue())}/${HabitSchedule.formatNumericValue(sched.dailyTarget)}${habit.unit ? ` ${habit.unit}` : ''} · `
+                              : '';
+                          if (sched.weeklyTarget !== null) {
+                            const weekStart = CivilCalendar.startOfWeek(day);
+                            const weekEnd = weekStart + 6;
+                            const segs = HabitSchedule.getSegmentsInRange(
+                              habit,
+                              Math.max(habit.startDay, weekStart),
+                              weekEnd
+                            );
+                            const activeSeg =
+                              segs.find((s) => day >= s.start && day <= s.end) ??
+                              segs[segs.length - 1];
+                            const evalDay =
+                              day <= props.todayDay
+                                ? Math.min(activeSeg ? activeSeg.end : weekEnd, props.todayDay)
+                                : day;
+                            const wk = StreakCalculator.calculateWeeklyProgress(
+                              habit,
+                              props.snapshot.checkins,
+                              evalDay
+                            );
+                            const flexLabel = wk.isComplete
+                              ? `Flexible (${wk.completedDays}/${wk.scheduledDays} wk complete)`
+                              : `Flexible (${wk.completedDays}/${wk.scheduledDays} wk)`;
+                            const eligibleMask = sched.weekdays & 0x7f || 0x7f;
+                            return (
+                              valPrefix +
+                              (CivilCalendar.isScheduled(eligibleMask, day)
+                                ? flexLabel
+                                : `Off-schedule day · ${flexLabel}`)
+                            );
+                          }
+                          return (
+                            valPrefix +
+                            (CivilCalendar.isScheduled(sched.weekdays, day)
+                              ? 'Scheduled'
+                              : 'Off-schedule day')
+                          );
+                        };
+                        const noteText = () =>
+                          noteIndex().get(`${habit.id}:${selectedDay()}`) ?? '';
+                        const isEditingNote = () => editingNoteHabitId() === habit.id;
 
-                  <For each={selectedDayTasks().dueOpen}>
-                    {(task) => (
-                      <li class="px-5 py-2.5 flex items-center gap-3">
-                        <span class="w-6 h-6 rounded-lg bg-[#0A0B0E] border border-white/[0.15] flex items-center justify-center shrink-0">
-                          <span class="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" />
-                        </span>
-                        <div class="min-w-0 flex-1">
-                          <p
-                            class="text-xs font-medium text-[#F5F7FA] line-clamp-2 break-words"
-                            title={task.title}
-                          >
-                            {task.title}
-                          </p>
-                          <div class="text-[11px] text-[#8E95A5] flex flex-wrap items-center gap-1 min-w-0">
-                            <span class="shrink-0">Open · Due</span>
-                            <Show when={task.repeatable}>
-                              <span aria-hidden="true" class="shrink-0">·</span>
-                              <RepeatIcon class="w-3 h-3 text-[#60A5FA] shrink-0" />
+                        return (
+                          <li class="space-y-2.5 px-5 py-3.5">
+                            <div class="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void props.onToggleCheckin(habit.id, selectedDay(), !isDone())
+                                }
+                                aria-pressed={isDone()}
+                                aria-label={`Toggle ${habit.name} for ${CivilCalendar.formatShortDate(selectedDay())}`}
+                                class={`relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-colors ${
+                                  isDone()
+                                    ? 'border-transparent'
+                                    : isPartial()
+                                      ? 'border-white/[0.22] bg-[#0A0B0E] text-[#C8CDD8] hover:border-white/40'
+                                      : 'border-white/[0.12] bg-[#0A0B0E] text-transparent hover:border-white/30'
+                                }`}
+                                style={
+                                  isDone()
+                                    ? {
+                                        'background-color': accentColor(),
+                                        color: HabitAppearance.getContrastTextColor(accentColor()),
+                                      }
+                                    : undefined
+                                }
+                              >
+                                <Show when={isPartial()}>
+                                  <span
+                                    aria-hidden="true"
+                                    class="absolute inset-x-0 bottom-0 opacity-25 transition-all"
+                                    style={{
+                                      height: `${partialPct()}%`,
+                                      'background-color': accentColor(),
+                                    }}
+                                  />
+                                </Show>
+                                <CheckIcon class="relative z-10 h-4 w-4" />
+                              </button>
+
+                              <div class="min-w-0 flex-1">
+                                <div class="flex items-start gap-2">
+                                  <HabitBadge appearanceRaw={habit.color} size="xs" />
+                                  <p
+                                    class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                                    title={habit.name}
+                                  >
+                                    {habit.name}
+                                  </p>
+                                </div>
+                                <p
+                                  class="line-clamp-2 font-mono text-xs break-words text-[#8E95A5] tabular-nums"
+                                  title={
+                                    noteText() && !isEditingNote()
+                                      ? `${scheduleStatusLabel()} · ${noteText()}`
+                                      : scheduleStatusLabel()
+                                  }
+                                >
+                                  {scheduleStatusLabel()}
+                                  {noteText() && !isEditingNote() ? ` · ${noteText()}` : ''}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isEditingNote()) {
+                                    setEditingNoteHabitId(null);
+                                  } else {
+                                    setNoteDraft(noteText());
+                                    setEditingNoteHabitId(habit.id);
+                                  }
+                                }}
+                                aria-label={`Edit note for ${habit.name}`}
+                                class={`flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl transition-colors ${
+                                  noteText() || isEditingNote()
+                                    ? 'bg-[#3B82F6]/10 text-[#60A5FA]'
+                                    : 'text-[#8E95A5] hover:bg-white/[0.05] hover:text-[#F5F7FA]'
+                                }`}
+                              >
+                                <NoteIcon class="h-4 w-4" />
+                              </button>
+                            </div>
+
+                            <Show when={activeTarget() !== null || currentValue() > 0}>
+                              <div class="pl-[3.25rem]">
+                                <MeasuredQuickControls
+                                  habitName={habit.name}
+                                  accentColor={accentColor()}
+                                  unit={habit.unit}
+                                  value={currentValue()}
+                                  target={activeTarget() ?? Math.max(1, currentValue())}
+                                  onIncrement={(delta) =>
+                                    props.onIncrementCheckinValue(habit.id, selectedDay(), delta)
+                                  }
+                                  onSetValue={(val) =>
+                                    props.onSetCheckinValue(habit.id, selectedDay(), val)
+                                  }
+                                />
+                              </div>
                             </Show>
-                            <Show when={task.note}>
-                              <span class="line-clamp-2 break-words max-w-full">
-                                · {task.note}
+
+                            <Show when={isEditingNote()}>
+                              <div class="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={noteDraft()}
+                                  onInput={(e) => setNoteDraft(e.currentTarget.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      void props
+                                        .onSaveNote(habit.id, selectedDay(), noteDraft())
+                                        .then(() => setEditingNoteHabitId(null));
+                                    }
+                                  }}
+                                  placeholder="Day note..."
+                                  autofocus
+                                  class="h-9 flex-1 rounded-xl border border-white/[0.1] bg-[#0A0B0E] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void props
+                                      .onSaveNote(habit.id, selectedDay(), noteDraft())
+                                      .then(() => setEditingNoteHabitId(null))
+                                  }
+                                  class="h-9 cursor-pointer rounded-xl bg-[#3B82F6] px-3.5 text-xs font-medium text-white hover:bg-[#2563EB]"
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </Show>
+                          </li>
+                        );
+                      }}
+                    </For>
+                  </ul>
+                </Show>
+
+                <div class="border-t border-white/[0.06]">
+                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-6 py-3">
+                    <span class="text-xs font-medium text-[#9AA1B1]">Tasks</span>
+                    <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
+                      {selectedDayTasksCount() === 0
+                        ? 'None on this day'
+                        : `${selectedDayTasks().done.length} done${
+                            selectedDayTasks().notDone.length > 0
+                              ? ` · ${selectedDayTasks().notDone.length} not done`
+                              : ''
+                          }${
+                            selectedDayTasks().archived.length > 0
+                              ? ` · ${selectedDayTasks().archived.length} arch`
+                              : ''
+                          }${
+                            selectedDayTasks().dueOpen.length > 0
+                              ? ` · ${selectedDayTasks().dueOpen.length} due`
+                              : ''
+                          }`}
+                    </span>
+                  </div>
+
+                  <Show when={selectedDayTasksCount() > 0}>
+                    <ul class="divide-y divide-white/[0.06]">
+                      <For each={selectedDayTasks().done}>
+                        {(task) => {
+                          const doneDay = () =>
+                            task.completedDay ??
+                            CivilCalendar.fromTimestamp(task.updatedAt, props.timeZone);
+                          const timingHint = () => {
+                            if (task.dueDay === null) return 'Goal';
+                            return doneDay() <= task.dueDay ? 'On time' : 'Late';
+                          };
+                          return (
+                            <li class="flex items-center gap-3 px-5 py-2.5">
+                              <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#3B82F6]/40 bg-[#3B82F6]/20 text-[#93C5FD]">
+                                <CheckIcon class="h-3.5 w-3.5" />
                               </span>
-                            </Show>
-                          </div>
-                        </div>
-                      </li>
-                    )}
-                  </For>
-                </ul>
-              </Show>
+                              <div class="min-w-0 flex-1">
+                                <p
+                                  class="line-clamp-2 text-xs font-medium break-words text-[#9AA1B1] line-through"
+                                  title={task.title}
+                                >
+                                  {task.title}
+                                </p>
+                                <p class="line-clamp-2 text-[11px] break-words text-[#6B7280]">
+                                  Done · {timingHint()}
+                                  {task.repeatable ? ' · Repeats' : ''}
+                                  {task.note ? ` · ${task.note}` : ''}
+                                </p>
+                              </div>
+                            </li>
+                          );
+                        }}
+                      </For>
+
+                      <For each={selectedDayTasks().notDone}>
+                        {(task) => (
+                          <li class="flex items-center gap-3 px-5 py-2.5">
+                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 text-[#FCA5A5]">
+                              <CloseIcon class="h-3.5 w-3.5" />
+                            </span>
+                            <div class="min-w-0 flex-1">
+                              <p
+                                class="line-clamp-2 text-xs font-medium break-words text-[#C8CDD8]"
+                                title={task.title}
+                              >
+                                {task.title}
+                              </p>
+                              <p class="line-clamp-2 text-[11px] break-words text-[#FCA5A5]/80">
+                                Not Done
+                                {task.note ? ` · ${task.note}` : ''}
+                              </p>
+                            </div>
+                          </li>
+                        )}
+                      </For>
+
+                      <For each={selectedDayTasks().archived}>
+                        {(task) => (
+                          <li class="flex items-center gap-3 px-5 py-2.5">
+                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-[#1C1F26] text-[#8E95A5]">
+                              <ArchiveIcon class="h-3.5 w-3.5" />
+                            </span>
+                            <div class="min-w-0 flex-1">
+                              <p
+                                class="line-clamp-2 text-xs font-medium break-words text-[#8E95A5]"
+                                title={task.title}
+                              >
+                                {task.title}
+                              </p>
+                              <p class="line-clamp-2 text-[11px] break-words text-[#6B7280]">
+                                Archived
+                                {task.note ? ` · ${task.note}` : ''}
+                              </p>
+                            </div>
+                          </li>
+                        )}
+                      </For>
+
+                      <For each={selectedDayTasks().dueOpen}>
+                        {(task) => (
+                          <li class="flex items-center gap-3 px-5 py-2.5">
+                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/[0.15] bg-[#0A0B0E]">
+                              <span class="h-1.5 w-1.5 rounded-full bg-[#3B82F6]" />
+                            </span>
+                            <div class="min-w-0 flex-1">
+                              <p
+                                class="line-clamp-2 text-xs font-medium break-words text-[#F5F7FA]"
+                                title={task.title}
+                              >
+                                {task.title}
+                              </p>
+                              <div class="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-[#8E95A5]">
+                                <span class="shrink-0">Open · Due</span>
+                                <Show when={task.repeatable}>
+                                  <span aria-hidden="true" class="shrink-0">
+                                    ·
+                                  </span>
+                                  <RepeatIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                </Show>
+                                <Show when={task.note}>
+                                  <span class="line-clamp-2 max-w-full break-words">
+                                    · {task.note}
+                                  </span>
+                                </Show>
+                              </div>
+                            </div>
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </Show>
+                </div>
+              </section>
             </div>
-          </section>
-        </div>
           </Match>
         </Switch>
       </Show>

@@ -1,17 +1,43 @@
 const MS_PER_DAY = 86_400_000;
 
 const MONTH_NAMES_SHORT = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 
 const MONTH_NAMES_FULL = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 const WEEKDAY_NAMES_FULL = [
-  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
 ];
 
 const WEEKDAY_NAMES_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -43,11 +69,7 @@ export class CivilCalendar {
       return CivilCalendar.fromLocalDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
     }
     if (timeZone.toUpperCase() === 'UTC') {
-      return CivilCalendar.fromLocalDate(
-        d.getUTCFullYear(),
-        d.getUTCMonth() + 1,
-        d.getUTCDate()
-      );
+      return CivilCalendar.fromLocalDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
     }
     try {
       const parts = new Intl.DateTimeFormat('en-CA', {
@@ -65,11 +87,7 @@ export class CivilCalendar {
     } catch {
       // Fallback to UTC if an unsupported timezone string is provided.
     }
-    return CivilCalendar.fromLocalDate(
-      d.getUTCFullYear(),
-      d.getUTCMonth() + 1,
-      d.getUTCDate()
-    );
+    return CivilCalendar.fromLocalDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
   }
 
   /**
@@ -92,7 +110,7 @@ export class CivilCalendar {
     const { year, month, day } = CivilCalendar.toLocalDate(dayIndex);
     const totalMonths = year * 12 + (month - 1) + deltaMonths;
     const targetYear = Math.floor(totalMonths / 12);
-    const targetMonth = ((totalMonths % 12) + 12) % 12 + 1;
+    const targetMonth = (((totalMonths % 12) + 12) % 12) + 1;
     const nextMonthYear = targetMonth === 12 ? targetYear + 1 : targetYear;
     const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1;
     const daysInTargetMonth =
@@ -189,7 +207,10 @@ export class CivilCalendar {
     return CivilCalendar.fromLocalDate(year, month, day);
   }
 
-  public static getMonthDays(year: number, month: number): { leadingEmpty: number; days: number[] } {
+  public static getMonthDays(
+    year: number,
+    month: number
+  ): { leadingEmpty: number; days: number[] } {
     const firstDay = CivilCalendar.fromLocalDate(year, month, 1);
     const nextMonthYear = month === 12 ? year + 1 : year;
     const nextMonth = month === 12 ? 1 : month + 1;
