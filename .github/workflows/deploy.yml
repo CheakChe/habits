@@ -35,11 +35,7 @@ jobs:
           fi
 
       - name: Quality Checks & Tests
-        run: |
-          npm run lint
-          npm run check:deps
-          npm run check:deadcode
-          npm run test:all
+        run: npm run check
 
       - name: Build static bundle
         env:
