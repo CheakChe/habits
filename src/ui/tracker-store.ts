@@ -25,6 +25,7 @@ import {
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitSchedule } from '../utils/habit-schedule';
+import { Helpers } from '../utils/helpers';
 import { DATE_RANGE_PRESETS, DateRangePresetId } from '../utils/date-range';
 import {
   BadgePermissionState,
@@ -1254,7 +1255,7 @@ export class TrackerStore {
     const filename = BackupService.buildFilename(this.todayDay());
     this.setSyncBanner({
       kind: 'success',
-      text: `Backup exported (${bytes.byteLength} bytes).`,
+      text: `Backup exported (${Helpers.formatByteSize(bytes.byteLength)}).`,
     });
     return { filename, bytes };
   }

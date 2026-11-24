@@ -38,4 +38,28 @@ export class Helpers {
     }
     return true;
   }
+
+  public static formatByteSize(bytes?: number): string {
+    if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return '—';
+    const wholeBytes = Math.round(bytes);
+    if (wholeBytes < 1024) return `${wholeBytes} B`;
+
+    const units = ['B', 'KB', 'MB', 'GB'] as const;
+    let unitIndex = 1;
+    let scaled = wholeBytes / 1024;
+
+    while (unitIndex < units.length - 1) {
+      const decimals = unitIndex >= 2 ? 2 : 1;
+      if (Number(scaled.toFixed(decimals)) < 1024) break;
+      scaled /= 1024;
+      unitIndex += 1;
+    }
+
+    const decimals = unitIndex >= 2 ? 2 : 1;
+    const formatted = scaled
+      .toFixed(decimals)
+      .replace(/\.0+$/, '')
+      .replace(/(\.\d*[1-9])0+$/, '$1');
+    return `${formatted} ${units[unitIndex]}`;
+  }
 }

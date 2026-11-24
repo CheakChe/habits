@@ -2154,6 +2154,31 @@ test('AdvancedAnalytics habitWeekdayMatrix distinguishes allowed vs off-schedule
   assert.equal(singleRow.cells[5].isOffSchedule, true);
 });
 
+test('Helpers.formatByteSize scales across B, KB, MB, and GB cleanly', () => {
+  assert.equal(Helpers.formatByteSize(undefined), '—');
+  assert.equal(Helpers.formatByteSize(Number.NaN), '—');
+  assert.equal(Helpers.formatByteSize(Number.POSITIVE_INFINITY), '—');
+  assert.equal(Helpers.formatByteSize(-10), '—');
+
+  assert.equal(Helpers.formatByteSize(0), '0 B');
+  assert.equal(Helpers.formatByteSize(512), '512 B');
+  assert.equal(Helpers.formatByteSize(1023), '1023 B');
+
+  assert.equal(Helpers.formatByteSize(1024), '1 KB');
+  assert.equal(Helpers.formatByteSize(1536), '1.5 KB');
+  assert.equal(Helpers.formatByteSize(12800), '12.5 KB');
+  // Avoid displaying 1024.0 KB due to rounding just below 1 MB
+  assert.equal(Helpers.formatByteSize(1024 * 1024 - 10), '1 MB');
+
+  assert.equal(Helpers.formatByteSize(1024 * 1024), '1 MB');
+  assert.equal(Helpers.formatByteSize(1.25 * 1024 * 1024), '1.25 MB');
+  assert.equal(Helpers.formatByteSize(1.5 * 1024 * 1024), '1.5 MB');
+  assert.equal(Helpers.formatByteSize(1024 * 1024 * 1024 - 100), '1 GB');
+
+  assert.equal(Helpers.formatByteSize(1024 * 1024 * 1024), '1 GB');
+  assert.equal(Helpers.formatByteSize(2.45 * 1024 * 1024 * 1024), '2.45 GB');
+});
+
 
 
 

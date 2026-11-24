@@ -19,6 +19,7 @@ import {
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitSchedule } from '../utils/habit-schedule';
+import { Helpers } from '../utils/helpers';
 import {
   BadgePermissionState,
   ReminderPlanner,
@@ -1296,8 +1297,15 @@ export function SyncConfirmModal(props: SyncConfirmModalProps): JSX.Element {
               </div>
               <div>
                 <span class="text-[#8E95A5] block">Tasks · Snapshot Size</span>
-                <span class="text-base font-mono tabular-nums font-medium text-[#F5F7FA]">
-                  {pending().summary.tasksCount} · {pending().summary.byteSize} B
+                <span
+                  class="text-base font-mono tabular-nums font-medium text-[#F5F7FA]"
+                  title={
+                    pending().summary.byteSize >= 1024
+                      ? `${pending().summary.byteSize} B`
+                      : undefined
+                  }
+                >
+                  {pending().summary.tasksCount} · {Helpers.formatByteSize(pending().summary.byteSize)}
                 </span>
               </div>
             </div>
@@ -1639,12 +1647,6 @@ function formatRevisionTime(iso?: string): string {
   });
 }
 
-function formatByteSize(bytes?: number): string {
-  if (bytes === undefined || !Number.isFinite(bytes)) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  return `${(bytes / 1024).toFixed(1)} KB`;
-}
-
 export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Element {
   useBodyScrollLock(() => props.open);
 
@@ -1764,9 +1766,15 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
                               </div>
                               <p
                                 class="text-[11px] font-mono tabular-nums text-[#8E95A5] break-anywhere"
-                                title={`Rev #${rev.id} · ${formatByteSize(rev.size)}`}
+                                title={
+                                  rev.size !== undefined &&
+                                  Number.isFinite(rev.size) &&
+                                  rev.size >= 1024
+                                    ? `Rev #${rev.id} · ${Helpers.formatByteSize(rev.size)} (${Math.round(rev.size)} B)`
+                                    : `Rev #${rev.id} · ${Helpers.formatByteSize(rev.size)}`
+                                }
                               >
-                                Rev #{rev.id} · {formatByteSize(rev.size)}
+                                Rev #{rev.id} · {Helpers.formatByteSize(rev.size)}
                               </p>
                             </div>
 
@@ -1804,8 +1812,15 @@ export function DriveRevisionsModal(props: DriveRevisionsModalProps): JSX.Elemen
                       <span class="text-xs font-medium text-[#F5F7FA] min-w-0 flex-1 break-anywhere">
                         Revision #{inspected().revisionId} Contents
                       </span>
-                      <span class="text-[11px] font-mono tabular-nums text-[#8E95A5] shrink-0 whitespace-nowrap">
-                        {inspected().summary.byteSize} B
+                      <span
+                        class="text-[11px] font-mono tabular-nums text-[#8E95A5] shrink-0 whitespace-nowrap"
+                        title={
+                          inspected().summary.byteSize >= 1024
+                            ? `${inspected().summary.byteSize} B`
+                            : undefined
+                        }
+                      >
+                        {Helpers.formatByteSize(inspected().summary.byteSize)}
                       </span>
                     </div>
 
