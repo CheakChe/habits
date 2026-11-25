@@ -497,7 +497,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                             : Math.max(12, Math.round((d.count / maxFlexWeekdayCount()) * 100));
                         return (
                           <div class="flex h-full flex-col items-center justify-end gap-1.5">
-                            <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
+                            <span class="h-4 shrink-0 font-mono text-[11px] leading-4 text-[#8E95A5] tabular-nums">
                               {d.count > 0 ? d.count : ''}
                             </span>
                             <div class="flex w-full flex-1 items-end">
@@ -514,7 +514,9 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                                 />
                               </Show>
                             </div>
-                            <span class="font-mono text-[11px] text-[#8E95A5]">{d.label}</span>
+                            <span class="h-4 shrink-0 font-mono text-[11px] leading-4 text-[#8E95A5]">
+                              {d.label}
+                            </span>
                           </div>
                         );
                       }}
@@ -763,7 +765,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                           style={{ height: `${closedH()}%` }}
                         />
                       </div>
-                      <span class="max-w-full truncate font-mono text-[10px] text-[#6B7280] tabular-nums">
+                      <span class="h-4 max-w-full shrink-0 truncate font-mono text-[11px] leading-4 text-[#8E95A5] tabular-nums">
                         {b.shortLabel}
                       </span>
                     </div>
@@ -940,7 +942,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                       onMouseEnter={() => setHoveredForecastDay(d)}
                       onMouseLeave={() => setHoveredForecastDay(null)}
                     >
-                      <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
+                      <span class="h-4 shrink-0 font-mono text-[11px] leading-4 text-[#8E95A5] tabular-nums">
                         {d.totalLoad > 0 ? d.totalLoad : ''}
                       </span>
                       <div class="flex w-full flex-1 items-end">
@@ -973,7 +975,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
                           </div>
                         </Show>
                       </div>
-                      <span class="font-mono text-[10px] text-[#8E95A5] tabular-nums">
+                      <span class="h-4 shrink-0 font-mono text-[11px] leading-4 text-[#8E95A5] tabular-nums">
                         {d.weekdayLabel}
                       </span>
                     </div>
@@ -1113,7 +1115,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
               </div>
 
               <div class="flex flex-col gap-1.5">
-                <div class="flex h-[14px] gap-[4px] text-[10px] leading-[14px] text-[#8E95A5] select-none">
+                <div class="flex h-[14px] gap-[4px] text-[11px] leading-[14px] text-[#8E95A5] select-none">
                   <For each={props.report.multiHeatmap.weeks}>
                     {(week) => (
                       <div class="w-[18px] shrink-0 overflow-visible whitespace-nowrap">

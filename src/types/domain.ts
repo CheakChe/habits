@@ -11,6 +11,16 @@ export interface HabitScheduleVersion {
 
 export type ScheduleApplyScope = 'all' | 'from_day';
 
+export interface ReminderSlot {
+  id: string;
+  label: string;
+  /** 24-hour local time HH:MM */
+  time: string;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+}
+
 export interface Habit {
   id: number;
   name: string;
@@ -25,6 +35,8 @@ export interface Habit {
   unit?: string | null;
   /** Chronological schedule versions when a habit's schedule or target changed from a specific day */
   scheduleHistory?: HabitScheduleVersion[];
+  /** Explicitly assigned reminder slot IDs (omitted/empty means no reminder by default) */
+  reminderSlotIds?: string[];
   /** Local civil dayIndex when the habit starts */
   startDay: number;
   archivedAt: number | null;
@@ -59,6 +71,37 @@ export function normalizeCheckinValue(value: unknown): number | undefined {
   }
   const rounded = Math.round(value * 100) / 100;
   return rounded > 0 ? rounded : undefined;
+}
+
+export function normalizeReminderSlotTime(value: unknown, fallback: string = '20:00'): string {
+  if (typeof value !== 'string') return fallback;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return fallback;
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+    return fallback;
+  }
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+export function normalizeReminderSlotLabel(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value.trim().slice(0, 32);
+}
+
+export function normalizeReminderSlotIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item === 'string') {
+      const trimmed = item.trim();
+      if (trimmed.length > 0) {
+        seen.add(trimmed);
+      }
+    }
+  }
+  return Array.from(seen).sort((a, b) => a.localeCompare(b));
 }
 
 export interface HabitCheckin {
@@ -98,6 +141,7 @@ export interface DomainSnapshot {
   checkins: HabitCheckin[];
   notes: HabitNote[];
   tasks: Task[];
+  reminderSlots?: ReminderSlot[];
 }
 
 export type SessionMode = 'guest' | 'google';

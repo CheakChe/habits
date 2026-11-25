@@ -17,6 +17,7 @@ const SECONDARY_CALENDAR_DESCRIPTION =
 export interface ExistingReminderEvent {
   id: string;
   dayIndex: number | null;
+  slotId: string | null;
   summary: string;
   signature: string | null;
   startDateTime: string | null;
@@ -100,6 +101,7 @@ interface GoogleEventListResponse {
       private?: Record<string, string>;
     };
   }>;
+  nextPageToken?: string;
 }
 
 interface DriveMetaFileEntry {
@@ -111,7 +113,7 @@ interface RemoteReminderMeta {
   calendarId: string | null;
   timeZone?: string | null;
   timeZoneUpdatedAt?: number;
-  reminderTime?: string;
+  taskReminderSlotId?: string | null;
   horizonDays?: number;
   calendarEnabled?: boolean;
   knownCalendarIds?: string[];
@@ -234,9 +236,9 @@ export class CalendarReminderService {
           timeZone: typeof parsed.timeZone === 'string' ? parsed.timeZone : null,
           timeZoneUpdatedAt:
             typeof parsed.timeZoneUpdatedAt === 'number' ? parsed.timeZoneUpdatedAt : undefined,
-          reminderTime:
-            typeof parsed.reminderTime === 'string'
-              ? ReminderPlanner.normalizeTime(parsed.reminderTime)
+          taskReminderSlotId:
+            parsed.taskReminderSlotId !== undefined
+              ? ReminderPlanner.normalizeTaskReminderSlotId(parsed.taskReminderSlotId)
               : undefined,
           horizonDays:
             typeof parsed.horizonDays === 'number'
@@ -347,14 +349,17 @@ export class CalendarReminderService {
     accessToken: string | null,
     localCalendarId: string | null,
     trackerTimeZone: string,
-    localPrefs?: Pick<ReminderPreferences, 'reminderTime' | 'horizonDays' | 'calendarEnabled'> & {
+    localPrefs?: Pick<
+      ReminderPreferences,
+      'taskReminderSlotId' | 'horizonDays' | 'calendarEnabled'
+    > & {
       timeZoneUpdatedAt?: number;
     }
   ): Promise<{
     calendarId: string | null;
     timeZone: string | null;
     timeZoneUpdatedAt?: number;
-    reminderTime?: string;
+    taskReminderSlotId?: string | null;
     horizonDays?: number;
     calendarEnabled?: boolean;
     updatedAt?: number;
@@ -435,7 +440,7 @@ export class CalendarReminderService {
             calendarId: remoteCalMeta.id,
             timeZone: effectiveTz,
             timeZoneUpdatedAt: winningTzUpdatedAt,
-            reminderTime: state.meta?.reminderTime,
+            taskReminderSlotId: state.meta?.taskReminderSlotId,
             horizonDays: state.meta?.horizonDays,
             calendarEnabled: state.meta?.calendarEnabled,
             updatedAt: needsRemoteWrite ? now : state.meta?.updatedAt,
@@ -461,7 +466,7 @@ export class CalendarReminderService {
               timeZoneUpdatedAt: resolvedTzUpdatedAt,
               ...(localPrefs
                 ? {
-                    reminderTime: localPrefs.reminderTime,
+                    taskReminderSlotId: localPrefs.taskReminderSlotId,
                     horizonDays: localPrefs.horizonDays,
                     calendarEnabled: localPrefs.calendarEnabled,
                   }
@@ -476,7 +481,7 @@ export class CalendarReminderService {
             timeZoneUpdatedAt: resolvedTzUpdatedAt,
             ...(localPrefs
               ? {
-                  reminderTime: localPrefs.reminderTime,
+                  taskReminderSlotId: localPrefs.taskReminderSlotId,
                   horizonDays: localPrefs.horizonDays,
                   calendarEnabled: localPrefs.calendarEnabled,
                 }
@@ -504,7 +509,7 @@ export class CalendarReminderService {
           calendarId: null,
           timeZone: winningTz,
           timeZoneUpdatedAt: winningTzUpdatedAt,
-          reminderTime: state.meta?.reminderTime,
+          taskReminderSlotId: state.meta?.taskReminderSlotId,
           horizonDays: state.meta?.horizonDays,
           calendarEnabled: state.meta?.calendarEnabled,
           updatedAt: now,
@@ -516,7 +521,7 @@ export class CalendarReminderService {
           calendarId: null,
           timeZone: remoteTz,
           timeZoneUpdatedAt: remoteTzUpdatedAt,
-          reminderTime: state.meta?.reminderTime,
+          taskReminderSlotId: state.meta?.taskReminderSlotId,
           horizonDays: state.meta?.horizonDays,
           calendarEnabled: state.meta?.calendarEnabled,
           updatedAt: state.meta?.updatedAt,
@@ -582,32 +587,49 @@ export class CalendarReminderService {
     accessToken: string,
     calendarId: string
   ): Promise<ExistingReminderEvent[]> {
-    const url = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?singleEvents=true&maxResults=250`;
-    const res = await Helpers.withRetry(async () => {
-      const response = await fetch(url, {
-        headers: this.authHeaders(accessToken),
-      });
-      if (!response.ok) {
-        throw mapHttpError(response.status, await response.text(), 'listing reminder events');
-      }
-      return response;
-    });
-
-    const data = (await res.json()) as GoogleEventListResponse;
     const events: ExistingReminderEvent[] = [];
-    for (const item of data.items ?? []) {
-      if (!item.id || item.status === 'cancelled') continue;
-      const priv = item.extendedProperties?.private;
-      const rawDay = priv?.habitsDayIndex;
-      const parsedDay = rawDay !== undefined && /^-?\d+$/.test(rawDay) ? Number(rawDay) : null;
-      events.push({
-        id: item.id,
-        dayIndex: parsedDay,
-        summary: item.summary ?? 'Habits Reminder',
-        signature: priv?.habitsSignature ?? null,
-        startDateTime: item.start?.dateTime ?? item.start?.date ?? null,
+    let pageToken: string | undefined;
+
+    do {
+      const qs = new URLSearchParams({
+        singleEvents: 'true',
+        maxResults: '250',
       });
-    }
+      if (pageToken) {
+        qs.set('pageToken', pageToken);
+      }
+      const url = `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events?${qs.toString()}`;
+      const res = await Helpers.withRetry(async () => {
+        const response = await fetch(url, {
+          headers: this.authHeaders(accessToken),
+        });
+        if (!response.ok) {
+          throw mapHttpError(response.status, await response.text(), 'listing reminder events');
+        }
+        return response;
+      });
+
+      const data = (await res.json()) as GoogleEventListResponse;
+      for (const item of data.items ?? []) {
+        if (!item.id || item.status === 'cancelled') continue;
+        const priv = item.extendedProperties?.private;
+        const rawDay = priv?.habitsDayIndex;
+        const parsedDay = rawDay !== undefined && /^-?\d+$/.test(rawDay) ? Number(rawDay) : null;
+        const rawSlotId = priv?.habitsSlotId;
+        const slotId =
+          typeof rawSlotId === 'string' && rawSlotId.trim().length > 0 ? rawSlotId.trim() : null;
+        events.push({
+          id: item.id,
+          dayIndex: parsedDay,
+          slotId,
+          summary: item.summary ?? 'Habits Reminder',
+          signature: priv?.habitsSignature ?? null,
+          startDateTime: item.start?.dateTime ?? item.start?.date ?? null,
+        });
+      }
+      pageToken = data.nextPageToken;
+    } while (pageToken);
+
     return events;
   }
 
@@ -689,35 +711,25 @@ export class CalendarReminderService {
       ? await this.listCalendarEvents(token, resolvedCalendarId)
       : [];
 
-    const desiredByDay = new Map<number, DesiredReminderEvent>();
+    const desiredByKey = new Map<string, DesiredReminderEvent>();
+    let hasDesiredToday = false;
     for (const desired of desiredEvents) {
-      desiredByDay.set(desired.dayIndex, desired);
+      desiredByKey.set(`${desired.dayIndex}:${desired.slotId}`, desired);
+      if (desired.dayIndex === todayDay) {
+        hasDesiredToday = true;
+      }
     }
 
     const toDelete: CalendarSyncPlan['toDelete'] = [];
     const toUpdate: CalendarSyncPlan['toUpdate'] = [];
-    const matchedDays = new Set<number>();
+    const matchedKeys = new Set<string>();
     let unchangedCount = 0;
-    let todayCleared = false;
+    let deletedTodayEvent = false;
 
     for (const existing of existingEvents) {
-      if (
-        existing.dayIndex === null ||
-        existing.dayIndex < todayDay ||
-        matchedDays.has(existing.dayIndex)
-      ) {
-        toDelete.push({
-          existingId: existing.id,
-          summary: existing.summary,
-          dayIndex: existing.dayIndex,
-        });
-        continue;
-      }
-
-      const desired = desiredByDay.get(existing.dayIndex);
-      if (!desired) {
-        if (existing.dayIndex === todayDay) {
-          todayCleared = true;
+      if (existing.dayIndex === null || existing.slotId === null || existing.dayIndex < todayDay) {
+        if (existing.dayIndex === todayDay && !hasDesiredToday) {
+          deletedTodayEvent = true;
         }
         toDelete.push({
           existingId: existing.id,
@@ -727,7 +739,30 @@ export class CalendarReminderService {
         continue;
       }
 
-      matchedDays.add(existing.dayIndex);
+      const key = `${existing.dayIndex}:${existing.slotId}`;
+      if (matchedKeys.has(key)) {
+        toDelete.push({
+          existingId: existing.id,
+          summary: existing.summary,
+          dayIndex: existing.dayIndex,
+        });
+        continue;
+      }
+
+      const desired = desiredByKey.get(key);
+      if (!desired) {
+        if (existing.dayIndex === todayDay) {
+          deletedTodayEvent = true;
+        }
+        toDelete.push({
+          existingId: existing.id,
+          summary: existing.summary,
+          dayIndex: existing.dayIndex,
+        });
+        continue;
+      }
+
+      matchedKeys.add(key);
       if (existing.signature === desired.signature) {
         unchangedCount += 1;
       } else {
@@ -737,15 +772,15 @@ export class CalendarReminderService {
 
     const toCreate: DesiredReminderEvent[] = [];
     for (const desired of desiredEvents) {
-      if (!matchedDays.has(desired.dayIndex)) {
+      const key = `${desired.dayIndex}:${desired.slotId}`;
+      if (!matchedKeys.has(key)) {
         toCreate.push(desired);
       }
     }
 
     const pendingToday = ReminderPlanner.getTodayPendingSummary(snapshot, todayDay);
-    if (pendingToday.totalPendingCount === 0 && !desiredByDay.has(todayDay)) {
-      todayCleared = true;
-    }
+    const todayCleared =
+      !hasDesiredToday && (deletedTodayEvent || pendingToday.totalPendingCount === 0);
 
     return {
       calendarId: resolvedCalendarId,
@@ -785,6 +820,7 @@ export class CalendarReminderService {
         private: {
           habitsSource: 'habits',
           habitsDayIndex: String(desired.dayIndex),
+          habitsSlotId: desired.slotId,
           habitsSignature: desired.signature,
         },
       },
@@ -795,7 +831,7 @@ export class CalendarReminderService {
     mode: SessionMode | null,
     accessToken: string | null,
     plan: CalendarSyncPlan,
-    prefs?: Pick<ReminderPreferences, 'reminderTime' | 'horizonDays' | 'calendarEnabled'> & {
+    prefs?: Pick<ReminderPreferences, 'taskReminderSlotId' | 'horizonDays' | 'calendarEnabled'> & {
       timeZoneUpdatedAt?: number;
     }
   ): Promise<CalendarSyncApplyResult> {
@@ -926,7 +962,7 @@ export class CalendarReminderService {
         prefs?.timeZoneUpdatedAt && prefs.timeZoneUpdatedAt > 0 ? prefs.timeZoneUpdatedAt : now,
       ...(prefs
         ? {
-            reminderTime: prefs.reminderTime,
+            taskReminderSlotId: prefs.taskReminderSlotId,
             horizonDays: prefs.horizonDays,
             calendarEnabled: true,
           }

@@ -143,3 +143,247 @@ test('SessionManager retries with consent prompt when GIS returns interaction_re
   assert.equal(manager.getAccountEmail(), null);
   assert.equal(manager.getRememberedMode(), null);
 });
+
+test('SessionManager handles missing clientId, concurrent sign-in, superseded request, and GIS error callbacks', async () => {
+  // Missing oauthClientId
+  const noClient = new SessionManager({ oauthClientId: '   ', storage: createMemoryStorage() });
+  assert.equal(noClient.isUsingGis(), false);
+  await assert.rejects(() => noClient.signInWithGoogle(), /not configured/i);
+
+  // Concurrent signInWithGoogle shares inFlightSignIn promise
+  let requestCount = 0;
+  let capturedCallback: ((resp: { access_token?: string; expires_in?: number }) => void) | null =
+    null;
+  const authEvents: Array<{ hasToken: boolean; email: string | null }> = [];
+
+  const concurrentMgr = new SessionManager({
+    oauthClientId: 'client-1',
+    storage: createMemoryStorage(),
+    fetchFn: async () => new Response('fail', { status: 500 }),
+    getGisOAuth2: () => ({
+      initTokenClient(config) {
+        return {
+          requestAccessToken() {
+            requestCount += 1;
+            capturedCallback = config.callback;
+          },
+        };
+      },
+      hasGrantedAllScopes: () => true,
+    }),
+  });
+  const unsub = concurrentMgr.subscribeAuthChanges((state) => authEvents.push(state));
+
+  const p1 = concurrentMgr.signInWithGoogle();
+  const p2 = concurrentMgr.signInWithGoogle();
+  assert.equal(requestCount, 1);
+  capturedCallback!({ access_token: 'tok-shared', expires_in: 120 });
+  const [r1, r2] = await Promise.all([p1, p2]);
+  assert.equal(r1, 'tok-shared');
+  assert.equal(r2, 'tok-shared');
+  assert.equal(concurrentMgr.getTokenExpiresAt() > 0, true);
+  assert.equal(concurrentMgr.getAccountEmail(), null);
+  assert.equal(authEvents.length, 1);
+  assert.deepEqual(authEvents[0], { hasToken: true, email: null });
+
+  concurrentMgr.chooseGuest();
+  assert.equal(concurrentMgr.getRememberedMode(), 'guest');
+  assert.equal(concurrentMgr.hasAccessToken(), false);
+  assert.equal(concurrentMgr.getTokenExpiresAt(), 0);
+  unsub();
+  concurrentMgr.clearAccessTokenOnly();
+  assert.equal(authEvents.length, 2); // unsubscribed before clearAccessTokenOnly
+
+  // Error callbacks: access_denied, generic error, popup_closed, popup_failed_to_open, generic error_callback, thrown requestAccessToken
+  let nextMode:
+    | 'access_denied'
+    | 'generic_error'
+    | 'popup_closed'
+    | 'popup_blocked'
+    | 'err_cb_msg'
+    | 'throw'
+    | 'empty_token'
+    | 'partial_scopes' = 'access_denied';
+
+  const errMgr = new SessionManager({
+    oauthClientId: 'client-err',
+    storage: createMemoryStorage(),
+    fetchFn: async () => {
+      throw new Error('network error');
+    },
+    getGisOAuth2: () => ({
+      initTokenClient(config) {
+        return {
+          requestAccessToken() {
+            if (nextMode === 'throw') {
+              throw new Error('launch boom');
+            }
+            if (nextMode === 'access_denied') {
+              config.callback({ error: 'access_denied' });
+              return;
+            }
+            if (nextMode === 'generic_error') {
+              config.callback({ error: 'server_error', error_description: 'Upstream failure' });
+              return;
+            }
+            if (nextMode === 'popup_closed') {
+              config.error_callback?.({ type: 'popup_closed' });
+              return;
+            }
+            if (nextMode === 'popup_blocked') {
+              config.error_callback?.({ type: 'popup_failed_to_open' });
+              return;
+            }
+            if (nextMode === 'err_cb_msg') {
+              config.error_callback?.({ type: 'unknown', message: 'Popup crashed' });
+              return;
+            }
+            if (nextMode === 'empty_token') {
+              config.callback({ expires_in: 3600 });
+              return;
+            }
+            config.callback({ access_token: 'partial', expires_in: 3600, scope: 'only-one' });
+          },
+        };
+      },
+      hasGrantedAllScopes: () => false,
+    }),
+  });
+
+  await assert.rejects(() => errMgr.signInWithGoogle(), /denied or cancelled/i);
+  nextMode = 'generic_error';
+  await assert.rejects(() => errMgr.signInWithGoogle(), /Upstream failure/);
+  nextMode = 'popup_closed';
+  await assert.rejects(() => errMgr.signInWithGoogle(), /was cancelled/i);
+  nextMode = 'popup_blocked';
+  await assert.rejects(() => errMgr.signInWithGoogle(), /popup was blocked/i);
+  nextMode = 'err_cb_msg';
+  await assert.rejects(() => errMgr.signInWithGoogle(), /Popup crashed/);
+  nextMode = 'throw';
+  await assert.rejects(() => errMgr.signInWithGoogle(), /launch boom/);
+  nextMode = 'empty_token';
+  await assert.rejects(() => errMgr.signInWithGoogle(), /Could not obtain Google Workspace/i);
+  nextMode = 'partial_scopes';
+  await assert.rejects(
+    () => errMgr.signInWithGoogle(),
+    /Both Google Drive app-folder and Google Calendar permissions/i
+  );
+});
+
+test('SessionManager tolerates storage exceptions, missing GIS after script load, and defaultLoadGisScript DOM lifecycle', async (t) => {
+  const brokenStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> = {
+    getItem() {
+      throw new Error('storage disabled');
+    },
+    setItem() {
+      throw new Error('quota exceeded');
+    },
+    removeItem() {
+      throw new Error('storage disabled');
+    },
+  };
+
+  const mgrBroken = new SessionManager({
+    oauthClientId: 'client-2',
+    storage: brokenStorage,
+    loadGisScript: async () => {},
+    getGisOAuth2: () => null,
+  });
+  assert.equal(mgrBroken.getRememberedMode(), null);
+  assert.equal(mgrBroken.getAccountEmail(), null);
+  mgrBroken.setRememberedMode('guest');
+  mgrBroken.chooseGuest();
+  await assert.rejects(() => mgrBroken.signInWithGoogle(), /failed to initialize/i);
+
+  // Stub minimal document & window to exercise defaultLoadGisScript success & error
+  const prevDoc = (globalThis as Record<string, unknown>).document;
+  const prevWin = (globalThis as Record<string, unknown>).window;
+  t.after(() => {
+    if (prevDoc === undefined) delete (globalThis as Record<string, unknown>).document;
+    else Object.defineProperty(globalThis, 'document', { value: prevDoc, configurable: true });
+    if (prevWin === undefined) delete (globalThis as Record<string, unknown>).window;
+    else Object.defineProperty(globalThis, 'window', { value: prevWin, configurable: true });
+  });
+
+  const listeners = new Map<string, Array<() => void>>();
+  let appendedScript: Record<string, unknown> | null = null;
+  const fakeScript = {
+    src: '',
+    async: false,
+    defer: false,
+    addEventListener(type: string, fn: () => void) {
+      const list = listeners.get(type) ?? [];
+      list.push(fn);
+      listeners.set(type, list);
+    },
+    removeEventListener(type: string, fn: () => void) {
+      const list = listeners.get(type) ?? [];
+      listeners.set(
+        type,
+        list.filter((f) => f !== fn)
+      );
+    },
+  };
+
+  const fakeWindow: Record<string, unknown> = {
+    setTimeout: globalThis.setTimeout.bind(globalThis),
+    clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    google: undefined,
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    value: fakeWindow,
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(globalThis, 'document', {
+    value: {
+      querySelector: () => null,
+      createElement: () => fakeScript,
+      head: {
+        appendChild(el: Record<string, unknown>) {
+          appendedScript = el;
+        },
+      },
+    },
+    configurable: true,
+    writable: true,
+  });
+
+  const mgrLoadErr = new SessionManager({
+    oauthClientId: 'client-dom',
+    storage: createMemoryStorage(),
+  });
+  const errPromise = mgrLoadErr.signInWithGoogle();
+  assert.ok(appendedScript);
+  for (const fn of listeners.get('error') ?? []) fn();
+  await assert.rejects(() => errPromise, /Could not load Google Identity Services script/);
+
+  // Now simulate successful script load
+  listeners.clear();
+  const mgrLoadOk = new SessionManager({
+    oauthClientId: 'client-dom-ok',
+    storage: createMemoryStorage(),
+    fetchFn: async () => new Response('{}', { status: 200 }),
+  });
+  const okPromise = mgrLoadOk.signInWithGoogle();
+  fakeWindow.google = {
+    accounts: {
+      oauth2: {
+        initTokenClient(config: {
+          callback: (r: { access_token: string; expires_in: number }) => void;
+        }) {
+          return {
+            requestAccessToken() {
+              config.callback({ access_token: 'dom-tok', expires_in: 600 });
+            },
+          };
+        },
+        hasGrantedAllScopes: () => true,
+      },
+    },
+  };
+  for (const fn of listeners.get('load') ?? []) fn();
+  const tok = await okPromise;
+  assert.equal(tok, 'dom-tok');
+});

@@ -253,11 +253,15 @@ export class ChartsAnalytics {
       };
     }
 
-    const dayStats = StreakCalculator.getPeriodDayStats(habits, checkins, s, e, todayDay);
+    const minHabitStart = habits.reduce(
+      (min, h) => (h.startDay < min ? h.startDay : min),
+      habits[0].startDay
+    );
+    const statsStart = Math.min(s, minHabitStart);
+    const dayStats = StreakCalculator.getPeriodDayStats(habits, checkins, statsStart, e, todayDay);
+
     let perfectDays = 0;
     let scheduledDaysWithHabits = 0;
-    let longestPerfectStreak = 0;
-    let running = 0;
 
     for (let d = s; d <= e; d++) {
       const entry = dayStats.get(d);
@@ -265,6 +269,15 @@ export class ChartsAnalytics {
       scheduledDaysWithHabits += 1;
       if (entry.done >= entry.scheduled) {
         perfectDays += 1;
+      }
+    }
+
+    let longestPerfectStreak = 0;
+    let running = 0;
+    for (let d = minHabitStart; d <= e; d++) {
+      const entry = dayStats.get(d);
+      if (!entry || entry.scheduled <= 0) continue;
+      if (entry.done >= entry.scheduled) {
         running += 1;
         if (running > longestPerfectStreak) {
           longestPerfectStreak = running;
@@ -275,13 +288,13 @@ export class ChartsAnalytics {
     }
 
     let currentPerfectStreak = 0;
-    for (let d = e; d >= s; d--) {
+    for (let d = e; d >= minHabitStart; d--) {
       const entry = dayStats.get(d);
       if (!entry || entry.scheduled <= 0) continue;
       if (entry.done >= entry.scheduled) {
         currentPerfectStreak += 1;
-      } else if (d === todayDay && entry.done === 0) {
-        // Pending today doesn't break yesterday's perfect streak
+      } else if (d === todayDay) {
+        // Pending today (even with partial progress) doesn't break yesterday's perfect streak
         continue;
       } else {
         break;

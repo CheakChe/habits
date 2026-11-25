@@ -1,13 +1,22 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot, Habit, HabitCheckin, Task } from '../types/domain';
+import { DomainSnapshot, Habit, HabitCheckin, ReminderSlot, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitAppearance } from '../utils/habit-appearance';
 import { HabitSchedule } from '../utils/habit-schedule';
+import { ReminderPlanner } from '../utils/reminder-planner';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { TodayBoard } from '../utils/today-board';
 import { MeasuredQuickControls } from './CustomControls';
 import { HabitBadge } from './HabitBadge';
-import { AlertIcon, CheckIcon, ChevronDownIcon, NoteIcon, PlusIcon, RepeatIcon } from './Icons';
+import {
+  AlertIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  NoteIcon,
+  PlusIcon,
+  RepeatIcon,
+} from './Icons';
 
 interface TodayViewProps {
   snapshot: DomainSnapshot;
@@ -59,6 +68,14 @@ export function TodayView(props: TodayViewProps): JSX.Element {
       if (n.dayIndex === props.todayDay) {
         map.set(n.habitId, n.text);
       }
+    }
+    return map;
+  });
+
+  const activeSlotMap = createMemo(() => {
+    const map = new Map<string, ReminderSlot>();
+    for (const slot of ReminderPlanner.getActiveSlots(props.snapshot)) {
+      map.set(slot.id, slot);
     }
     return map;
   });
@@ -225,6 +242,14 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                     if (m === 7) return 'text-[#60A5FA]';
                     return '';
                   };
+                  const assignedSlots = createMemo(() =>
+                    (habit.reminderSlotIds ?? [])
+                      .map((id) => activeSlotMap().get(id))
+                      .filter((s): s is ReminderSlot => Boolean(s))
+                      .sort(
+                        (a, b) => a.time.localeCompare(b.time) || a.label.localeCompare(b.label)
+                      )
+                  );
 
                   return (
                     <li
@@ -342,6 +367,22 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <span class="font-mono tabular-nums">
                               {Math.round(metrics().completionRate * 100)}% (30d)
                             </span>
+                            <Show when={assignedSlots().length > 0}>
+                              <span aria-hidden="true">·</span>
+                              <span class="inline-flex flex-wrap items-center gap-1 text-[#93C5FD]">
+                                <For each={assignedSlots()}>
+                                  {(slot) => (
+                                    <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
+                                      <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                      <span>
+                                        {slot.time}
+                                        {slot.label ? ` ${slot.label}` : ''}
+                                      </span>
+                                    </span>
+                                  )}
+                                </For>
+                              </span>
+                            </Show>
                             <Show when={existingNote() && !isNoteOpen()}>
                               <span aria-hidden="true">·</span>
                               <span

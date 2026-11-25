@@ -2390,3 +2390,153 @@ test('Helpers.formatByteSize scales across B, KB, MB, and GB cleanly', () => {
   assert.equal(Helpers.formatByteSize(1024 * 1024 * 1024), '1 GB');
   assert.equal(Helpers.formatByteSize(2.45 * 1024 * 1024 * 1024), '2.45 GB');
 });
+
+test('ChartsAnalytics.perfectDaysSummary preserves prior streak while todayDay is partially completed', () => {
+  const start = CivilCalendar.fromLocalDate(2026, 11, 20);
+  const today = CivilCalendar.fromLocalDate(2026, 11, 25);
+  const habits: Habit[] = [
+    {
+      id: 1,
+      name: 'Habit A',
+      color: '#3B82F6',
+      weekdays: 0b1111111,
+      weeklyTarget: null,
+      startDay: start,
+      archivedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    {
+      id: 2,
+      name: 'Habit B',
+      color: '#22C55E',
+      weekdays: 0b1111111,
+      weeklyTarget: null,
+      startDay: start,
+      archivedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  ];
+
+  const baseCheckins: HabitCheckin[] = [];
+  for (let d = start; d < today; d++) {
+    baseCheckins.push({ habitId: 1, dayIndex: d, done: true, updatedAt: 1 });
+    baseCheckins.push({ habitId: 2, dayIndex: d, done: true, updatedAt: 1 });
+  }
+
+  // 0 of 2 done today -> preserves 5d perfect streak
+  const morning = ChartsAnalytics.perfectDaysSummary(habits, baseCheckins, start, today, today);
+  assert.equal(morning.perfectDays, 5);
+  assert.equal(morning.currentPerfectStreak, 5);
+
+  // 1 of 2 done today -> still in progress, preserves 5d perfect streak
+  const midDay = ChartsAnalytics.perfectDaysSummary(
+    habits,
+    [...baseCheckins, { habitId: 1, dayIndex: today, done: true, updatedAt: 2 }],
+    start,
+    today,
+    today
+  );
+  assert.equal(midDay.perfectDays, 5);
+  assert.equal(midDay.currentPerfectStreak, 5);
+
+  // 2 of 2 done today -> extends streak to 6d
+  const completedToday = ChartsAnalytics.perfectDaysSummary(
+    habits,
+    [
+      ...baseCheckins,
+      { habitId: 1, dayIndex: today, done: true, updatedAt: 2 },
+      { habitId: 2, dayIndex: today, done: true, updatedAt: 3 },
+    ],
+    start,
+    today,
+    today
+  );
+  assert.equal(completedToday.perfectDays, 6);
+  assert.equal(completedToday.currentPerfectStreak, 6);
+
+  // Incomplete past day (e.g. viewing a range ending before today) resets currentPerfectStreak to 0
+  const pastIncomplete = ChartsAnalytics.perfectDaysSummary(
+    habits,
+    [...baseCheckins, { habitId: 1, dayIndex: today, done: true, updatedAt: 2 }],
+    start,
+    today,
+    today + 1
+  );
+  assert.equal(pastIncomplete.currentPerfectStreak, 0);
+
+  // Streak extending prior to range startDay (like Best Current Streak) while period rate stays scoped to [s..e]
+  const earlierStart = start - 5;
+  const extendedHabits = habits.map((h) => ({ ...h, startDay: earlierStart }));
+  const extendedCheckins = [...baseCheckins];
+  for (let d = earlierStart; d < start; d++) {
+    extendedCheckins.push({ habitId: 1, dayIndex: d, done: true, updatedAt: 1 });
+    extendedCheckins.push({ habitId: 2, dayIndex: d, done: true, updatedAt: 1 });
+  }
+  const windowed = ChartsAnalytics.perfectDaysSummary(
+    extendedHabits,
+    extendedCheckins,
+    start,
+    today,
+    today
+  );
+  assert.equal(windowed.perfectDays, 5);
+  assert.equal(windowed.scheduledDaysWithHabits, 6);
+  assert.equal(windowed.currentPerfectStreak, 10);
+  assert.equal(windowed.longestPerfectStreak, 10);
+});
+
+test('Utils edge cases: CivilCalendar labels/parsing, DateRangeResolver custom inversion, HabitAppearance invalid inputs, and empty analytics', () => {
+  const day = CivilCalendar.fromLocalDate(2026, 2, 28);
+  assert.equal(CivilCalendar.weekdayShortLabel(0), 'Mon');
+  assert.equal(CivilCalendar.weekdayShortLabel(99), '');
+  assert.equal(CivilCalendar.weekdayFullLabel(6), 'Sunday');
+  assert.equal(CivilCalendar.weekdayFullLabel(-1), '');
+  assert.equal(CivilCalendar.formatShortDate(day), 'Feb 28');
+  assert.equal(CivilCalendar.formatShortDateWithYear(day), 'Feb 28, 2026');
+  assert.match(CivilCalendar.formatFullDate(day), /Feb 28, 2026/);
+  assert.equal(CivilCalendar.formatMonthYear(2026, 2), 'February 2026');
+  assert.equal(CivilCalendar.toInputDateValue(day), '2026-02-28');
+  assert.equal(CivilCalendar.fromInputDateValue('2026-02-28'), day);
+  assert.equal(CivilCalendar.fromInputDateValue('invalid'), null);
+  assert.equal(CivilCalendar.fromInputDateValue('2026-13-01'), null);
+  assert.equal(CivilCalendar.countScheduledDays(0), 0);
+  assert.equal(CivilCalendar.countScheduledInRange(0, day, day + 5), 0);
+  assert.equal(CivilCalendar.countScheduledInRange(127, day + 5, day), 0);
+
+  // DateRangeResolver custom inversion & previousPeriod null for all_time
+  const custom = DateRangeResolver.resolve('custom', day, {
+    customStartDay: day + 5,
+    customEndDay: day - 10,
+  });
+  assert.equal(custom.startDay, day - 10);
+  assert.equal(custom.endDay, day + 5);
+  assert.equal(DateRangeResolver.previousPeriod('all_time', day - 30, day), null);
+
+  // HabitAppearance fallbacks
+  assert.equal(HabitAppearance.normalizeHex('not-hex'), null);
+  const parsedFallback = HabitAppearance.parse('not-valid');
+  assert.equal(parsedFallback.badge.kind, 'none');
+  assert.equal(HabitAppearance.getContrastTextColor('#FFFFFF'), '#0A0B0E');
+  assert.equal(HabitAppearance.getContrastTextColor('#000000'), '#FFFFFF');
+
+  // Empty snapshot analytics across StreakCalculator, ChartsAnalytics, AdvancedAnalytics
+  const emptySnap: DomainSnapshot = { habits: [], checkins: [], notes: [], tasks: [] };
+  const emptyPerfect = ChartsAnalytics.perfectDaysSummary([], [], day - 6, day, day);
+  assert.equal(emptyPerfect.scheduledDaysWithHabits, 0);
+  assert.equal(emptyPerfect.perfectRate, null);
+
+  const emptyAdv = AdvancedAnalytics.compute({
+    snapshot: emptySnap,
+    targetHabits: [],
+    startDay: day - 6,
+    endDay: day,
+    todayDay: day,
+    timeZone: 'UTC',
+  });
+  assert.equal(emptyAdv.bounceBack.bounceBackRate, null);
+  assert.equal(emptyAdv.loggingDiscipline.retroactiveRate, null);
+  assert.deepEqual(emptyAdv.atRiskHabits, []);
+  assert.deepEqual(emptyAdv.notesInsights.entries, []);
+});

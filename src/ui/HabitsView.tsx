@@ -1,10 +1,11 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot, Habit } from '../types/domain';
+import { DomainSnapshot, Habit, ReminderSlot } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitSchedule } from '../utils/habit-schedule';
+import { ReminderPlanner } from '../utils/reminder-planner';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { HabitBadge } from './HabitBadge';
-import { ArchiveIcon, EditIcon, PlusIcon, RestoreIcon } from './Icons';
+import { ArchiveIcon, ClockIcon, EditIcon, PlusIcon, RestoreIcon } from './Icons';
 import { ALL_WEEKDAYS_MASK } from './constants';
 
 interface HabitsViewProps {
@@ -29,6 +30,14 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
   );
 
   const archivedCount = createMemo(() => props.snapshot.habits.length - activeCount());
+
+  const activeSlotMap = createMemo(() => {
+    const map = new Map<string, ReminderSlot>();
+    for (const slot of ReminderPlanner.getActiveSlots(props.snapshot)) {
+      map.set(slot.id, slot);
+    }
+    return map;
+  });
 
   return (
     <div class="space-y-6">
@@ -141,6 +150,12 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                   habit.scheduleHistory && habit.scheduleHistory.length > 1
                     ? habit.scheduleHistory[habit.scheduleHistory.length - 1].fromDay
                     : null;
+                const assignedSlots = createMemo(() =>
+                  (habit.reminderSlotIds ?? [])
+                    .map((id) => activeSlotMap().get(id))
+                    .filter((s): s is ReminderSlot => Boolean(s))
+                    .sort((a, b) => a.time.localeCompare(b.time) || a.label.localeCompare(b.label))
+                );
 
                 return (
                   <li
@@ -214,6 +229,22 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         <span class="font-mono tabular-nums">
                           {Math.round(metrics().completionRate * 100)}% (30d)
                         </span>
+                        <Show when={assignedSlots().length > 0}>
+                          <span aria-hidden="true">·</span>
+                          <span class="inline-flex flex-wrap items-center gap-1.5 text-[#93C5FD]">
+                            <For each={assignedSlots()}>
+                              {(slot) => (
+                                <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
+                                  <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                  <span>
+                                    {slot.time}
+                                    {slot.label ? ` ${slot.label}` : ''}
+                                  </span>
+                                </span>
+                              )}
+                            </For>
+                          </span>
+                        </Show>
                       </div>
                     </div>
 

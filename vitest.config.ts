@@ -16,7 +16,7 @@ export default defineConfig({
     setupFiles: ['./tests/ui/setup.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/ui/**/*.{ts,tsx}'],
+      include: ['src/App.tsx', 'src/ui/**/*.{ts,tsx}'],
       reporter: ['text', 'html'],
     },
   },

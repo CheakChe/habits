@@ -1,4 +1,12 @@
-import { DomainSnapshot, Habit, Task } from '../types/domain';
+import {
+  DomainSnapshot,
+  Habit,
+  ReminderSlot,
+  Task,
+  normalizeReminderSlotIds,
+  normalizeReminderSlotLabel,
+  normalizeReminderSlotTime,
+} from '../types/domain';
 import { CivilCalendar } from './civil-calendar';
 import { HabitSchedule } from './habit-schedule';
 import { TodayBoard } from './today-board';
@@ -8,7 +16,7 @@ export type BadgePermissionState = 'granted' | 'denied' | 'default' | 'unsupport
 export interface ReminderPreferences {
   badgeEnabled: boolean;
   calendarEnabled: boolean;
-  reminderTime: string; // HH:MM
+  taskReminderSlotId: string | null;
   horizonDays: number; // 1..7
   calendarId: string | null;
   calendarTimeZone: string | null;
@@ -27,6 +35,9 @@ export interface TodayPendingSummary {
 
 export interface DesiredReminderEvent {
   dayIndex: number;
+  slotId: string;
+  slotLabel: string;
+  slotTime: string;
   dateStr: string;
   summary: string;
   description: string;
@@ -39,7 +50,7 @@ export interface DesiredReminderEvent {
 export const DEFAULT_REMINDER_PREFERENCES: ReminderPreferences = {
   badgeEnabled: true,
   calendarEnabled: false,
-  reminderTime: '20:00',
+  taskReminderSlotId: null,
   horizonDays: 3,
   calendarId: null,
   calendarTimeZone: null,
@@ -76,15 +87,14 @@ function buildCountPhrase(habitsCount: number, tasksCount: number): string {
 
 export class ReminderPlanner {
   public static normalizeTime(raw: unknown): string {
-    if (typeof raw !== 'string') return '20:00';
-    const match = /^(\d{1,2}):(\d{2})$/.exec(raw.trim());
-    if (!match) return '20:00';
-    const hh = Number(match[1]);
-    const mm = Number(match[2]);
-    if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
-      return '20:00';
+    return normalizeReminderSlotTime(raw, '20:00');
+  }
+
+  public static normalizeTaskReminderSlotId(raw: unknown): string | null {
+    if (typeof raw === 'string' && raw.trim().length > 0) {
+      return raw.trim();
     }
-    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    return null;
   }
 
   public static normalizeHorizonDays(raw: unknown): number {
@@ -100,7 +110,7 @@ export class ReminderPlanner {
     return {
       badgeEnabled: typeof obj.badgeEnabled === 'boolean' ? obj.badgeEnabled : true,
       calendarEnabled: typeof obj.calendarEnabled === 'boolean' ? obj.calendarEnabled : false,
-      reminderTime: ReminderPlanner.normalizeTime(obj.reminderTime),
+      taskReminderSlotId: ReminderPlanner.normalizeTaskReminderSlotId(obj.taskReminderSlotId),
       horizonDays: ReminderPlanner.normalizeHorizonDays(obj.horizonDays),
       calendarId:
         typeof obj.calendarId === 'string' && obj.calendarId.trim().length > 0
@@ -119,6 +129,25 @@ export class ReminderPlanner {
           ? obj.lastSyncedAt
           : null,
     };
+  }
+
+  public static getActiveSlots(snapshot: DomainSnapshot): ReminderSlot[] {
+    return (snapshot.reminderSlots ?? [])
+      .filter((s) => s.deletedAt === null && s.id.trim().length > 0)
+      .map((s) => ({
+        ...s,
+        id: s.id.trim(),
+        label: normalizeReminderSlotLabel(s.label),
+        time: normalizeReminderSlotTime(s.time),
+      }))
+      .sort(
+        (a, b) =>
+          a.time.localeCompare(b.time) || a.label.localeCompare(b.label) || a.id.localeCompare(b.id)
+      );
+  }
+
+  public static getHabitActiveSlotIds(habit: Habit, activeSlotIds: Set<string>): string[] {
+    return normalizeReminderSlotIds(habit.reminderSlotIds).filter((id) => activeSlotIds.has(id));
   }
 
   public static resolveCalendarTimeZone(trackerTimeZone: string): string {
@@ -167,13 +196,22 @@ export class ReminderPlanner {
   public static buildDesiredEvents(
     snapshot: DomainSnapshot,
     todayDay: number,
-    prefs: Pick<ReminderPreferences, 'reminderTime' | 'horizonDays'>,
+    prefs: Pick<ReminderPreferences, 'taskReminderSlotId' | 'horizonDays'>,
     trackerTimeZone: string
   ): DesiredReminderEvent[] {
-    const reminderTime = ReminderPlanner.normalizeTime(prefs.reminderTime);
+    const activeSlots = ReminderPlanner.getActiveSlots(snapshot);
+    if (activeSlots.length === 0) {
+      return [];
+    }
+
+    const activeSlotIds = new Set(activeSlots.map((s) => s.id));
+    const taskSlotId =
+      prefs.taskReminderSlotId && activeSlotIds.has(prefs.taskReminderSlotId)
+        ? prefs.taskReminderSlotId
+        : null;
+
     const horizonDays = ReminderPlanner.normalizeHorizonDays(prefs.horizonDays);
     const timeZone = ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone);
-    const endCalc = addMinutesToTime(reminderTime, 15);
     const results: DesiredReminderEvent[] = [];
 
     const todayWeekStart = CivilCalendar.startOfWeek(todayDay);
@@ -238,66 +276,96 @@ export class ReminderPlanner {
       }
 
       const dateStr = CivilCalendar.toInputDateValue(dayIndex);
-      const endDateStr =
-        endCalc.dayCarry > 0
-          ? CivilCalendar.toInputDateValue(dayIndex + endCalc.dayCarry)
-          : dateStr;
-      const startDateTime = `${dateStr}T${reminderTime}:00`;
-      const endDateTime = `${endDateStr}T${endCalc.timeStr}:00`;
 
-      const tasksCount = overdueTasks.length + dueOnDayTasks.length;
-      const countPhrase = buildCountPhrase(pendingHabits.length, tasksCount);
-      const summary =
-        offset === 0 ? `Habits — ${countPhrase} left today` : `Habits — ${countPhrase} planned`;
+      for (const slot of activeSlots) {
+        const slotHabits = pendingHabits.filter((h) =>
+          normalizeReminderSlotIds(h.reminderSlotIds).includes(slot.id)
+        );
+        const slotOverdueTasks = slot.id === taskSlotId ? overdueTasks : [];
+        const slotDueTasks = slot.id === taskSlotId ? dueOnDayTasks : [];
 
-      const lines: string[] = [];
-      if (pendingHabits.length > 0) {
-        lines.push(offset === 0 ? 'Remaining habits:' : 'Habits:');
-        for (const h of pendingHabits.slice(0, 8)) {
-          lines.push(`• ${h.name}`);
+        if (slotHabits.length === 0 && slotOverdueTasks.length === 0 && slotDueTasks.length === 0) {
+          continue;
         }
-        if (pendingHabits.length > 8) {
-          lines.push(`• +${pendingHabits.length - 8} more`);
+
+        const slotTime = normalizeReminderSlotTime(slot.time);
+        const endCalc = addMinutesToTime(slotTime, 15);
+        const endDateStr =
+          endCalc.dayCarry > 0
+            ? CivilCalendar.toInputDateValue(dayIndex + endCalc.dayCarry)
+            : dateStr;
+        const startDateTime = `${dateStr}T${slotTime}:00`;
+        const endDateTime = `${endDateStr}T${endCalc.timeStr}:00`;
+
+        const slotTitle = slot.label.trim();
+        const slotDisplayLabel = slotTitle || slotTime;
+        const tasksCount = slotOverdueTasks.length + slotDueTasks.length;
+        const countPhrase = buildCountPhrase(slotHabits.length, tasksCount);
+        const prefix = slotTitle ? `Habits (${slotTitle})` : 'Habits';
+        const summary =
+          offset === 0
+            ? `${prefix} — ${countPhrase} left today`
+            : `${prefix} — ${countPhrase} planned`;
+
+        const lines: string[] = [];
+        if (slotHabits.length > 0) {
+          lines.push(offset === 0 ? 'Remaining habits:' : 'Habits:');
+          for (const h of slotHabits.slice(0, 8)) {
+            lines.push(`• ${h.name}`);
+          }
+          if (slotHabits.length > 8) {
+            lines.push(`• +${slotHabits.length - 8} more`);
+          }
         }
+
+        if (slotOverdueTasks.length > 0) {
+          if (lines.length > 0) lines.push('');
+          lines.push('Overdue tasks:');
+          for (const t of slotOverdueTasks.slice(0, 5)) {
+            lines.push(`• ${t.title}`);
+          }
+          if (slotOverdueTasks.length > 5) {
+            lines.push(`• +${slotOverdueTasks.length - 5} more`);
+          }
+        }
+
+        if (slotDueTasks.length > 0) {
+          if (lines.length > 0) lines.push('');
+          lines.push(offset === 0 ? 'Tasks due today:' : 'Scheduled tasks:');
+          for (const t of slotDueTasks.slice(0, 6)) {
+            lines.push(`• ${t.title}`);
+          }
+          if (slotDueTasks.length > 6) {
+            lines.push(`• +${slotDueTasks.length - 6} more`);
+          }
+        }
+
+        const description = lines.join('\n');
+        const signature = [
+          dayIndex,
+          slot.id,
+          slotTitle,
+          startDateTime,
+          endDateTime,
+          timeZone,
+          summary,
+          description,
+        ].join('|');
+
+        results.push({
+          dayIndex,
+          slotId: slot.id,
+          slotLabel: slotDisplayLabel,
+          slotTime,
+          dateStr,
+          summary,
+          description,
+          startDateTime,
+          endDateTime,
+          timeZone,
+          signature,
+        });
       }
-
-      if (overdueTasks.length > 0) {
-        if (lines.length > 0) lines.push('');
-        lines.push('Overdue tasks:');
-        for (const t of overdueTasks.slice(0, 5)) {
-          lines.push(`• ${t.title}`);
-        }
-        if (overdueTasks.length > 5) {
-          lines.push(`• +${overdueTasks.length - 5} more`);
-        }
-      }
-
-      if (dueOnDayTasks.length > 0) {
-        if (lines.length > 0) lines.push('');
-        lines.push(offset === 0 ? 'Tasks due today:' : 'Scheduled tasks:');
-        for (const t of dueOnDayTasks.slice(0, 6)) {
-          lines.push(`• ${t.title}`);
-        }
-        if (dueOnDayTasks.length > 6) {
-          lines.push(`• +${dueOnDayTasks.length - 6} more`);
-        }
-      }
-
-      const description = lines.join('\n');
-      const signature = [dayIndex, startDateTime, endDateTime, timeZone, summary, description].join(
-        '|'
-      );
-
-      results.push({
-        dayIndex,
-        dateStr,
-        summary,
-        description,
-        startDateTime,
-        endDateTime,
-        timeZone,
-        signature,
-      });
     }
 
     return results;
@@ -306,16 +374,22 @@ export class ReminderPlanner {
   public static computeStateSignature(
     snapshot: DomainSnapshot,
     todayDay: number,
-    prefs: Pick<ReminderPreferences, 'reminderTime' | 'horizonDays'>,
+    prefs: Pick<ReminderPreferences, 'taskReminderSlotId' | 'horizonDays'>,
     trackerTimeZone: string
   ): string {
     const timeZone = ReminderPlanner.resolveCalendarTimeZone(trackerTimeZone);
+    const activeSlots = ReminderPlanner.getActiveSlots(snapshot);
+    const taskSlotId =
+      prefs.taskReminderSlotId && activeSlots.some((s) => s.id === prefs.taskReminderSlotId)
+        ? prefs.taskReminderSlotId
+        : null;
     const events = ReminderPlanner.buildDesiredEvents(snapshot, todayDay, prefs, trackerTimeZone);
     return JSON.stringify({
       todayDay,
-      reminderTime: ReminderPlanner.normalizeTime(prefs.reminderTime),
+      taskReminderSlotId: taskSlotId,
       horizonDays: ReminderPlanner.normalizeHorizonDays(prefs.horizonDays),
       timeZone,
+      slots: activeSlots.map((s) => `${s.id}:${s.time}:${s.label}`),
       events: events.map((e) => e.signature),
     });
   }

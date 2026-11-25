@@ -2,10 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { SessionManager } from '../src/auth/session-manager';
 import { HabitDatabase } from '../src/db/habit-database';
-import { ConcurrentSyncError, SyncPreparationResult } from '../src/sync/drive-sync-service';
+import { CalendarReminderService, CalendarSyncPlan } from '../src/sync/calendar-reminder-service';
+import {
+  ConcurrentSyncError,
+  DriveSyncService,
+  SyncPreparationResult,
+} from '../src/sync/drive-sync-service';
 import { SnapshotCodec } from '../src/sync/snapshot-codec';
 import { DomainSnapshot } from '../src/types/domain';
 import { TrackerStore } from '../src/ui/tracker-store';
+import { ReminderPlanner, ReminderPreferences } from '../src/utils/reminder-planner';
 import { OPEN_TASK_BUCKETS, TodayBoard } from '../src/utils/today-board';
 import { FakeIndexedDBFactory } from './helpers/fake-indexeddb';
 
@@ -43,6 +49,8 @@ function installTestGlobals() {
     value: {
       setInterval: globalThis.setInterval.bind(globalThis),
       clearInterval: globalThis.clearInterval.bind(globalThis),
+      setTimeout: globalThis.setTimeout.bind(globalThis),
+      clearTimeout: globalThis.clearTimeout.bind(globalThis),
     },
     configurable: true,
     writable: true,
@@ -1109,6 +1117,610 @@ test('HabitDatabase and TrackerStore support measured habits, stepped dailyTarge
     c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.value, 16);
     assert.equal(c.done, false);
+  } finally {
+    store.dispose();
+  }
+});
+
+test('HabitDatabase and TrackerStore manage reminderSlots CRUD, habit reminderSlotIds, and deletion cleanup', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const db = new HabitDatabase();
+
+  // Default habit has no reminderSlotIds
+  const hDefault = await db.createHabit({
+    name: 'No Reminder By Default',
+    color: '#3B82F6',
+    weekdays: 127,
+    startDay: 20770,
+  });
+  assert.equal('reminderSlotIds' in hDefault, false);
+
+  // Create slots & assign them explicitly to a habit
+  const morning = await db.createReminderSlot({ label: '  Morning ', time: '8:05' });
+  assert.equal(morning.label, 'Morning');
+  assert.equal(morning.time, '08:05');
+  assert.equal(morning.deletedAt, null);
+
+  const evening = await db.createReminderSlot({ label: 'Evening', time: '21:00' });
+
+  const hWithSlots = await db.createHabit({
+    name: 'Vitamins',
+    color: '#22C55E',
+    weekdays: 127,
+    startDay: 20770,
+    reminderSlotIds: [morning.id, evening.id, morning.id],
+  });
+  assert.deepEqual(hWithSlots.reminderSlotIds, [morning.id, evening.id].sort());
+
+  const updatedMorning = await db.updateReminderSlot(morning.id, {
+    label: 'Early Morning',
+    time: '7:30',
+  });
+  assert.equal(updatedMorning.label, 'Early Morning');
+  assert.equal(updatedMorning.time, '07:30');
+  assert.ok(updatedMorning.updatedAt >= morning.updatedAt);
+
+  // Deleting a slot tombstones it and strips its id from affected habits atomically
+  await db.deleteReminderSlot(morning.id);
+  const dbSnap = await db.getAllSnapshot();
+  const tombstone = dbSnap.reminderSlots?.find((s) => s.id === morning.id);
+  assert.notEqual(tombstone?.deletedAt, null);
+
+  const reloadedVitamins = dbSnap.habits.find((h) => h.id === hWithSlots.id)!;
+  assert.deepEqual(reloadedVitamins.reminderSlotIds, [evening.id]);
+
+  // Removing remaining slot omits reminderSlotIds from persisted Habit record
+  const clearedVitamins = await db.updateHabit(hWithSlots.id, { reminderSlotIds: [] });
+  assert.equal('reminderSlotIds' in clearedVitamins, false);
+
+  await db.replaceSnapshot({ habits: [], checkins: [], notes: [], tasks: [] });
+
+  // TrackerStore integration: create/update/delete slots & clear matching taskReminderSlotId
+  const store = new TrackerStore();
+  try {
+    store.init();
+    store.selectGuest();
+    await new Promise((r) => setTimeout(r, 15));
+
+    const slotA = await store.createReminderSlot({ label: 'Work', time: '10:00' });
+    const slotB = await store.createReminderSlot({ label: 'Night', time: '22:15' });
+    assert.deepEqual(
+      store.activeReminderSlots().map((s) => s.id),
+      [slotA.id, slotB.id]
+    );
+
+    await store.saveHabit({
+      name: 'Stretch',
+      color: '#A855F7',
+      weekdays: 127,
+      startDay: store.todayDay(),
+      reminderSlotIds: [slotA.id, slotB.id],
+    });
+    const stretch = store.snapshot().habits.find((h) => h.name === 'Stretch')!;
+    assert.deepEqual(stretch.reminderSlotIds, [slotA.id, slotB.id].sort());
+
+    store.setTaskReminderSlotId(slotA.id);
+    assert.equal(store.reminderPrefs().taskReminderSlotId, slotA.id);
+
+    await store.updateReminderSlot(slotA.id, { label: 'Focus', time: '09:00' });
+    assert.equal(store.activeReminderSlots().find((s) => s.id === slotA.id)?.label, 'Focus');
+
+    // Deleting slotA removes it from activeReminderSlots, strips from Stretch, and resets taskReminderSlotId -> null
+    await store.deleteReminderSlot(slotA.id);
+    assert.deepEqual(
+      store.activeReminderSlots().map((s) => s.id),
+      [slotB.id]
+    );
+    assert.deepEqual(store.snapshot().habits.find((h) => h.id === stretch.id)?.reminderSlotIds, [
+      slotB.id,
+    ]);
+    assert.equal(store.reminderPrefs().taskReminderSlotId, null);
+  } finally {
+    store.dispose();
+  }
+});
+
+test('TrackerStore persists UI preferences, handles corrupt localStorage, caches AdvancedAnalytics, and exports/imports backups', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  // Seed corrupt / edge localStorage values before constructing TrackerStore
+  env.storageMap.set('habits.timezone', 'Invalid/Zone');
+  env.storageMap.set('habits.todayGoalsExpanded', 'false');
+  env.storageMap.set('habits.historyRange', '{broken json');
+  env.storageMap.set('habits.historySubTab', 'advanced');
+  env.storageMap.set('habits.historyHabitFilter', '[1, "bad", 1, -3, 2]');
+  env.storageMap.set('habits.advancedHeatmapMode', 'tasks');
+  env.storageMap.set('habits.advancedNotesFilter', 'missed');
+  env.storageMap.set('habits.tasksStatusFilter', 'invalid-json');
+  env.storageMap.set('habits.tasksSortMode', 'due_desc');
+  env.storageMap.set('habits.reminders', '{broken');
+
+  const store = new TrackerStore();
+  try {
+    assert.equal(store.timeZone(), 'UTC');
+    assert.equal(store.todayGoalsExpanded(), false);
+    assert.equal(store.historyRangePreset(), 'last_30');
+    assert.equal(store.historySubTab(), 'advanced');
+    assert.deepEqual(store.historyHabitFilter(), [1, 2]);
+    assert.equal(store.advancedHeatmapMode(), 'tasks');
+    assert.equal(store.advancedNotesFilter(), 'missed');
+    assert.deepEqual(store.tasksStatusFilter(), [...OPEN_TASK_BUCKETS]);
+    assert.equal(store.tasksSortMode(), 'due_desc');
+
+    store.init();
+    store.selectGuest();
+    await new Promise((r) => setTimeout(r, 15));
+
+    store.setTimeZone('America/New_York');
+    assert.equal(store.timeZone(), 'America/New_York');
+    store.setTimeZone('Not/A_Zone');
+    assert.equal(store.timeZone(), 'UTC');
+
+    store.toggleTodayGoalsExpanded();
+    assert.equal(store.todayGoalsExpanded(), true);
+    store.setHistoryRangePreset('last_7');
+    assert.equal(store.historyRangePreset(), 'last_7');
+    const today = store.todayDay();
+    store.setHistoryCustomRange(today + 10, today - 5);
+    assert.equal(store.historyRangePreset(), 'custom');
+    assert.equal(store.historyCustomStartDay(), today - 5);
+    assert.equal(store.historyCustomEndDay(), today);
+
+    store.setHistorySubTab('charts');
+    assert.equal(store.historySubTab(), 'charts');
+    store.setAdvancedHeatmapMode('habits');
+    assert.equal(store.advancedHeatmapMode(), 'habits');
+    store.setAdvancedNotesFilter('done');
+    assert.equal(store.advancedNotesFilter(), 'done');
+    store.setTasksStatusFilter(['completed']);
+    assert.deepEqual(store.tasksStatusFilter(), ['completed']);
+    store.setTasksSortMode('title');
+    assert.equal(store.tasksSortMode(), 'title');
+
+    // Create two habits & verify historyHabitFilter normalization + reloadFromDb pruning
+    await store.saveHabit({
+      name: 'Habit One',
+      color: '#3B82F6',
+      weekdays: 127,
+      startDay: today - 3,
+    });
+    await store.saveHabit({
+      name: 'Habit Two',
+      color: '#22C55E',
+      weekdays: 127,
+      startDay: today - 3,
+    });
+    const habits = store.snapshot().habits;
+    store.setHistoryHabitFilter([habits[0].id, habits[1].id]);
+    assert.equal(store.historyHabitFilter(), 'all'); // all habits selected collapses to 'all'
+    store.setHistoryHabitFilter([habits[0].id, habits[0].id]);
+    assert.deepEqual(store.historyHabitFilter(), [habits[0].id]);
+
+    // Advanced analytics cache hit & miss
+    const report1 = store.getAdvancedAnalytics(habits, [habits[0].id], today - 3, today);
+    const report2 = store.getAdvancedAnalytics(habits, [habits[0].id], today - 3, today);
+    assert.equal(report1, report2);
+    const report3 = store.getAdvancedAnalytics(habits, 'all', today - 3, today);
+    assert.notEqual(report1, report3);
+
+    // Backup export & import
+    await store.quickAddTask('Backup Task', today);
+    const exported = await store.exportBackup();
+    assert.match(exported.filename, /\.bin$/);
+    assert.match(store.syncBanner()?.text ?? '', /Backup exported/);
+
+    const extraSnap: DomainSnapshot = {
+      habits: [
+        {
+          id: 99,
+          name: 'Imported Habit',
+          color: '#A855F7',
+          weekdays: 127,
+          weeklyTarget: null,
+          startDay: today,
+          archivedAt: null,
+          createdAt: 9999999999999,
+          updatedAt: 9999999999999,
+        },
+      ],
+      checkins: [],
+      notes: [],
+      tasks: [],
+    };
+    await store.importBackup(SnapshotCodec.pack(extraSnap));
+    assert.ok(store.snapshot().habits.some((h) => h.name === 'Imported Habit'));
+    assert.match(store.syncBanner()?.text ?? '', /Backup merged/);
+  } finally {
+    store.dispose();
+  }
+});
+
+test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, Revisions, and Calendar reminders', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const prevDoc = (globalThis as Record<string, unknown>).document;
+  const prevNav = (globalThis as Record<string, unknown>).navigator;
+  const docListeners = new Map<string, Array<() => void>>();
+  let visibilityState = 'hidden';
+
+  Object.defineProperty(globalThis, 'document', {
+    value: {
+      get visibilityState() {
+        return visibilityState;
+      },
+      addEventListener(type: string, fn: () => void) {
+        const list = docListeners.get(type) ?? [];
+        list.push(fn);
+        docListeners.set(type, list);
+      },
+      removeEventListener(type: string, fn: () => void) {
+        docListeners.set(
+          type,
+          (docListeners.get(type) ?? []).filter((f) => f !== fn)
+        );
+      },
+    },
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(globalThis, 'navigator', {
+    value: {
+      setAppBadge: async () => {},
+      clearAppBadge: async () => {},
+    },
+    configurable: true,
+    writable: true,
+  });
+  t.after(() => {
+    if (prevDoc === undefined) delete (globalThis as Record<string, unknown>).document;
+    else Object.defineProperty(globalThis, 'document', { value: prevDoc, configurable: true });
+    if (prevNav === undefined) delete (globalThis as Record<string, unknown>).navigator;
+    else Object.defineProperty(globalThis, 'navigator', { value: prevNav, configurable: true });
+  });
+
+  // Mock SessionManager
+  let token: string | null = null;
+  let email: string | null = null;
+  let expiresAt = 0;
+  let signInError: Error | null = null;
+  const listeners = new Set<(s: { hasToken: boolean; email: string | null }) => void>();
+
+  const mockSession = {
+    getRememberedMode: () => null,
+    hasAccessToken: () => Boolean(token),
+    getAccessToken: () => token,
+    getTokenExpiresAt: () => expiresAt,
+    getAccountEmail: () => email,
+    subscribeAuthChanges(fn: (s: { hasToken: boolean; email: string | null }) => void) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    chooseGuest() {
+      token = null;
+      email = null;
+      for (const fn of listeners) fn({ hasToken: false, email: null });
+    },
+    async signInWithGoogle() {
+      if (signInError) throw signInError;
+      token = 'tok-google';
+      email = 'user@example.com';
+      expiresAt = Date.now() + 60_000;
+      for (const fn of listeners) fn({ hasToken: true, email });
+      return token;
+    },
+    clearAccessTokenOnly() {
+      token = null;
+      expiresAt = 0;
+      for (const fn of listeners) fn({ hasToken: false, email });
+    },
+    async clearSessionAndReturnToEntry() {
+      token = null;
+      email = null;
+      expiresAt = 0;
+      for (const fn of listeners) fn({ hasToken: false, email: null });
+    },
+  } as unknown as SessionManager;
+
+  let prepareMode: 'up-to-date' | 'needs-upload' | 'local-changed-up-to-date' | 'auth-error' =
+    'up-to-date';
+  let confirmMode: 'ok' | 'concurrent-merged' | 'concurrent-reprepare' | 'concurrent-fail' | 'err' =
+    'ok';
+
+  const mockDriveSync = {
+    resetUploadCache() {},
+    async prepareSync(_mode: unknown, _tok: unknown, local: DomainSnapshot) {
+      if (prepareMode === 'auth-error') {
+        throw new Error('401 Authorization expired');
+      }
+      if (prepareMode === 'local-changed-up-to-date') {
+        return {
+          status: 'up-to-date',
+          remoteFileId: 'file-1',
+          remoteVersion: '1',
+          remoteModifiedTime: null,
+          localChanged: true,
+          mergedSnapshot: local,
+          mergedBytes: new Uint8Array([1, 2, 3]),
+          summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
+        } satisfies SyncPreparationResult;
+      }
+      if (prepareMode === 'up-to-date') {
+        return {
+          status: 'up-to-date',
+          remoteFileId: 'file-1',
+          remoteVersion: '1',
+          remoteModifiedTime: null,
+          localChanged: false,
+          mergedSnapshot: local,
+          mergedBytes: new Uint8Array([1, 2, 3]),
+          summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
+        } satisfies SyncPreparationResult;
+      }
+      return {
+        status: 'needs-upload-confirm',
+        remoteFileId: 'file-1',
+        remoteVersion: '1',
+        remoteModifiedTime: null,
+        localChanged: false,
+        mergedSnapshot: local,
+        mergedBytes: new Uint8Array([1, 2, 3]),
+        summary: { habitsCount: 1, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 40 },
+      } satisfies SyncPreparationResult;
+    },
+    async confirmAndUpload() {
+      if (confirmMode === 'concurrent-merged') {
+        prepareMode = 'up-to-date';
+        throw new ConcurrentSyncError('conflict');
+      }
+      if (confirmMode === 'concurrent-reprepare') {
+        prepareMode = 'needs-upload';
+        throw new ConcurrentSyncError('conflict');
+      }
+      if (confirmMode === 'concurrent-fail') {
+        prepareMode = 'auth-error';
+        throw new ConcurrentSyncError('conflict');
+      }
+      if (confirmMode === 'err') {
+        throw new Error('403 Forbidden permission');
+      }
+    },
+    async listRevisions() {
+      return {
+        fileId: 'file-1',
+        revisions: [{ id: 'rev-2', modifiedTime: '2026-11-25T00:00:00Z', size: 120 }],
+      };
+    },
+    async inspectRevision() {
+      return {
+        revisionId: 'rev-2',
+        snapshot: { habits: [], checkins: [], notes: [], tasks: [] },
+        summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
+      };
+    },
+    async restoreRevision() {
+      return {
+        restoredSnapshot: { habits: [], checkins: [], notes: [], tasks: [] },
+        summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
+      };
+    },
+  } as unknown as DriveSyncService;
+
+  let calPlanHasMutations = false;
+  let calSyncError: Error | null = null;
+  const mockCalendarSync = {
+    async syncRemoteCalendarId() {
+      return {
+        calendarId: 'cal-remote-1',
+        timeZone: 'Europe/Paris',
+        timeZoneUpdatedAt: Date.now() + 1000,
+        taskReminderSlotId: null,
+        horizonDays: 7,
+        calendarEnabled: true,
+        updatedAt: Date.now() + 1000,
+      };
+    },
+    async prepareSyncPlan(
+      _mode: unknown,
+      _tok: unknown,
+      snap: DomainSnapshot,
+      today: number,
+      prefs: ReminderPreferences,
+      tz: string
+    ) {
+      if (calSyncError) throw calSyncError;
+      return {
+        calendarId: 'cal-remote-1',
+        willCreateCalendar: false,
+        willUpdateCalendarTz: false,
+        duplicateCalendarIds: [],
+        timeZone: tz,
+        todayDay: today,
+        todayCleared: false,
+        targetSignature: ReminderPlanner.computeStateSignature(snap, today, prefs, tz),
+        toCreate: calPlanHasMutations
+          ? [
+              {
+                dayIndex: 20770,
+                slotId: 's1',
+                slotLabel: 'Morning',
+                slotTime: '09:00',
+                dateStr: '2026-11-25',
+                summary: 'Habits',
+                description: 'Desc',
+                startDateTime: '2026-11-25T09:00:00',
+                endDateTime: '2026-11-25T09:15:00',
+                timeZone: tz,
+                signature: 'sig-ev',
+              },
+            ]
+          : [],
+        toUpdate: [],
+        toDelete: [],
+        unchangedCount: 0,
+        desiredEvents: [],
+      } satisfies CalendarSyncPlan;
+    },
+    async applySyncPlan() {
+      return {
+        calendarId: 'cal-remote-1',
+        timeZone: 'Europe/Paris',
+        targetSignature: 'sig-1',
+        created: 1,
+        updated: 0,
+        deleted: 0,
+        duplicatesRemoved: 1,
+      };
+    },
+    async deleteReminderCalendar() {},
+  } as unknown as CalendarReminderService;
+
+  const store = new TrackerStore({
+    session: mockSession,
+    driveSync: mockDriveSync,
+    calendarSync: mockCalendarSync,
+  });
+
+  try {
+    store.init();
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Visibility change triggers badge refresh
+    visibilityState = 'visible';
+    for (const fn of docListeners.get('visibilitychange') ?? []) fn();
+
+    // Sign in failure -> authError
+    signInError = new Error('Popup closed');
+    await store.selectGoogle();
+    assert.equal(store.authError(), 'Popup closed');
+    assert.equal(store.mode(), null);
+
+    // Sign in success
+    signInError = null;
+    await store.selectGoogle();
+    assert.equal(store.mode(), 'google');
+    assert.equal(store.hasGoogleToken(), true);
+    assert.equal(store.googleEmail(), 'user@example.com');
+
+    // Reconnect error & success
+    signInError = new Error('Reconnect failed');
+    await store.reconnectGoogle();
+    assert.equal(store.syncBanner()?.kind, 'error');
+    signInError = null;
+    await store.reconnectGoogle();
+
+    // Drive Sync: up-to-date + pulls remote calendar meta & timezone
+    prepareMode = 'up-to-date';
+    await store.startDriveSync();
+    assert.equal(store.syncBanner()?.kind, 'success');
+    assert.equal(store.timeZone(), 'Europe/Paris');
+    assert.equal(store.reminderPrefs().calendarId, 'cal-remote-1');
+
+    // Drive Sync: localChanged
+    prepareMode = 'local-changed-up-to-date';
+    await store.startDriveSync();
+    assert.match(store.syncBanner()?.text ?? '', /Downloaded and merged/);
+
+    // Drive Sync: auth error clears token
+    prepareMode = 'auth-error';
+    await store.startDriveSync();
+    assert.equal(store.hasGoogleToken(), false);
+    assert.equal(store.syncBanner()?.kind, 'error');
+
+    // Re-auth & prepare upload + cancelPendingSync
+    prepareMode = 'needs-upload';
+    await store.startDriveSync();
+    assert.ok(store.pendingSync());
+    store.cancelPendingSync();
+    assert.equal(store.pendingSync(), null);
+
+    // confirmUploadSync: success
+    await store.startDriveSync();
+    confirmMode = 'ok';
+    await store.confirmUploadSync();
+    assert.match(store.syncBanner()?.text ?? '', /Snapshot uploaded/);
+
+    // confirmUploadSync: ConcurrentSyncError -> merged cleanly
+    await store.startDriveSync();
+    confirmMode = 'concurrent-merged';
+    await store.confirmUploadSync();
+    assert.match(store.syncBanner()?.text ?? '', /Merged remote changes cleanly/);
+
+    // confirmUploadSync: ConcurrentSyncError -> re-prepared pendingSync
+    prepareMode = 'needs-upload';
+    await store.startDriveSync();
+    confirmMode = 'concurrent-reprepare';
+    await store.confirmUploadSync();
+    assert.ok(store.pendingSync());
+    assert.equal(store.syncBanner()?.kind, 'error');
+
+    // confirmUploadSync: ConcurrentSyncError -> retry failure
+    confirmMode = 'concurrent-fail';
+    await store.confirmUploadSync();
+    assert.equal(store.pendingSync(), null);
+    assert.equal(store.syncBanner()?.kind, 'error');
+
+    // confirmUploadSync: generic auth error
+    prepareMode = 'needs-upload';
+    await store.startDriveSync();
+    confirmMode = 'err';
+    await store.confirmUploadSync();
+    assert.equal(store.hasGoogleToken(), false);
+
+    // Drive Revisions: open, inspect, restore, close
+    await store.openDriveRevisions();
+    assert.equal(store.revisionsModalOpen(), true);
+    assert.equal(store.revisions().length, 1);
+    await store.inspectDriveRevision('rev-2');
+    assert.equal(store.inspectedRevision()?.revisionId, 'rev-2');
+    await store.restoreDriveRevision('rev-2');
+    assert.equal(store.revisionsModalOpen(), false);
+    assert.match(store.syncBanner()?.text ?? '', /Restored Drive version/);
+    store.closeDriveRevisions();
+
+    // Reminders & Calendar sync
+    store.openRemindersModal();
+    assert.equal(store.remindersModalOpen(), true);
+    store.setBadgeEnabled(true);
+    await store.requestBadgePermissionAndRefresh();
+    store.setCalendarEnabled(true);
+    store.setReminderHorizonDays(3);
+    assert.equal(store.isCalendarSyncNeeded(), true);
+
+    calPlanHasMutations = false;
+    await store.prepareCalendarSync();
+    assert.equal(store.pendingCalendarPlan(), null);
+    assert.equal(store.isCalendarSyncNeeded(), false);
+
+    calPlanHasMutations = true;
+    await store.prepareCalendarSync();
+    assert.ok(store.pendingCalendarPlan());
+    await store.confirmCalendarSync();
+    assert.match(store.syncBanner()?.text ?? '', /1 duplicate calendar removed/);
+
+    calSyncError = new Error('401 unauthorized');
+    await store.prepareCalendarSync();
+    assert.equal(store.hasGoogleToken(), false);
+    assert.match(store.calendarError() ?? '', /401/);
+    calSyncError = null;
+    store.cancelCalendarSync();
+
+    store.requestDeleteCalendar();
+    assert.equal(store.confirmDeleteCalendarOpen(), true);
+    store.cancelDeleteCalendar();
+    assert.equal(store.confirmDeleteCalendarOpen(), false);
+
+    store.requestDeleteCalendar();
+    await store.confirmDeleteCalendar();
+    assert.equal(store.reminderPrefs().calendarId, null);
+    assert.equal(store.reminderPrefs().calendarEnabled, false);
+    store.closeRemindersModal();
+
+    await store.switchToEntry();
+    assert.equal(store.mode(), null);
   } finally {
     store.dispose();
   }

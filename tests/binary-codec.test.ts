@@ -742,3 +742,251 @@ test('SnapshotCodec v8 round-trips measured habits, versioned dailyTarget, check
     { habitId: 42, dayIndex: baseDay, done: true, updatedAt: 1500 },
   ]);
 });
+
+test('SnapshotCodec v9 encodes/decodes reminderSlots & Habit.reminderSlotIds deterministically, omits when empty, and unpacks v8 cleanly', () => {
+  const baseDay = CivilCalendar.fromLocalDate(2026, 11, 1);
+
+  const snap: DomainSnapshot = {
+    habits: [
+      {
+        id: 1,
+        name: 'Vitamins',
+        color: '#3B82F6',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: baseDay,
+        archivedAt: null,
+        reminderSlotIds: ['slot-b', 'slot-a', 'slot-b', '  '],
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+      {
+        id: 2,
+        name: 'No Slots Habit',
+        color: '#22C55E',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: baseDay,
+        archivedAt: null,
+        reminderSlotIds: [],
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+    ],
+    checkins: [],
+    notes: [],
+    tasks: [],
+    reminderSlots: [
+      {
+        id: 'slot-b',
+        label: '  Evening  ',
+        time: '21:05',
+        createdAt: 200,
+        updatedAt: 300,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-a',
+        label: 'Morning',
+        time: '08:30',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-deleted',
+        label: 'Retired',
+        time: '14:00',
+        createdAt: 150,
+        updatedAt: 500,
+        deletedAt: 500,
+      },
+    ],
+  };
+
+  const reorderedSnap: DomainSnapshot = {
+    ...snap,
+    reminderSlots: [...(snap.reminderSlots ?? [])].reverse(),
+  };
+
+  const bytes1 = SnapshotCodec.pack(snap);
+  const bytes2 = SnapshotCodec.pack(reorderedSnap);
+  assert.equal(Helpers.bytesEqual(bytes1, bytes2), true);
+
+  const unpacked = SnapshotCodec.unpack(bytes1);
+  assert.deepEqual(unpacked.habits[0].reminderSlotIds, ['slot-a', 'slot-b']);
+  assert.equal('reminderSlotIds' in unpacked.habits[1], false);
+  assert.deepEqual(unpacked.reminderSlots, [
+    {
+      id: 'slot-a',
+      label: 'Morning',
+      time: '08:30',
+      createdAt: 100,
+      updatedAt: 100,
+      deletedAt: null,
+    },
+    {
+      id: 'slot-deleted',
+      label: 'Retired',
+      time: '14:00',
+      createdAt: 150,
+      updatedAt: 500,
+      deletedAt: 500,
+    },
+    {
+      id: 'slot-b',
+      label: 'Evening',
+      time: '21:05',
+      createdAt: 200,
+      updatedAt: 300,
+      deletedAt: null,
+    },
+  ]);
+
+  // Empty reminderSlots omitted cleanly on unpack
+  const emptySlotsBytes = SnapshotCodec.pack({
+    habits: [unpacked.habits[1]],
+    checkins: [],
+    notes: [],
+    tasks: [],
+    reminderSlots: [],
+  });
+  const unpackedEmptySlots = SnapshotCodec.unpack(emptySlotsBytes);
+  assert.equal('reminderSlots' in unpackedEmptySlots, false);
+
+  // Backward compatibility: hand-craft a v8 snapshot (no habit reminderSlotIds, no reminderSlots section)
+  const stringTable = new StringTable();
+  const idTable = new IdTable();
+  const nameIdx = stringTable.intern('Legacy v8 habit');
+  const colorIdx = stringTable.intern('#3B82F6');
+  const idIdx = idTable.intern(9);
+
+  const body = new SnapshotBytes(128);
+  body.writeUint8(0x48);
+  body.writeUint8(0x42);
+  body.writeUint8(0x54);
+  body.writeUint8(0x31);
+  body.writeUint8(8); // version = 8
+  stringTable.writeTo(body);
+  idTable.writeTo(body);
+  body.writeVarUint(1); // habitCount
+  body.writeVarUint(idIdx);
+  body.writeVarUint(nameIdx);
+  body.writeVarUint(colorIdx);
+  body.writeUint8(127); // weekdays
+  body.writeUint8(0); // weeklyTarget = null
+  body.writeVarInt(baseDay); // startDay
+  body.writeUint8(0); // archivedAt = null
+  body.writeFloat64(1000);
+  body.writeFloat64(2000);
+  body.writeVarUint(0); // scheduleHistory count
+  body.writeVarUint(0); // dailyTarget = null
+  body.writeVarUint(0); // checkins count
+  body.writeVarUint(0); // notes count
+  body.writeVarUint(0); // tasks count
+
+  const payload = body.toUint8Array();
+  const frame = new SnapshotBytes(payload.byteLength + 4);
+  frame.writeBytes(payload);
+  frame.writeUint32BE(SnapshotBytes.computeChecksum(payload));
+
+  const unpackedV8 = SnapshotCodec.unpack(frame.toUint8Array());
+  assert.equal(unpackedV8.habits.length, 1);
+  assert.equal(unpackedV8.habits[0].name, 'Legacy v8 habit');
+  assert.equal('reminderSlotIds' in unpackedV8.habits[0], false);
+  assert.equal('reminderSlots' in unpackedV8, false);
+});
+
+test('SnapshotMerger, rebaseForRestore, and BackupService merge and preserve reminderSlots & tombstones', () => {
+  const local: DomainSnapshot = {
+    habits: [
+      {
+        id: 1,
+        name: 'Drink Water',
+        color: '#3B82F6',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: 20700,
+        archivedAt: null,
+        reminderSlotIds: ['slot-1'],
+        createdAt: 100,
+        updatedAt: 200,
+      },
+    ],
+    checkins: [],
+    notes: [],
+    tasks: [],
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Morning Old',
+        time: '08:00',
+        createdAt: 100,
+        updatedAt: 200,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-2',
+        label: 'Deleted Locally',
+        time: '13:00',
+        createdAt: 150,
+        updatedAt: 900,
+        deletedAt: 900,
+      },
+    ],
+  };
+
+  const remote: DomainSnapshot = {
+    habits: [],
+    checkins: [],
+    notes: [],
+    tasks: [],
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Morning Updated',
+        time: '09:15',
+        createdAt: 100,
+        updatedAt: 500,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-2',
+        label: 'Still Active Remote',
+        time: '13:00',
+        createdAt: 150,
+        updatedAt: 300,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-3',
+        label: 'Evening',
+        time: '21:00',
+        createdAt: 400,
+        updatedAt: 400,
+        deletedAt: null,
+      },
+    ],
+  };
+
+  const merged = SnapshotMerger.merge(local, remote);
+  assert.equal(merged.reminderSlots?.length, 3);
+  assert.equal(merged.reminderSlots?.find((s) => s.id === 'slot-1')?.label, 'Morning Updated');
+  assert.equal(merged.reminderSlots?.find((s) => s.id === 'slot-1')?.time, '09:15');
+  assert.equal(merged.reminderSlots?.find((s) => s.id === 'slot-2')?.deletedAt, 900);
+  assert.equal(merged.reminderSlots?.find((s) => s.id === 'slot-3')?.time, '21:00');
+  assert.deepEqual(SnapshotMerger.merge(merged, merged), merged);
+
+  const rebased = SnapshotMerger.rebaseForRestore(local, [remote], 500);
+  assert.equal(rebased.reminderSlots?.[0].updatedAt, 901);
+  assert.equal(rebased.habits[0].updatedAt, 901);
+
+  const bytes = BackupService.exportBytes(remote);
+  const imported = BackupService.importBytes(local, bytes);
+  assert.equal(imported.mergedSnapshot.reminderSlots?.length, 3);
+  assert.equal(
+    imported.mergedSnapshot.reminderSlots?.find((s) => s.id === 'slot-1')?.time,
+    '09:15'
+  );
+  assert.deepEqual(imported.mergedSnapshot.habits[0].reminderSlotIds, ['slot-1']);
+});

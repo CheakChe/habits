@@ -352,8 +352,10 @@ export default function App(): JSX.Element {
         <HabitModal
           open={store.habitModalOpen()}
           editingHabit={store.editingHabit()}
+          reminderSlots={store.activeReminderSlots()}
           todayDay={store.todayDay()}
           onClose={() => store.closeHabitModal()}
+          onCreateReminderSlot={(input) => store.createReminderSlot(input)}
           onSave={(data) => store.saveHabit(data)}
         />
         <TaskModal
@@ -389,6 +391,9 @@ export default function App(): JSX.Element {
           mode={store.mode()!}
           hasGoogleToken={store.hasGoogleToken()}
           googleEmail={store.googleEmail()}
+          snapshot={store.snapshot()}
+          todayDay={store.todayDay()}
+          reminderSlots={store.activeReminderSlots()}
           prefs={store.reminderPrefs()}
           badgePermission={store.badgePermission()}
           pendingToday={store.getTodayPendingSummary()}
@@ -401,8 +406,11 @@ export default function App(): JSX.Element {
           onClose={() => store.closeRemindersModal()}
           onToggleBadge={(enabled) => store.setBadgeEnabled(enabled)}
           onRequestBadgePermission={() => store.requestBadgePermissionAndRefresh()}
+          onCreateSlot={(input) => store.createReminderSlot(input)}
+          onUpdateSlot={(id, patch) => store.updateReminderSlot(id, patch)}
+          onDeleteSlot={(id) => store.deleteReminderSlot(id)}
           onToggleCalendar={(enabled) => store.setCalendarEnabled(enabled)}
-          onChangeTime={(t) => store.setReminderTime(t)}
+          onChangeTaskSlot={(slotId) => store.setTaskReminderSlotId(slotId)}
           onChangeHorizon={(d) => store.setReminderHorizonDays(d)}
           onPrepareCalendarSync={() => store.prepareCalendarSync()}
           onConfirmCalendarSync={() => store.confirmCalendarSync()}

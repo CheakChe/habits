@@ -3,19 +3,23 @@ import {
   Habit,
   HabitCheckin,
   HabitNote,
+  ReminderSlot,
   ScheduleApplyScope,
   Task,
   TaskStatus,
   normalizeCheckinValue,
   normalizeDailyTarget,
   normalizeHabitUnit,
+  normalizeReminderSlotIds,
+  normalizeReminderSlotLabel,
+  normalizeReminderSlotTime,
   normalizeWeeklyTarget,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitSchedule } from '../utils/habit-schedule';
 
 const DB_NAME = 'habits_tracker_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface CreateHabitInput {
   name: string;
@@ -24,6 +28,7 @@ export interface CreateHabitInput {
   weeklyTarget?: number | null;
   dailyTarget?: number | null;
   unit?: string | null;
+  reminderSlotIds?: string[];
   startDay: number;
 }
 
@@ -34,9 +39,21 @@ export interface UpdateHabitPatch {
   weeklyTarget?: number | null;
   dailyTarget?: number | null;
   unit?: string | null;
+  reminderSlotIds?: string[];
   startDay?: number;
   scheduleApplyScope?: ScheduleApplyScope;
   scheduleEffectiveFromDay?: number;
+}
+
+export interface CreateReminderSlotInput {
+  id?: string;
+  label: string;
+  time: string;
+}
+
+export interface UpdateReminderSlotPatch {
+  label?: string;
+  time?: string;
 }
 
 export interface CreateTaskInput {
@@ -64,7 +81,13 @@ function normalizeHabitRecord(habit: Habit): Habit {
     habit.scheduleHistory,
     habit.dailyTarget
   );
-  const { scheduleHistory: _ignored, dailyTarget: _ignoredDt, unit: _ignoredUnit, ...rest } = habit;
+  const {
+    scheduleHistory: _ignored,
+    dailyTarget: _ignoredDt,
+    unit: _ignoredUnit,
+    reminderSlotIds: _ignoredSlots,
+    ...rest
+  } = habit;
   const cleaned: Habit = {
     ...rest,
     weekdays: norm.weekdays,
@@ -84,7 +107,22 @@ function normalizeHabitRecord(habit: Habit): Habit {
   if (norm.scheduleHistory && norm.scheduleHistory.length > 1) {
     cleaned.scheduleHistory = norm.scheduleHistory;
   }
+  const cleanSlotIds = normalizeReminderSlotIds(habit.reminderSlotIds);
+  if (cleanSlotIds.length > 0) {
+    cleaned.reminderSlotIds = cleanSlotIds;
+  }
   return cleaned;
+}
+
+function normalizeReminderSlotRecord(slot: ReminderSlot): ReminderSlot {
+  return {
+    id: slot.id.trim(),
+    label: normalizeReminderSlotLabel(slot.label),
+    time: normalizeReminderSlotTime(slot.time),
+    createdAt: slot.createdAt,
+    updatedAt: slot.updatedAt,
+    deletedAt: slot.deletedAt ?? null,
+  };
 }
 
 function normalizeCheckinRecord(checkin: HabitCheckin): HabitCheckin {
@@ -142,6 +180,10 @@ export class HabitDatabase {
         if (!db.objectStoreNames.contains('tasks')) {
           db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
         }
+
+        if (!db.objectStoreNames.contains('reminderSlots')) {
+          db.createObjectStore('reminderSlots', { keyPath: 'id' });
+        }
       };
 
       request.onsuccess = () => {
@@ -174,14 +216,22 @@ export class HabitDatabase {
 
   public async getAllSnapshot(): Promise<DomainSnapshot> {
     const db = await this.open();
-    const tx = db.transaction(['habits', 'checkins', 'notes', 'tasks'], 'readonly');
+    const tx = db.transaction(
+      ['habits', 'checkins', 'notes', 'tasks', 'reminderSlots'],
+      'readonly'
+    );
 
-    const [habits, checkins, notes, tasks] = await Promise.all([
+    const [habits, checkins, notes, tasks, reminderSlots] = await Promise.all([
       this.promisifyRequest<Habit[]>(tx.objectStore('habits').getAll()),
       this.promisifyRequest<HabitCheckin[]>(tx.objectStore('checkins').getAll()),
       this.promisifyRequest<HabitNote[]>(tx.objectStore('notes').getAll()),
       this.promisifyRequest<Task[]>(tx.objectStore('tasks').getAll()),
+      this.promisifyRequest<ReminderSlot[]>(tx.objectStore('reminderSlots').getAll()),
     ]);
+
+    const sortedSlots = reminderSlots
+      .map((s) => normalizeReminderSlotRecord(s))
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 
     return {
       habits: habits.map((h) => normalizeHabitRecord(h)).sort((a, b) => a.id - b.id),
@@ -210,6 +260,7 @@ export class HabitDatabase {
           };
         })
         .sort((a, b) => a.id - b.id),
+      ...(sortedSlots.length > 0 ? { reminderSlots: sortedSlots } : {}),
     };
   }
 
@@ -221,17 +272,22 @@ export class HabitDatabase {
 
   public async replaceSnapshot(snapshot: DomainSnapshot): Promise<void> {
     const db = await this.open();
-    const tx = db.transaction(['habits', 'checkins', 'notes', 'tasks'], 'readwrite');
+    const tx = db.transaction(
+      ['habits', 'checkins', 'notes', 'tasks', 'reminderSlots'],
+      'readwrite'
+    );
 
     const habitsStore = tx.objectStore('habits');
     const checkinsStore = tx.objectStore('checkins');
     const notesStore = tx.objectStore('notes');
     const tasksStore = tx.objectStore('tasks');
+    const slotsStore = tx.objectStore('reminderSlots');
 
     habitsStore.clear();
     checkinsStore.clear();
     notesStore.clear();
     tasksStore.clear();
+    slotsStore.clear();
 
     for (const habit of snapshot.habits) {
       habitsStore.put(normalizeHabitRecord(habit));
@@ -244,6 +300,9 @@ export class HabitDatabase {
     }
     for (const task of snapshot.tasks) {
       tasksStore.put(task);
+    }
+    for (const slot of snapshot.reminderSlots ?? []) {
+      slotsStore.put(normalizeReminderSlotRecord(slot));
     }
 
     await this.promisifyTx(tx);
@@ -258,6 +317,7 @@ export class HabitDatabase {
     const dailyTarget = normalizeDailyTarget(input.dailyTarget);
     const cleanUnit = dailyTarget !== null ? normalizeHabitUnit(input.unit) : null;
     const maskedWeekdays = input.weekdays & 0x7f;
+    const cleanSlotIds = normalizeReminderSlotIds(input.reminderSlotIds);
     const payload: Omit<Habit, 'id'> = {
       name: input.name.trim(),
       color: input.color,
@@ -269,6 +329,7 @@ export class HabitDatabase {
       updatedAt: now,
       ...(dailyTarget !== null ? { dailyTarget } : {}),
       ...(cleanUnit !== null ? { unit: cleanUnit } : {}),
+      ...(cleanSlotIds.length > 0 ? { reminderSlotIds: cleanSlotIds } : {}),
     };
     const key = await this.promisifyRequest<IDBValidKey>(store.add(payload));
     await this.promisifyTx(tx);
@@ -318,10 +379,16 @@ export class HabitDatabase {
         (scheduleResult.dailyTarget === null ? normalizeHabitUnit(existing.unit) : null))
       : null;
 
+    const resolvedSlotIds =
+      patch.reminderSlotIds !== undefined
+        ? normalizeReminderSlotIds(patch.reminderSlotIds)
+        : normalizeReminderSlotIds(existing.reminderSlotIds);
+
     const {
       scheduleHistory: _prevHistory,
       dailyTarget: _prevDt,
       unit: _prevUnit,
+      reminderSlotIds: _prevSlotIds,
       ...existingWithoutExtras
     } = existing;
     const updated: Habit = {
@@ -341,6 +408,9 @@ export class HabitDatabase {
     }
     if (scheduleResult.scheduleHistory && scheduleResult.scheduleHistory.length > 1) {
       updated.scheduleHistory = scheduleResult.scheduleHistory;
+    }
+    if (resolvedSlotIds.length > 0) {
+      updated.reminderSlotIds = resolvedSlotIds;
     }
     store.put(updated);
     await this.promisifyTx(tx);
@@ -508,6 +578,92 @@ export class HabitDatabase {
       updatedAt: now,
     };
     store.put(deleted);
+    await this.promisifyTx(tx);
+  }
+
+  private generateSlotId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `slot_${crypto.randomUUID()}`;
+    }
+    return `slot_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  public async createReminderSlot(input: CreateReminderSlotInput): Promise<ReminderSlot> {
+    const db = await this.open();
+    const now = this.nextTimestamp();
+    const tx = db.transaction('reminderSlots', 'readwrite');
+    const store = tx.objectStore('reminderSlots');
+    const id = input.id && input.id.trim().length > 0 ? input.id.trim() : this.generateSlotId();
+    const slot: ReminderSlot = {
+      id,
+      label: normalizeReminderSlotLabel(input.label),
+      time: normalizeReminderSlotTime(input.time),
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    store.put(slot);
+    await this.promisifyTx(tx);
+    return slot;
+  }
+
+  public async updateReminderSlot(
+    id: string,
+    patch: UpdateReminderSlotPatch
+  ): Promise<ReminderSlot> {
+    const db = await this.open();
+    const tx = db.transaction('reminderSlots', 'readwrite');
+    const store = tx.objectStore('reminderSlots');
+    const existing = await this.promisifyRequest<ReminderSlot | undefined>(store.get(id));
+    if (!existing) {
+      throw new Error(`Reminder slot ${id} not found`);
+    }
+    const updated: ReminderSlot = {
+      ...existing,
+      label:
+        patch.label !== undefined
+          ? normalizeReminderSlotLabel(patch.label)
+          : normalizeReminderSlotLabel(existing.label),
+      time:
+        patch.time !== undefined
+          ? normalizeReminderSlotTime(patch.time)
+          : normalizeReminderSlotTime(existing.time),
+      updatedAt: this.nextTimestamp(existing.updatedAt),
+    };
+    store.put(updated);
+    await this.promisifyTx(tx);
+    return updated;
+  }
+
+  public async deleteReminderSlot(id: string): Promise<void> {
+    const db = await this.open();
+    const tx = db.transaction(['reminderSlots', 'habits'], 'readwrite');
+    const slotsStore = tx.objectStore('reminderSlots');
+    const habitsStore = tx.objectStore('habits');
+    const [existingSlot, allHabits] = await Promise.all([
+      this.promisifyRequest<ReminderSlot | undefined>(slotsStore.get(id)),
+      this.promisifyRequest<Habit[]>(habitsStore.getAll()),
+    ]);
+    const now = this.nextTimestamp(existingSlot?.updatedAt);
+    if (existingSlot) {
+      slotsStore.put({
+        ...existingSlot,
+        deletedAt: now,
+        updatedAt: now,
+      });
+    }
+    for (const habit of allHabits) {
+      const currentIds = normalizeReminderSlotIds(habit.reminderSlotIds);
+      if (currentIds.includes(id)) {
+        const nextIds = currentIds.filter((slotId) => slotId !== id);
+        const normalized = normalizeHabitRecord({
+          ...habit,
+          reminderSlotIds: nextIds,
+          updatedAt: this.nextTimestamp(habit.updatedAt),
+        });
+        habitsStore.put(normalized);
+      }
+    }
     await this.promisifyTx(tx);
   }
 }

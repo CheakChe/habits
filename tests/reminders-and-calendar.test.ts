@@ -31,12 +31,16 @@ function makePrefs(overrides?: Partial<ReminderPreferences>): ReminderPreference
   };
 }
 
-test('ReminderPlanner normalizes reminder time, horizon days, and stored preferences', () => {
+test('ReminderPlanner normalizes reminder time, horizon days, taskReminderSlotId, and stored preferences', () => {
   assert.equal(ReminderPlanner.normalizeTime('9:05'), '09:05');
   assert.equal(ReminderPlanner.normalizeTime(' 23:59 '), '23:59');
   assert.equal(ReminderPlanner.normalizeTime('24:00'), '20:00');
   assert.equal(ReminderPlanner.normalizeTime('12:60'), '20:00');
   assert.equal(ReminderPlanner.normalizeTime(null), '20:00');
+
+  assert.equal(ReminderPlanner.normalizeTaskReminderSlotId('  slot-morning  '), 'slot-morning');
+  assert.equal(ReminderPlanner.normalizeTaskReminderSlotId('   '), null);
+  assert.equal(ReminderPlanner.normalizeTaskReminderSlotId(null), null);
 
   assert.equal(ReminderPlanner.normalizeHorizonDays(1), 1);
   assert.equal(ReminderPlanner.normalizeHorizonDays(0), 1);
@@ -48,7 +52,7 @@ test('ReminderPlanner normalizes reminder time, horizon days, and stored prefere
   const normalized = ReminderPlanner.normalizePreferences({
     badgeEnabled: false,
     calendarEnabled: true,
-    reminderTime: '7:30',
+    taskReminderSlotId: '  slot-evening  ',
     horizonDays: 10,
     calendarId: '  cal-123  ',
     calendarTimeZone: ' Europe/Moscow ',
@@ -58,7 +62,7 @@ test('ReminderPlanner normalizes reminder time, horizon days, and stored prefere
   assert.deepEqual(normalized, {
     badgeEnabled: false,
     calendarEnabled: true,
-    reminderTime: '07:30',
+    taskReminderSlotId: 'slot-evening',
     horizonDays: 7,
     calendarId: 'cal-123',
     calendarTimeZone: 'Europe/Moscow',
@@ -209,12 +213,24 @@ test('ReminderPlanner getTodayPendingSummary counts remaining scheduled habits, 
   assert.equal(summary.totalPendingCount, 4);
 });
 
-test('ReminderPlanner buildDesiredEvents omits today when complete, handles cross-midnight times, and plans future horizon days', () => {
-  const snapshot = makeSnapshot({
+test('ReminderPlanner buildDesiredEvents enforces strict opt-in, omits today when complete, handles cross-midnight times, and plans multi-slot events', () => {
+  // 1) Opt-in by default: habits and tasks without explicit slot assignment emit 0 events,
+  // while getTodayPendingSummary still counts them for the app icon badge.
+  const unassignedSnap = makeSnapshot({
+    reminderSlots: [
+      {
+        id: 'slot-eve',
+        label: 'Evening',
+        time: '20:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
-        name: 'Meditate',
+        name: 'Unassigned Habit',
         color: '#3B82F6',
         weekdays: 127,
         weeklyTarget: null,
@@ -224,7 +240,63 @@ test('ReminderPlanner buildDesiredEvents omits today when complete, handles cros
         updatedAt: 1000,
       },
     ],
+    tasks: [
+      {
+        id: 2,
+        title: 'Unassigned Task',
+        note: '',
+        dueDay: MONDAY_DAY,
+        done: false,
+        repeatable: false,
+        status: 'open',
+        completedDay: null,
+        deletedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+  });
+  assert.equal(
+    ReminderPlanner.getTodayPendingSummary(unassignedSnap, MONDAY_DAY).totalPendingCount,
+    2
+  );
+  assert.deepEqual(
+    ReminderPlanner.buildDesiredEvents(
+      unassignedSnap,
+      MONDAY_DAY,
+      { taskReminderSlotId: null, horizonDays: 3 },
+      'Europe/Berlin'
+    ),
+    []
+  );
+
+  // 2) Assigned slot + cross-midnight time + completion clearing today
+  const lateSlot = {
+    id: 'slot-late',
+    label: 'Night Check',
+    time: '23:55',
+    createdAt: 100,
+    updatedAt: 100,
+    deletedAt: null,
+  };
+  const snapshot: DomainSnapshot = {
+    reminderSlots: [lateSlot],
+    habits: [
+      {
+        id: 1,
+        name: 'Meditate',
+        color: '#3B82F6',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: MONDAY_DAY,
+        archivedAt: null,
+        reminderSlotIds: ['slot-late'],
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
     checkins: [{ habitId: 1, dayIndex: MONDAY_DAY, done: true, updatedAt: 2000 }],
+    notes: [],
     tasks: [
       {
         id: 2,
@@ -240,12 +312,12 @@ test('ReminderPlanner buildDesiredEvents omits today when complete, handles cros
         updatedAt: 1000,
       },
     ],
-  });
+  };
 
   const events = ReminderPlanner.buildDesiredEvents(
     snapshot,
     MONDAY_DAY,
-    { reminderTime: '23:55', horizonDays: 3 },
+    { taskReminderSlotId: 'slot-late', horizonDays: 3 },
     'Europe/Berlin'
   );
 
@@ -257,29 +329,43 @@ test('ReminderPlanner buildDesiredEvents omits today when complete, handles cros
 
   // Cross-midnight end time must roll into next day cleanly
   const tueEvent = events[0];
+  assert.equal(tueEvent.slotId, 'slot-late');
+  assert.equal(tueEvent.slotLabel, 'Night Check');
+  assert.equal(tueEvent.slotTime, '23:55');
   assert.equal(tueEvent.dateStr, '2026-11-17');
   assert.equal(tueEvent.startDateTime, '2026-11-17T23:55:00');
   assert.equal(tueEvent.endDateTime, '2026-11-18T00:10:00');
   assert.equal(tueEvent.timeZone, 'Europe/Berlin');
-  assert.match(tueEvent.summary, /1 habit planned/);
+  assert.match(tueEvent.summary, /Habits \(Night Check\).*1 habit planned/);
 
   const wedEvent = events[1];
   assert.match(wedEvent.summary, /1 habit & 1 task planned/);
   assert.match(wedEvent.description, /Submit tax form/);
 
+  // Changing slot time or taskReminderSlotId changes state signature
   const sig1 = ReminderPlanner.computeStateSignature(
     snapshot,
     MONDAY_DAY,
-    { reminderTime: '23:55', horizonDays: 3 },
+    { taskReminderSlotId: 'slot-late', horizonDays: 3 },
     'Europe/Berlin'
   );
   const sig2 = ReminderPlanner.computeStateSignature(
     snapshot,
     MONDAY_DAY,
-    { reminderTime: '21:00', horizonDays: 3 },
+    { taskReminderSlotId: null, horizonDays: 3 },
+    'Europe/Berlin'
+  );
+  const sig3 = ReminderPlanner.computeStateSignature(
+    {
+      ...snapshot,
+      reminderSlots: [{ ...lateSlot, time: '21:00', updatedAt: 200 }],
+    },
+    MONDAY_DAY,
+    { taskReminderSlotId: 'slot-late', horizonDays: 3 },
     'Europe/Berlin'
   );
   assert.notEqual(sig1, sig2);
+  assert.notEqual(sig1, sig3);
 });
 
 test('ReminderPlanner syncAppBadge sets positive counts, clears on zero/null, and falls back safely', async (t) => {
@@ -385,7 +471,17 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
   });
 
   const service = new CalendarReminderService();
-  const snap = makeSnapshot({
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Evening',
+        time: '19:30',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
@@ -395,12 +491,16 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
         weeklyTarget: null,
         startDay: MONDAY_DAY,
         archivedAt: null,
+        reminderSlotIds: ['slot-1'],
         createdAt: 1000,
         updatedAt: 1000,
       },
     ],
-  });
-  const prefs = makePrefs({ calendarEnabled: true, horizonDays: 2, reminderTime: '19:30' });
+    checkins: [],
+    notes: [],
+    tasks: [],
+  };
+  const prefs = makePrefs({ calendarEnabled: true, horizonDays: 2, taskReminderSlotId: null });
 
   await assert.rejects(
     () => service.prepareSyncPlan('guest', 'tok', snap, MONDAY_DAY, prefs, 'UTC'),
@@ -455,7 +555,7 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
   assert.equal(initialPlan.toCreate.length, 2);
   assert.equal(initialPlan.toDelete.length, 0);
 
-  // Applying initial plan creates secondary calendar then creates 2 popup events
+  // Applying initial plan creates secondary calendar then creates 2 popup events with habitsSlotId
   const applied = await service.applySyncPlan('google', 'tok-1', initialPlan);
   assert.equal(applied.calendarId, 'cal-created-1');
   assert.equal(applied.created, 2);
@@ -470,6 +570,11 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
     useDefault: false,
     overrides: [{ method: 'popup', minutes: 0 }],
   });
+  assert.equal(
+    (postCalls[1].body?.extendedProperties as { private?: { habitsSlotId?: string } })?.private
+      ?.habitsSlotId,
+    'slot-1'
+  );
 });
 
 test('CalendarReminderService deletes stale/completed events, updates changed days, keeps matching signatures, and supports calendar deletion', async (t) => {
@@ -480,8 +585,19 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
 
   // Today (TUESDAY_DAY) has habit 1 already completed -> today's event MUST be deleted!
   // Past event (MONDAY_DAY) MUST also be deleted.
+  // Legacy event without habitsSlotId MUST also be deleted.
   // Tomorrow (WEDNESDAY_DAY) exists with an outdated signature -> MUST be updated.
-  const snap = makeSnapshot({
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-eve',
+        label: 'Evening',
+        time: '20:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
@@ -491,18 +607,21 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
         weeklyTarget: null,
         startDay: MONDAY_DAY,
         archivedAt: null,
+        reminderSlotIds: ['slot-eve'],
         createdAt: 1000,
         updatedAt: 1000,
       },
     ],
     checkins: [{ habitId: 1, dayIndex: TUESDAY_DAY, done: true, updatedAt: 5000 }],
-  });
+    notes: [],
+    tasks: [],
+  };
 
   const prefs = makePrefs({
     calendarEnabled: true,
     calendarId: 'cal-xyz',
     horizonDays: 2, // TUESDAY_DAY + WEDNESDAY_DAY
-    reminderTime: '20:00',
+    taskReminderSlotId: null,
   });
 
   const requests: Array<{ method: string; url: string }> = [];
@@ -536,28 +655,50 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
               id: 'ev-past',
               summary: 'Past',
               extendedProperties: {
-                private: { habitsDayIndex: String(MONDAY_DAY), habitsSignature: 'old' },
+                private: {
+                  habitsDayIndex: String(MONDAY_DAY),
+                  habitsSlotId: 'slot-eve',
+                  habitsSignature: 'old',
+                },
               },
             },
             {
               id: 'ev-today-completed',
               summary: 'Habits — 1 habit left today',
               extendedProperties: {
-                private: { habitsDayIndex: String(TUESDAY_DAY), habitsSignature: 'today-sig' },
+                private: {
+                  habitsDayIndex: String(TUESDAY_DAY),
+                  habitsSlotId: 'slot-eve',
+                  habitsSignature: 'today-sig',
+                },
+              },
+            },
+            {
+              id: 'ev-legacy-no-slot',
+              summary: 'Habits — legacy',
+              extendedProperties: {
+                private: {
+                  habitsDayIndex: String(WEDNESDAY_DAY),
+                  habitsSignature: 'legacy-sig',
+                },
               },
             },
             {
               id: 'ev-wed-stale',
               summary: 'Habits — stale',
               extendedProperties: {
-                private: { habitsDayIndex: String(WEDNESDAY_DAY), habitsSignature: 'stale-sig' },
+                private: {
+                  habitsDayIndex: String(WEDNESDAY_DAY),
+                  habitsSlotId: 'slot-eve',
+                  habitsSignature: 'stale-sig',
+                },
               },
             },
             {
               id: 'ev-cancelled',
               status: 'cancelled',
               extendedProperties: {
-                private: { habitsDayIndex: String(WEDNESDAY_DAY) },
+                private: { habitsDayIndex: String(WEDNESDAY_DAY), habitsSlotId: 'slot-eve' },
               },
             },
           ],
@@ -570,6 +711,9 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
     }
     if (method === 'DELETE' && url.includes('/events/ev-today-completed')) {
       return new Response(null, { status: 404 }); // idempotent delete
+    }
+    if (method === 'DELETE' && url.includes('/events/ev-legacy-no-slot')) {
+      return new Response(null, { status: 204 });
     }
     if (method === 'PATCH' && url.includes('/events/ev-wed-stale')) {
       return new Response(JSON.stringify({ id: 'ev-wed-stale' }), { status: 200 });
@@ -587,14 +731,14 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
   assert.equal(plan.todayCleared, true);
   assert.deepEqual(
     plan.toDelete.map((d) => d.existingId),
-    ['ev-past', 'ev-today-completed']
+    ['ev-past', 'ev-today-completed', 'ev-legacy-no-slot']
   );
   assert.equal(plan.toUpdate.length, 1);
   assert.equal(plan.toUpdate[0].existingId, 'ev-wed-stale');
   assert.equal(plan.toCreate.length, 0);
 
   const applied = await service.applySyncPlan('google', 'tok-2', plan);
-  assert.equal(applied.deleted, 2);
+  assert.equal(applied.deleted, 3);
   assert.equal(applied.updated, 1);
   assert.equal(applied.created, 0);
   assert.equal(applied.duplicatesRemoved, 0);
@@ -622,7 +766,17 @@ test('CalendarReminderService reuses existing secondary calendar on a second dev
     globalThis.fetch = originalFetch;
   });
 
-  const snap = makeSnapshot({
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Default',
+        time: '20:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
@@ -632,18 +786,22 @@ test('CalendarReminderService reuses existing secondary calendar on a second dev
         weeklyTarget: null,
         startDay: MONDAY_DAY,
         archivedAt: null,
+        reminderSlotIds: ['slot-1'],
         createdAt: 1000,
         updatedAt: 1000,
       },
     ],
-  });
+    checkins: [],
+    notes: [],
+    tasks: [],
+  };
 
   // Case 1: calendarList accessible and returns 2 calendars while local device has calendarId = null
   const prefs = makePrefs({
     calendarEnabled: true,
     calendarId: null,
     horizonDays: 1,
-    reminderTime: '20:00',
+    taskReminderSlotId: null,
   });
 
   const deletedCalendarUrls: string[] = [];
@@ -710,7 +868,17 @@ test('CalendarReminderService discovers calendarId via Drive appDataFolder when 
     globalThis.fetch = originalFetch;
   });
 
-  const snap = makeSnapshot({
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Default',
+        time: '20:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
@@ -720,18 +888,22 @@ test('CalendarReminderService discovers calendarId via Drive appDataFolder when 
         weeklyTarget: null,
         startDay: MONDAY_DAY,
         archivedAt: null,
+        reminderSlotIds: ['slot-1'],
         createdAt: 1000,
         updatedAt: 1000,
       },
     ],
-  });
+    checkins: [],
+    notes: [],
+    tasks: [],
+  };
 
   // Phone previously created cal-phone locally, while PC published cal-pc to Drive appDataFolder
   const phonePrefs = makePrefs({
     calendarEnabled: true,
     calendarId: 'cal-phone',
     horizonDays: 1,
-    reminderTime: '20:00',
+    taskReminderSlotId: null,
   });
 
   let savedMetaBody = '';
@@ -922,7 +1094,7 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
   // 1) Without any calendar created yet, older local device pulls newer remote timeZone from Drive
   const pulledNoCal = await service.syncRemoteCalendarId('google', 'tok-1', null, 'UTC', {
     calendarEnabled: false,
-    reminderTime: '20:00',
+    taskReminderSlotId: null,
     horizonDays: 3,
     timeZoneUpdatedAt: 1000,
   });
@@ -933,7 +1105,7 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
   // 2) Device with a newer local timeZone pushes it to Drive (even with no calendar yet)
   const pushedNoCal = await service.syncRemoteCalendarId('google', 'tok-1', null, 'Europe/Berlin', {
     calendarEnabled: false,
-    reminderTime: '20:00',
+    taskReminderSlotId: null,
     horizonDays: 3,
     timeZoneUpdatedAt: 5000,
   });
@@ -956,7 +1128,7 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
     'Europe/Berlin',
     {
       calendarEnabled: true,
-      reminderTime: '20:00',
+      taskReminderSlotId: null,
       horizonDays: 3,
       timeZoneUpdatedAt: 5000,
     }
@@ -978,7 +1150,17 @@ test('ReminderPlanner skips off-schedule weekdays for flexible weekly habits', (
   const sunday = MONDAY_DAY + 6;
   const nextMonday = MONDAY_DAY + 7;
 
-  const snap = makeSnapshot({
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Afternoon',
+        time: '18:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
@@ -988,11 +1170,15 @@ test('ReminderPlanner skips off-schedule weekdays for flexible weekly habits', (
         weeklyTarget: 2,
         startDay: MONDAY_DAY - 7,
         archivedAt: null,
+        reminderSlotIds: ['slot-1'],
         createdAt: 1000,
         updatedAt: 1000,
       },
     ],
-  });
+    checkins: [],
+    notes: [],
+    tasks: [],
+  };
 
   // On Saturday (off-schedule), today summary should have 0 unfinished habits
   const satSummary = ReminderPlanner.getTodayPendingSummary(snap, saturday);
@@ -1004,7 +1190,7 @@ test('ReminderPlanner skips off-schedule weekdays for flexible weekly habits', (
   const events = ReminderPlanner.buildDesiredEvents(
     snap,
     friday,
-    { reminderTime: '18:00', horizonDays: 4 },
+    { taskReminderSlotId: null, horizonDays: 4 },
     'UTC'
   );
   assert.deepEqual(
@@ -1020,7 +1206,17 @@ test('ReminderPlanner buildDesiredEvents resolves scheduleHistory changes across
   // - Mon (today) has habit -> planned
   // - Tue (switches to Wed-only) -> NOT scheduled -> omitted
   // - Wed (Wed-only) -> planned
-  const snap = makeSnapshot({
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-1',
+        label: 'Evening',
+        time: '19:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+    ],
     habits: [
       {
         id: 1,
@@ -1030,6 +1226,7 @@ test('ReminderPlanner buildDesiredEvents resolves scheduleHistory changes across
         weeklyTarget: null,
         startDay: MONDAY_DAY - 7,
         archivedAt: null,
+        reminderSlotIds: ['slot-1'],
         createdAt: 1000,
         updatedAt: 2000,
         scheduleHistory: [
@@ -1038,12 +1235,15 @@ test('ReminderPlanner buildDesiredEvents resolves scheduleHistory changes across
         ],
       },
     ],
-  });
+    checkins: [],
+    notes: [],
+    tasks: [],
+  };
 
   const events = ReminderPlanner.buildDesiredEvents(
     snap,
     MONDAY_DAY,
-    { reminderTime: '19:00', horizonDays: 3 },
+    { taskReminderSlotId: null, horizonDays: 3 },
     'UTC'
   );
 
@@ -1111,4 +1311,319 @@ test('ReminderPlanner evaluates measured habit checkins against active dailyTarg
     TUESDAY_DAY
   );
   assert.equal(tueDone.unfinishedHabitsCount, 0);
+});
+
+test('ReminderPlanner and CalendarReminderService support multiple dynamic slots, taskReminderSlotId, tombstoned slots, and per-slot event sync', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-morning',
+        label: 'Morning',
+        time: '08:30',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-evening',
+        label: 'Evening',
+        time: '21:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-deleted',
+        label: 'Old Slot',
+        time: '12:00',
+        createdAt: 100,
+        updatedAt: 200,
+        deletedAt: 200,
+      },
+    ],
+    habits: [
+      {
+        id: 1,
+        name: 'Vitamins',
+        color: '#3B82F6',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: MONDAY_DAY,
+        archivedAt: null,
+        reminderSlotIds: ['slot-morning', 'slot-evening', 'slot-deleted'],
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      {
+        id: 2,
+        name: 'Journal',
+        color: '#22C55E',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: MONDAY_DAY,
+        archivedAt: null,
+        reminderSlotIds: ['slot-evening'],
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      {
+        id: 3,
+        name: 'No Reminder Habit',
+        color: '#A855F7',
+        weekdays: 127,
+        weeklyTarget: null,
+        startDay: MONDAY_DAY,
+        archivedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+    checkins: [],
+    notes: [],
+    tasks: [
+      {
+        id: 10,
+        title: 'Call bank',
+        note: '',
+        dueDay: MONDAY_DAY,
+        done: false,
+        repeatable: false,
+        status: 'open',
+        completedDay: null,
+        deletedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+  };
+
+  // Active slots exclude tombstoned slot-deleted and sort by time
+  const activeSlots = ReminderPlanner.getActiveSlots(snap);
+  assert.deepEqual(
+    activeSlots.map((s) => s.id),
+    ['slot-morning', 'slot-evening']
+  );
+
+  // Horizon 1 day with taskReminderSlotId='slot-morning' emits 2 events for Monday:
+  // Morning: Vitamins + Call bank (No Reminder Habit excluded)
+  // Evening: Vitamins + Journal
+  const desired = ReminderPlanner.buildDesiredEvents(
+    snap,
+    MONDAY_DAY,
+    { taskReminderSlotId: 'slot-morning', horizonDays: 1 },
+    'UTC'
+  );
+  assert.equal(desired.length, 2);
+  assert.equal(desired[0].slotId, 'slot-morning');
+  assert.equal(desired[0].startDateTime, '2026-11-16T08:30:00');
+  assert.match(desired[0].summary, /Habits \(Morning\) — 1 habit & 1 task left today/);
+  assert.match(desired[0].description, /Vitamins/);
+  assert.match(desired[0].description, /Call bank/);
+  assert.doesNotMatch(desired[0].description, /No Reminder Habit/);
+
+  assert.equal(desired[1].slotId, 'slot-evening');
+  assert.equal(desired[1].startDateTime, '2026-11-16T21:00:00');
+  assert.match(desired[1].summary, /Habits \(Evening\) — 2 habits left today/);
+  assert.doesNotMatch(desired[1].description, /Call bank/);
+
+  // Deleted taskReminderSlotId is ignored safely
+  const desiredDeletedTaskSlot = ReminderPlanner.buildDesiredEvents(
+    snap,
+    MONDAY_DAY,
+    { taskReminderSlotId: 'slot-deleted', horizonDays: 1 },
+    'UTC'
+  );
+  assert.doesNotMatch(desiredDeletedTaskSlot[0].description, /Call bank/);
+
+  // CalendarReminderService matches existing events by (dayIndex, slotId), deletes removed slot & duplicate slot events
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/drive/v3/files')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      return new Response(
+        JSON.stringify({
+          items: [{ id: 'cal-multi', summary: 'Habits Reminders', timeZone: 'UTC' }],
+        }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.includes('/calendars/cal-multi/events')) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 'ev-morning-ok',
+              summary: desired[0].summary,
+              extendedProperties: {
+                private: {
+                  habitsDayIndex: String(MONDAY_DAY),
+                  habitsSlotId: 'slot-morning',
+                  habitsSignature: desired[0].signature,
+                },
+              },
+            },
+            {
+              id: 'ev-morning-dup',
+              summary: 'Duplicate morning',
+              extendedProperties: {
+                private: {
+                  habitsDayIndex: String(MONDAY_DAY),
+                  habitsSlotId: 'slot-morning',
+                  habitsSignature: desired[0].signature,
+                },
+              },
+            },
+            {
+              id: 'ev-deleted-slot',
+              summary: 'Old Slot',
+              extendedProperties: {
+                private: {
+                  habitsDayIndex: String(MONDAY_DAY),
+                  habitsSlotId: 'slot-deleted',
+                  habitsSignature: 'old-sig',
+                },
+              },
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+  const plan = await service.prepareSyncPlan(
+    'google',
+    'tok-multi',
+    snap,
+    MONDAY_DAY,
+    makePrefs({
+      calendarEnabled: true,
+      calendarId: 'cal-multi',
+      taskReminderSlotId: 'slot-morning',
+      horizonDays: 1,
+    }),
+    'UTC'
+  );
+  assert.equal(plan.unchangedCount, 1); // ev-morning-ok
+  assert.deepEqual(
+    plan.toDelete.map((d) => d.existingId),
+    ['ev-morning-dup', 'ev-deleted-slot']
+  );
+  assert.deepEqual(
+    plan.toCreate.map((c) => c.slotId),
+    ['slot-evening']
+  );
+});
+
+test('CalendarReminderService handles paginated calendarList/events, 404/401 errors, and ReminderPlanner slot edge cases', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  // ReminderPlanner helper edge cases
+  assert.equal(ReminderPlanner.isAppBadgeSupported(), false);
+  assert.equal(ReminderPlanner.isStandalonePwa(), false);
+  assert.equal(ReminderPlanner.resolveCalendarTimeZone('Invalid/TZ'), 'UTC');
+  assert.equal(ReminderPlanner.normalizeTaskReminderSlotId('   '), null);
+  assert.equal(ReminderPlanner.normalizeHorizonDays(99), 7);
+  assert.equal(ReminderPlanner.normalizeHorizonDays(-5), 1);
+
+  const service = new CalendarReminderService();
+  await assert.rejects(
+    () => service.prepareSyncPlan('guest', 'tok', makeSnapshot(), MONDAY_DAY, makePrefs(), 'UTC'),
+    /Google Sign-In mode/
+  );
+  await assert.rejects(
+    () => service.deleteReminderCalendar('google', null, 'cal-1'),
+    /authorization expired/
+  );
+
+  // Paginated calendarList + paginated events + 404 on deleteReminderCalendar treated safely or mapped
+  let calListCalls = 0;
+  let eventsCalls = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/drive/v3/files')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      calListCalls += 1;
+      if (calListCalls === 1) {
+        return new Response(
+          JSON.stringify({ items: [{ id: 'other', summary: 'Work' }], nextPageToken: 'p2' }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          items: [{ id: 'cal-paged', summary: 'Habits Reminders', timeZone: 'UTC' }],
+        }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.includes('/calendars/cal-paged/events')) {
+      eventsCalls += 1;
+      if (eventsCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'ev-stale-1',
+                extendedProperties: {
+                  private: { habitsDayIndex: String(MONDAY_DAY - 1), habitsSlotId: 'legacy' },
+                },
+              },
+            ],
+            nextPageToken: 'ep2',
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
+    if (method === 'DELETE' && url.includes('/calendars/cal-missing')) {
+      return new Response('not found', { status: 404 });
+    }
+    if (method === 'DELETE' && url.includes('/calendars/cal-err')) {
+      return new Response('forbidden', { status: 403 });
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const plan = await service.prepareSyncPlan(
+    'google',
+    'tok-paged',
+    makeSnapshot(),
+    MONDAY_DAY,
+    makePrefs({ calendarEnabled: true, calendarId: null, horizonDays: 1 }),
+    'UTC'
+  );
+  assert.equal(calListCalls, 2);
+  assert.equal(eventsCalls, 2);
+  assert.equal(plan.calendarId, 'cal-paged');
+  assert.deepEqual(
+    plan.toDelete.map((d) => d.existingId),
+    ['ev-stale-1']
+  );
+
+  // Deleting an already-gone calendar (404) succeeds silently; 403 throws
+  await service.deleteReminderCalendar('google', 'tok-paged', 'cal-missing');
+  await assert.rejects(
+    () => service.deleteReminderCalendar('google', 'tok-paged', 'cal-err'),
+    /403|permission/i
+  );
 });

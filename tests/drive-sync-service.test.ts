@@ -680,3 +680,48 @@ test('DriveSyncService lists, inspects, and restores historical revisions cleanl
   assert.ok(restoredPatchBytes);
   assert.equal(SnapshotCodec.unpack(restoredPatchBytes).habits[0].name, 'Clean Old State');
 });
+
+test('DriveSyncService handles revision auth/empty/error states and tolerates cleanup failures', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const service = new DriveSyncService();
+
+  // Mode and token enforcement on revision APIs
+  await assert.rejects(() => service.listRevisions('guest', 'tok'), /Google Drive mode/);
+  await assert.rejects(
+    () => service.inspectRevision('google', null, 'f1', 'r1'),
+    /session expired/
+  );
+  await assert.rejects(
+    () => service.restoreRevision('google', '', 'f1', 'r1', makeSnapshot()),
+    /session expired/
+  );
+
+  // Empty file list in listRevisions
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('spaces=appDataFolder')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (url.includes('/revisions/rev-empty?alt=media')) {
+      return new Response(new Uint8Array(0), { status: 200 });
+    }
+    if (url.includes('/revisions/rev-404?alt=media')) {
+      return new Response('not found', { status: 404 });
+    }
+    return new Response('server error', { status: 500 });
+  }) as typeof fetch;
+
+  const emptyList = await service.listRevisions('google', 'tok');
+  assert.equal(emptyList.fileId, null);
+  assert.deepEqual(emptyList.revisions, []);
+
+  await assert.rejects(
+    () => service.inspectRevision('google', 'tok', 'file-1', 'rev-empty'),
+    /empty/i
+  );
+  await assert.rejects(() => service.inspectRevision('google', 'tok', 'file-1', 'rev-404'), /404/);
+});

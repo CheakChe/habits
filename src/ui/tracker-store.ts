@@ -15,6 +15,7 @@ import {
   DomainSnapshot,
   Habit,
   HistorySubTab,
+  ReminderSlot,
   ScheduleApplyScope,
   SessionMode,
   Task,
@@ -60,11 +61,18 @@ const EMPTY_SNAPSHOT: DomainSnapshot = {
   tasks: [],
 };
 
+export interface TrackerStoreDependencies {
+  db?: HabitDatabase;
+  session?: SessionManager;
+  driveSync?: DriveSyncService;
+  calendarSync?: CalendarReminderService;
+}
+
 export class TrackerStore {
-  private readonly db = new HabitDatabase();
-  private readonly session = new SessionManager();
-  private readonly driveSync = new DriveSyncService();
-  private readonly calendarSync = new CalendarReminderService();
+  private readonly db: HabitDatabase;
+  private readonly session: SessionManager;
+  private readonly driveSync: DriveSyncService;
+  private readonly calendarSync: CalendarReminderService;
   private checkinWriteChain: Promise<void> = Promise.resolve();
 
   public readonly mode: Accessor<SessionMode | null>;
@@ -438,7 +446,11 @@ export class TrackerStore {
     }
   }
 
-  constructor() {
+  constructor(deps: TrackerStoreDependencies = {}) {
+    this.db = deps.db ?? new HabitDatabase();
+    this.session = deps.session ?? new SessionManager();
+    this.driveSync = deps.driveSync ?? new DriveSyncService();
+    this.calendarSync = deps.calendarSync ?? new CalendarReminderService();
     /* eslint-disable solid/reactivity -- class fields initialized via createSignal destructuring */
     [this.mode, this.setMode] = createSignal<SessionMode | null>(this.session.getRememberedMode());
     [this.activeTab, this.setActiveTab] = createSignal<ActiveTab>('today');
@@ -595,11 +607,40 @@ export class TrackerStore {
     this.setCalendarError(null);
   }
 
-  public setReminderTime(time: string): void {
-    const normalized = ReminderPlanner.normalizeTime(time);
+  public activeReminderSlots(): ReminderSlot[] {
+    return ReminderPlanner.getActiveSlots(this.snapshot());
+  }
+
+  public async createReminderSlot(input: { label: string; time: string }): Promise<ReminderSlot> {
+    const slot = await this.db.createReminderSlot(input);
+    await this.reloadFromDb();
+    this.setPendingCalendarPlan(null);
+    return slot;
+  }
+
+  public async updateReminderSlot(
+    id: string,
+    patch: { label?: string; time?: string }
+  ): Promise<void> {
+    await this.db.updateReminderSlot(id, patch);
+    await this.reloadFromDb();
+    this.setPendingCalendarPlan(null);
+  }
+
+  public async deleteReminderSlot(id: string): Promise<void> {
+    await this.db.deleteReminderSlot(id);
+    if (this.reminderPrefs().taskReminderSlotId === id) {
+      this.setTaskReminderSlotId(null);
+    }
+    await this.reloadFromDb();
+    this.setPendingCalendarPlan(null);
+  }
+
+  public setTaskReminderSlotId(slotId: string | null): void {
+    const normalized = ReminderPlanner.normalizeTaskReminderSlotId(slotId);
     const next: ReminderPreferences = {
       ...this.reminderPrefs(),
-      reminderTime: normalized,
+      taskReminderSlotId: normalized,
     };
     TrackerStore.writeStoredTimestamp(TrackerStore.REMINDERS_EDITED_AT_KEY, Date.now());
     this.persistReminderPrefs(next);
@@ -1093,6 +1134,7 @@ export class TrackerStore {
     weeklyTarget?: number | null;
     dailyTarget?: number | null;
     unit?: string | null;
+    reminderSlotIds?: string[];
     startDay: number;
     scheduleApplyScope?: ScheduleApplyScope;
     scheduleEffectiveFromDay?: number;
@@ -1581,7 +1623,7 @@ export class TrackerStore {
     calendarId: string | null;
     timeZone: string | null;
     timeZoneUpdatedAt?: number;
-    reminderTime?: string;
+    taskReminderSlotId?: string | null;
     horizonDays?: number;
     calendarEnabled?: boolean;
     updatedAt?: number;
@@ -1614,7 +1656,10 @@ export class TrackerStore {
         ...current,
         calendarId: syncedMeta.calendarId,
         calendarTimeZone: syncedMeta.timeZone ?? current.calendarTimeZone,
-        reminderTime: syncedMeta.reminderTime ?? current.reminderTime,
+        taskReminderSlotId:
+          syncedMeta.taskReminderSlotId !== undefined
+            ? syncedMeta.taskReminderSlotId
+            : current.taskReminderSlotId,
         horizonDays: syncedMeta.horizonDays ?? current.horizonDays,
         calendarEnabled: syncedMeta.calendarEnabled ?? current.calendarEnabled,
       });

@@ -1,4 +1,11 @@
-import { DomainSnapshot, Habit, HabitCheckin, HabitNote, Task } from '../types/domain';
+import {
+  DomainSnapshot,
+  Habit,
+  HabitCheckin,
+  HabitNote,
+  ReminderSlot,
+  Task,
+} from '../types/domain';
 
 export class SnapshotMerger {
   public static merge(local: DomainSnapshot, remote: DomainSnapshot): DomainSnapshot {
@@ -123,6 +130,21 @@ export class SnapshotMerger {
       }
     }
 
+    // 5. Merge reminderSlots by immutable UUID string ID using LWW + tombstones
+    const slotMap = new Map<string, ReminderSlot>();
+    for (const rs of remote.reminderSlots ?? []) {
+      slotMap.set(rs.id, rs);
+    }
+    for (const ls of local.reminderSlots ?? []) {
+      const existing = slotMap.get(ls.id);
+      if (!existing || ls.updatedAt >= existing.updatedAt) {
+        slotMap.set(ls.id, ls);
+      }
+    }
+    const mergedSlots = Array.from(slotMap.values()).sort(
+      (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)
+    );
+
     return {
       habits: Array.from(habitMap.values()).sort((a, b) => a.id - b.id),
       checkins: Array.from(checkinMap.values()).sort(
@@ -132,6 +154,7 @@ export class SnapshotMerger {
         (a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex
       ),
       tasks: Array.from(taskMap.values()).sort((a, b) => a.id - b.id),
+      ...(mergedSlots.length > 0 ? { reminderSlots: mergedSlots } : {}),
     };
   }
 
@@ -159,6 +182,9 @@ export class SnapshotMerger {
       for (const t of snap.tasks) {
         if (t.updatedAt > maxUpdatedAt) maxUpdatedAt = t.updatedAt;
       }
+      for (const s of snap.reminderSlots ?? []) {
+        if (s.updatedAt > maxUpdatedAt) maxUpdatedAt = s.updatedAt;
+      }
     };
 
     scan(target);
@@ -173,6 +199,11 @@ export class SnapshotMerger {
       checkins: target.checkins.map((c) => ({ ...c, updatedAt: restoreTs })),
       notes: target.notes.map((n) => ({ ...n, updatedAt: restoreTs })),
       tasks: target.tasks.map((t) => ({ ...t, updatedAt: restoreTs })),
+      ...(target.reminderSlots && target.reminderSlots.length > 0
+        ? {
+            reminderSlots: target.reminderSlots.map((s) => ({ ...s, updatedAt: restoreTs })),
+          }
+        : {}),
     };
   }
 }

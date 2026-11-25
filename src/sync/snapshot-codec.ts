@@ -4,11 +4,15 @@ import {
   HabitCheckin,
   HabitNote,
   HabitScheduleVersion,
+  ReminderSlot,
   Task,
   TaskStatus,
   normalizeCheckinValue,
   normalizeDailyTarget,
   normalizeHabitUnit,
+  normalizeReminderSlotIds,
+  normalizeReminderSlotLabel,
+  normalizeReminderSlotTime,
   normalizeWeeklyTarget,
 } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
@@ -19,7 +23,7 @@ import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 8;
+const FORMAT_VERSION = 9;
 
 function encodeScaledTarget(value: number | null | undefined): number {
   const clean = normalizeDailyTarget(value);
@@ -80,6 +84,16 @@ export class SnapshotCodec {
       (a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex
     );
     const sortedTasks = [...snapshot.tasks].sort((a, b) => a.id - b.id);
+    const sortedSlots = [...(snapshot.reminderSlots ?? [])]
+      .map((s) => ({
+        ...s,
+        id: s.id.trim(),
+        label: normalizeReminderSlotLabel(s.label),
+        time: normalizeReminderSlotTime(s.time),
+        deletedAt: s.deletedAt ?? null,
+      }))
+      .filter((s) => s.id.length > 0)
+      .sort((a, b) => a.id.localeCompare(b.id));
 
     for (const habit of sortedHabits) {
       idTable.intern(habit.id);
@@ -87,6 +101,9 @@ export class SnapshotCodec {
       stringTable.intern(habit.color);
       if (HabitSchedule.hasAnyDailyTarget(habit)) {
         stringTable.intern(normalizeHabitUnit(habit.unit) ?? '');
+      }
+      for (const slotId of normalizeReminderSlotIds(habit.reminderSlotIds)) {
+        stringTable.intern(slotId);
       }
     }
     for (const checkin of snapshot.checkins) {
@@ -100,6 +117,11 @@ export class SnapshotCodec {
       idTable.intern(task.id);
       stringTable.intern(task.title);
       stringTable.intern(task.note);
+    }
+    for (const slot of sortedSlots) {
+      stringTable.intern(slot.id);
+      stringTable.intern(slot.label);
+      stringTable.intern(slot.time);
     }
 
     const checkinsByHabit = new Map<number, HabitCheckin[]>();
@@ -166,6 +188,12 @@ export class SnapshotCodec {
           false);
       if (hasMeasured) {
         body.writeVarUint(stringTable.intern(normalizeHabitUnit(habit.unit) ?? ''));
+      }
+
+      const habitSlotIds = normalizeReminderSlotIds(habit.reminderSlotIds);
+      body.writeVarUint(habitSlotIds.length);
+      for (const slotId of habitSlotIds) {
+        body.writeVarUint(stringTable.intern(slotId));
       }
 
       const habitCheckins = (checkinsByHabit.get(habit.id) ?? []).sort(
@@ -251,6 +279,22 @@ export class SnapshotCodec {
       body.writeUint8(encodeTaskStatus(task));
       body.writeFloat64(task.createdAt);
       body.writeFloat64(task.updatedAt);
+    }
+
+    // Reminder slots (v9+)
+    body.writeVarUint(sortedSlots.length);
+    for (const slot of sortedSlots) {
+      body.writeVarUint(stringTable.intern(slot.id));
+      body.writeVarUint(stringTable.intern(slot.label));
+      body.writeVarUint(stringTable.intern(slot.time));
+      if (slot.deletedAt !== null) {
+        body.writeUint8(1);
+        body.writeFloat64(slot.deletedAt);
+      } else {
+        body.writeUint8(0);
+      }
+      body.writeFloat64(slot.createdAt);
+      body.writeFloat64(slot.updatedAt);
     }
 
     const payload = body.toUint8Array();
@@ -380,6 +424,19 @@ export class SnapshotCodec {
         }
       }
 
+      let reminderSlotIds: string[] = [];
+      if (version >= 9) {
+        const slotRefCount = reader.readVarUint();
+        if (slotRefCount > 1_000) {
+          throw new Error(`Unreasonable habit reminderSlotIds count: ${slotRefCount}`);
+        }
+        const rawSlotIds: string[] = [];
+        for (let s = 0; s < slotRefCount; s++) {
+          rawSlotIds.push(stringTable.get(reader.readVarUint()));
+        }
+        reminderSlotIds = normalizeReminderSlotIds(rawSlotIds);
+      }
+
       const unpackedHabit: Habit = {
         id,
         name,
@@ -399,6 +456,9 @@ export class SnapshotCodec {
       }
       if (scheduleHistory) {
         unpackedHabit.scheduleHistory = scheduleHistory;
+      }
+      if (reminderSlotIds.length > 0) {
+        unpackedHabit.reminderSlotIds = reminderSlotIds;
       }
       habits.push(unpackedHabit);
 
@@ -534,10 +594,47 @@ export class SnapshotCodec {
       });
     }
 
+    const reminderSlots: ReminderSlot[] = [];
+    if (version >= 9) {
+      const slotCount = reader.readVarUint();
+      if (slotCount > 10_000) {
+        throw new Error(`Unreasonable reminder slot count: ${slotCount}`);
+      }
+      for (let i = 0; i < slotCount; i++) {
+        const id = stringTable.get(reader.readVarUint()).trim();
+        const label = normalizeReminderSlotLabel(stringTable.get(reader.readVarUint()));
+        const time = normalizeReminderSlotTime(stringTable.get(reader.readVarUint()));
+        const hasDeletedAt = reader.readUint8();
+        if (hasDeletedAt !== 0 && hasDeletedAt !== 1) {
+          throw new Error('Invalid reminder slot deletedAt flag in snapshot');
+        }
+        const deletedAt = hasDeletedAt === 1 ? reader.readFloat64() : null;
+        const createdAt = reader.readFloat64();
+        const updatedAt = reader.readFloat64();
+        if (id.length > 0) {
+          reminderSlots.push({
+            id,
+            label,
+            time,
+            deletedAt,
+            createdAt,
+            updatedAt,
+          });
+        }
+      }
+      reminderSlots.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+    }
+
     if (reader.remaining !== 0) {
       throw new Error(`Trailing unread bytes in snapshot: ${reader.remaining}`);
     }
 
-    return { habits, checkins, notes, tasks };
+    return {
+      habits,
+      checkins,
+      notes,
+      tasks,
+      ...(reminderSlots.length > 0 ? { reminderSlots } : {}),
+    };
   }
 }
