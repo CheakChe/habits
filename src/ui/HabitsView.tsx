@@ -163,131 +163,122 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                       exactMilestone() ? 'bg-white/[0.015]' : ''
                     }`}
                   >
-                    <div class="min-w-0 space-y-2">
-                      <div class="flex items-start gap-3">
-                        <HabitBadge appearanceRaw={habit.color} size="md" />
-                        <h2
-                          class="line-clamp-2 text-base font-medium break-words text-[#F5F7FA]"
-                          title={habit.name}
-                        >
-                          {habit.name}
-                        </h2>
+                    <div class="min-w-0 flex-1 space-y-2">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="flex min-w-0 flex-1 items-start gap-3">
+                          <HabitBadge appearanceRaw={habit.color} size="md" />
+                          <h2
+                            class="line-clamp-2 text-base font-medium break-words text-[#F5F7FA]"
+                            title={habit.name}
+                          >
+                            {habit.name}
+                          </h2>
+                        </div>
+                        <span class="shrink-0 pt-0.5 font-mono text-xs font-medium whitespace-nowrap text-[#C8CDD8] tabular-nums">
+                          {Math.round(metrics().completionRate * 100)}%{' '}
+                          <span class="font-normal text-[#8E95A5]">(30d)</span>
+                        </span>
                       </div>
 
-                      <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[#8E95A5]">
-                        <span>Started {CivilCalendar.formatShortDate(habit.startDay)}</span>
-                        <Show when={activeSchedule().dailyTarget !== null}>
-                          <span aria-hidden="true">·</span>
-                          <span class="font-mono text-[#C8CDD8] tabular-nums">
-                            Goal {HabitSchedule.formatNumericValue(activeSchedule().dailyTarget!)}
-                            {habit.unit ? ` ${habit.unit}` : ''}/day
+                      <div class="space-y-1 text-xs text-[#8E95A5]">
+                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 font-mono tabular-nums">
+                          <span
+                            class={`whitespace-nowrap ${streakToneClass()}`}
+                            title={
+                              milestone()
+                                ? `${milestone()}-${streakUnitLong()} streak milestone`
+                                : undefined
+                            }
+                          >
+                            {metrics().currentStreak}
+                            {streakUnitShort()} current · {metrics().longestStreak}
+                            {streakUnitShort()} best
+                            <Show when={exactMilestone()}>
+                              <span>
+                                {' '}
+                                · {metrics().currentStreak}
+                                {streakUnitShort()} milestone
+                              </span>
+                            </Show>
                           </span>
-                        </Show>
-                        <Show when={latestScheduleChangeDay() !== null}>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            Updated {CivilCalendar.formatShortDate(latestScheduleChangeDay()!)}
-                          </span>
-                        </Show>
-                        <span aria-hidden="true">·</span>
-                        <span
-                          class={`font-mono tabular-nums ${streakToneClass()}`}
-                          title={
-                            milestone()
-                              ? `${milestone()}-${streakUnitLong()} streak milestone`
-                              : undefined
-                          }
-                        >
-                          {metrics().currentStreak}
-                          {streakUnitShort()} current
-                          <Show when={exactMilestone()}>
-                            <span>
-                              {' '}
-                              · {metrics().currentStreak}
-                              {streakUnitShort()} milestone
+                          <Show when={habit.archivedAt === null && weekly().scheduledDays > 0}>
+                            <span
+                              class={`whitespace-nowrap ${
+                                weekly().isComplete ? 'text-[#60A5FA]' : ''
+                              }`}
+                            >
+                              {weekly().isComplete
+                                ? `Week complete (${weekly().completedDays}/${weekly().scheduledDays})`
+                                : `${weekly().completedDays}/${weekly().scheduledDays} this week`}
                             </span>
                           </Show>
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span class="font-mono tabular-nums">
-                          {metrics().longestStreak}
-                          {streakUnitShort()} best
-                        </span>
-                        <Show when={habit.archivedAt === null && weekly().scheduledDays > 0}>
-                          <span aria-hidden="true">·</span>
-                          <span
-                            class={`font-mono tabular-nums ${
-                              weekly().isComplete ? 'text-[#60A5FA]' : ''
-                            }`}
-                          >
-                            {weekly().isComplete
-                              ? `Week complete (${weekly().completedDays}/${weekly().scheduledDays})`
-                              : `${weekly().completedDays}/${weekly().scheduledDays} this week`}
+                        </div>
+
+                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                          <span class="whitespace-nowrap">
+                            Started {CivilCalendar.formatShortDate(habit.startDay)}
                           </span>
-                        </Show>
-                        <span aria-hidden="true">·</span>
-                        <span class="font-mono tabular-nums">
-                          {Math.round(metrics().completionRate * 100)}% (30d)
-                        </span>
-                        <Show when={assignedSlots().length > 0}>
-                          <span aria-hidden="true">·</span>
-                          <span class="inline-flex flex-wrap items-center gap-1.5 text-[#93C5FD]">
-                            <For each={assignedSlots()}>
-                              {(slot) => (
-                                <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
-                                  <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
-                                  <span>
-                                    {slot.time}
-                                    {slot.label ? ` ${slot.label}` : ''}
-                                  </span>
-                                </span>
-                              )}
-                            </For>
-                          </span>
-                        </Show>
+                          <Show when={activeSchedule().dailyTarget !== null}>
+                            <span class="font-mono whitespace-nowrap text-[#C8CDD8] tabular-nums">
+                              Goal {HabitSchedule.formatNumericValue(activeSchedule().dailyTarget!)}
+                              {habit.unit ? ` ${habit.unit}` : ''}/day
+                            </span>
+                          </Show>
+                          <Show when={latestScheduleChangeDay() !== null}>
+                            <span class="whitespace-nowrap">
+                              Updated {CivilCalendar.formatShortDate(latestScheduleChangeDay()!)}
+                            </span>
+                          </Show>
+                        </div>
                       </div>
+
+                      <Show
+                        when={activeSchedule().weeklyTarget !== null || assignedSlots().length > 0}
+                      >
+                        <div class="flex flex-wrap items-center gap-1.5">
+                          <Show when={activeSchedule().weeklyTarget !== null}>
+                            <span
+                              class="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-[#C8CDD8] tabular-nums"
+                              aria-label="Flexible weekly schedule"
+                            >
+                              {activeSchedule().weeklyTarget}× / week
+                            </span>
+                          </Show>
+                          <For each={assignedSlots()}>
+                            {(slot) => (
+                              <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
+                                <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                <span>
+                                  {slot.time}
+                                  {slot.label ? ` ${slot.label}` : ''}
+                                </span>
+                              </span>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
                     </div>
 
                     <div class="flex shrink-0 flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:justify-end sm:gap-4">
                       <Show
-                        when={activeSchedule().weeklyTarget === null}
+                        when={
+                          activeSchedule().weeklyTarget === null ||
+                          (activeSchedule().weekdays & ALL_WEEKDAYS_MASK) !== ALL_WEEKDAYS_MASK
+                        }
                         fallback={
-                          <div
-                            class="flex flex-wrap items-center gap-2.5"
-                            aria-label="Flexible weekly schedule"
-                          >
-                            <span class="font-mono text-xs whitespace-nowrap text-[#C8CDD8] tabular-nums">
-                              {activeSchedule().weeklyTarget}× / week
-                            </span>
-                            <Show
-                              when={
-                                (activeSchedule().weekdays & ALL_WEEKDAYS_MASK) !==
-                                ALL_WEEKDAYS_MASK
-                              }
-                            >
-                              <div class="flex items-center gap-1" aria-label="Allowed weekdays">
-                                <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                                  {(bit) => {
-                                    const active = (activeSchedule().weekdays & (1 << bit)) !== 0;
-                                    return (
-                                      <span
-                                        class={`flex h-6 w-6 items-center justify-center rounded-md font-mono text-[11px] ${
-                                          active
-                                            ? 'bg-white/[0.1] text-[#F5F7FA]'
-                                            : 'text-[#4B5563]'
-                                        }`}
-                                      >
-                                        {CivilCalendar.weekdayShortLabel(bit).slice(0, 1)}
-                                      </span>
-                                    );
-                                  }}
-                                </For>
-                              </div>
-                            </Show>
-                          </div>
+                          <span class="font-mono text-xs whitespace-nowrap text-[#8E95A5]">
+                            Any day
+                          </span>
                         }
                       >
-                        <div class="flex items-center gap-1" aria-label="Scheduled weekdays">
+                        <div
+                          class="flex items-center gap-1"
+                          aria-label={
+                            activeSchedule().weeklyTarget !== null
+                              ? 'Allowed weekdays'
+                              : 'Scheduled weekdays'
+                          }
+                        >
                           <For each={[0, 1, 2, 3, 4, 5, 6]}>
                             {(bit) => {
                               const active = (activeSchedule().weekdays & (1 << bit)) !== 0;

@@ -94,12 +94,19 @@ describe('TodayView', () => {
       checkins: [{ habitId: 1, dayIndex: TODAY, done: false, value: 3, updatedAt: 1000 }],
       notes: [{ habitId: 2, dayIndex: TODAY, text: 'Felt strong', updatedAt: 1000 }],
       tasks: [
-        makeTask({ id: 10, title: 'Pay rent', dueDay: TODAY - 2, repeatable: true }),
+        makeTask({
+          id: 10,
+          title: 'Pay rent',
+          dueDay: TODAY - 2,
+          repeatable: true,
+          reminderSlotIds: ['s2'],
+        }),
         makeTask({ id: 11, title: 'Call dentist', dueDay: TODAY, note: 'Morning' }),
         makeTask({ id: 12, title: 'Learn Rust', dueDay: null, note: 'Side goal' }),
       ],
       reminderSlots: [
         { id: 's1', label: 'Morning', time: '09:00', deletedAt: null, createdAt: 1, updatedAt: 1 },
+        { id: 's2', label: 'Noon', time: '13:00', deletedAt: null, createdAt: 2, updatedAt: 2 },
       ],
     };
 
@@ -123,7 +130,9 @@ describe('TodayView', () => {
 
     expect(screen.getByText('Drink Water')).toBeInTheDocument();
     expect(screen.getByText('3/8 cups')).toBeInTheDocument();
+    expect(screen.getByText('3× / week')).toBeInTheDocument();
     expect(screen.getByText('09:00 Morning')).toBeInTheDocument();
+    expect(screen.getByText('13:00 Noon')).toBeInTheDocument();
     expect(screen.getByText('1 overdue')).toBeInTheDocument();
 
     // Measured +1 and toggle complete
@@ -193,6 +202,12 @@ describe('HabitsView', () => {
         }),
         makeHabit({
           id: 3,
+          name: 'Flex Yoga',
+          weeklyTarget: 2,
+          weekdays: 0x7f,
+        }),
+        makeHabit({
+          id: 4,
           name: 'Old Habit',
           archivedAt: 5000,
         }),
@@ -223,9 +238,13 @@ describe('HabitsView', () => {
 
     expect(screen.getByText('Morning Run')).toBeInTheDocument();
     expect(screen.getByText('Flex Reading')).toBeInTheDocument();
+    expect(screen.getByText('Flex Yoga')).toBeInTheDocument();
     expect(screen.queryByText('Old Habit')).not.toBeInTheDocument();
     expect(screen.getByText('Goal 5 km/day')).toBeInTheDocument();
     expect(screen.getByText('4× / week')).toBeInTheDocument();
+    expect(screen.getByText('2× / week')).toBeInTheDocument();
+    expect(screen.getByLabelText('Allowed weekdays')).toBeInTheDocument();
+    expect(screen.getByText('Any day')).toBeInTheDocument();
     expect(screen.getByText('07:00 Dawn')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /new habit/i }));
@@ -260,11 +279,20 @@ describe('TasksView', () => {
       checkins: [],
       notes: [],
       tasks: [
-        makeTask({ id: 1, title: 'Overdue report', dueDay: TODAY - 1, repeatable: true }),
+        makeTask({
+          id: 1,
+          title: 'Overdue report',
+          dueDay: TODAY - 1,
+          repeatable: true,
+          reminderSlotIds: ['s1'],
+        }),
         makeTask({ id: 2, title: 'Someday goal', dueDay: null, note: 'Backlog' }),
         makeTask({ id: 3, title: 'Done task', status: 'done', done: true, completedDay: TODAY }),
         makeTask({ id: 4, title: 'Missed task', status: 'not_done', dueDay: TODAY - 3 }),
         makeTask({ id: 5, title: 'Archived task', status: 'archived', dueDay: TODAY - 4 }),
+      ],
+      reminderSlots: [
+        { id: 's1', label: 'Evening', time: '18:00', deletedAt: null, createdAt: 1, updatedAt: 1 },
       ],
     };
 
@@ -285,6 +313,7 @@ describe('TasksView', () => {
     ));
 
     expect(screen.getByText('Overdue report')).toBeInTheDocument();
+    expect(screen.getByText('18:00 Evening')).toBeInTheDocument();
     expect(screen.getByText('Someday goal')).toBeInTheDocument();
     expect(screen.queryByText('Done task')).not.toBeInTheDocument();
 

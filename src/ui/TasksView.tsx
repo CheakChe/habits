@@ -1,6 +1,7 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot, Task } from '../types/domain';
+import { DomainSnapshot, ReminderSlot, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
+import { ReminderPlanner } from '../utils/reminder-planner';
 import {
   OPEN_TASK_BUCKETS,
   TaskSortMode,
@@ -13,6 +14,7 @@ import {
   AlertIcon,
   ArchiveIcon,
   CheckIcon,
+  ClockIcon,
   CloseIcon,
   EditIcon,
   PlusIcon,
@@ -41,6 +43,14 @@ export function TasksView(props: TasksViewProps): JSX.Element {
   const visibleTasks = createMemo(() =>
     props.snapshot.tasks.filter((task) => task.deletedAt === null)
   );
+
+  const activeSlotMap = createMemo(() => {
+    const map = new Map<string, ReminderSlot>();
+    for (const slot of ReminderPlanner.getActiveSlots(props.snapshot)) {
+      map.set(slot.id, slot);
+    }
+    return map;
+  });
 
   const filtered = createMemo(() =>
     TodayBoard.filterTasksByStatuses(
@@ -299,6 +309,12 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                 const status = () => TodayBoard.getStatus(task);
                 const isOverdue = () =>
                   status() === 'open' && task.dueDay !== null && task.dueDay < props.todayDay;
+                const assignedSlots = createMemo(() =>
+                  (task.reminderSlotIds ?? [])
+                    .map((id) => activeSlotMap().get(id))
+                    .filter((s): s is ReminderSlot => Boolean(s))
+                    .sort((a, b) => a.time.localeCompare(b.time) || a.label.localeCompare(b.label))
+                );
 
                 return (
                   <li class="flex flex-wrap items-start justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-white/[0.02] sm:flex-nowrap sm:items-center sm:gap-4">
@@ -424,6 +440,21 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                             </span>
                           </Show>
                         </div>
+                        <Show when={assignedSlots().length > 0}>
+                          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            <For each={assignedSlots()}>
+                              {(slot) => (
+                                <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
+                                  <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                  <span>
+                                    {slot.time}
+                                    {slot.label ? ` ${slot.label}` : ''}
+                                  </span>
+                                </span>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
                       </div>
                     </div>
 

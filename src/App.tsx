@@ -363,8 +363,10 @@ export default function App(): JSX.Element {
           mode={store.taskModalMode()}
           editingTask={store.editingTask()}
           prefill={store.taskDraftPrefill()}
+          reminderSlots={store.activeReminderSlots()}
           todayDay={store.todayDay()}
           onClose={() => store.closeTaskModal()}
+          onCreateReminderSlot={(input) => store.createReminderSlot(input)}
           onSave={(data) => store.saveTask(data)}
         />
         <SyncConfirmModal

@@ -1627,3 +1627,275 @@ test('CalendarReminderService handles paginated calendarList/events, 404/401 err
     /403|permission/i
   );
 });
+
+test('CalendarReminderService handles corrupt remote meta, duplicate meta cleanup, knownCalendarIds, and timezone PATCH', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const deletedMetaFiles: string[] = [];
+  let patchedCalTz = false;
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+
+    if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
+      return new Response(
+        JSON.stringify({
+          files: [
+            { id: 'meta-main', modifiedTime: '2026-11-22T00:00:00Z' },
+            { id: 'meta-dup', modifiedTime: '2026-11-21T00:00:00Z' },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.endsWith('/drive/v3/files/meta-main?alt=media')) {
+      return new Response(
+        JSON.stringify({
+          calendarId: 'cal-remote',
+          knownCalendarIds: ['cal-older'],
+          timeZone: 'UTC',
+          timeZoneUpdatedAt: 1000,
+        }),
+        { status: 200 }
+      );
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-remote')) {
+      return new Response(JSON.stringify({ id: 'cal-remote', timeZone: 'UTC' }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-local-second')) {
+      return new Response(JSON.stringify({ id: 'cal-local-second', timeZone: 'UTC' }), {
+        status: 200,
+      });
+    }
+    if (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-main')) {
+      return new Response(JSON.stringify({ id: 'meta-main' }), { status: 200 });
+    }
+    if (method === 'DELETE' && url.endsWith('/drive/v3/files/meta-dup')) {
+      deletedMetaFiles.push('meta-dup');
+      return new Response(null, { status: 204 });
+    }
+    if (method === 'PATCH' && url.endsWith('/calendars/cal-remote')) {
+      patchedCalTz = true;
+      return new Response(JSON.stringify({ id: 'cal-remote', timeZone: 'Europe/Kyiv' }), {
+        status: 200,
+      });
+    }
+    if (method === 'GET' && url.includes('/calendars/cal-remote/events')) {
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`);
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+  const synced = await service.syncRemoteCalendarId(
+    'google',
+    'tok-1',
+    'cal-local-second',
+    'Europe/Kyiv',
+    {
+      calendarEnabled: true,
+      taskReminderSlotId: null,
+      horizonDays: 3,
+      timeZoneUpdatedAt: 5000,
+    }
+  );
+  assert.equal(synced?.calendarId, 'cal-remote');
+  assert.equal(synced?.timeZone, 'Europe/Kyiv');
+  assert.deepEqual(deletedMetaFiles, ['meta-dup']);
+
+  // applySyncPlan with willUpdateCalendarTz patches secondary calendar timezone
+  const applied = await service.applySyncPlan('google', 'tok-1', {
+    calendarId: 'cal-remote',
+    willCreateCalendar: false,
+    willUpdateCalendarTz: true,
+    duplicateCalendarIds: [],
+    timeZone: 'Europe/Kyiv',
+    todayDay: MONDAY_DAY,
+    todayCleared: false,
+    targetSignature: 'sig',
+    toCreate: [],
+    toUpdate: [],
+    toDelete: [],
+    unchangedCount: 0,
+    desiredEvents: [],
+  });
+  assert.equal(patchedCalTz, true);
+  assert.equal(applied.timeZone, 'Europe/Kyiv');
+
+  // Corrupt JSON in meta file returns null safely in syncRemoteCalendarId
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+    if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
+      return new Response(JSON.stringify({ files: [{ id: 'meta-corrupt' }] }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/drive/v3/files/meta-corrupt?alt=media')) {
+      return new Response('not valid json', { status: 200 });
+    }
+    return new Response(null, { status: 200 });
+  }) as typeof fetch;
+
+  const nullResult = await service.syncRemoteCalendarId('google', 'tok-1', null, 'UTC');
+  assert.equal(nullResult, null);
+});
+
+test('CalendarReminderService handles 404 stored calendar fallback and 403 insufficient scope errors', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  // 1) Stored calendarId returns 404 -> falls back to discovering via calendarList or marking willCreateCalendar=true
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+    if (method === 'GET' && url.includes('/drive/v3/files')) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+    }
+    if (method === 'GET' && url.endsWith('/calendars/cal-gone')) {
+      return new Response('Gone', { status: 410 });
+    }
+    if (method === 'GET' && url.includes('/users/me/calendarList')) {
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    }
+    return new Response(null, { status: 200 });
+  }) as typeof fetch;
+
+  const service = new CalendarReminderService();
+  const plan = await service.prepareSyncPlan(
+    'google',
+    'tok-1',
+    makeSnapshot(),
+    MONDAY_DAY,
+    makePrefs({ calendarEnabled: true, calendarId: 'cal-gone', horizonDays: 1 }),
+    'UTC'
+  );
+  assert.equal(plan.willCreateCalendar, true);
+  assert.equal(plan.calendarId, null);
+
+  // 2) 403 insufficientPermissions maps cleanly on calendar creation
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    const method = init?.method ?? 'GET';
+    if (method === 'POST' && url.endsWith('/calendar/v3/calendars')) {
+      return new Response('insufficientPermissions: Missing calendar scope', { status: 403 });
+    }
+    return new Response(null, { status: 200 });
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => service.applySyncPlan('google', 'tok-1', plan),
+    /permission is missing/i
+  );
+});
+
+test('ReminderPlanner plans per-task reminderSlotIds independently and overrides global default slot', () => {
+  const snap: DomainSnapshot = {
+    reminderSlots: [
+      {
+        id: 'slot-morning',
+        label: 'Morning',
+        time: '09:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-noon',
+        label: 'Noon',
+        time: '13:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-evening',
+        label: 'Evening',
+        time: '20:00',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-deleted',
+        label: 'Deleted',
+        time: '23:00',
+        createdAt: 100,
+        updatedAt: 200,
+        deletedAt: 200,
+      },
+    ],
+    habits: [],
+    checkins: [],
+    notes: [],
+    tasks: [
+      {
+        id: 1,
+        title: 'Task with explicit slots',
+        note: '',
+        dueDay: MONDAY_DAY,
+        done: false,
+        repeatable: false,
+        status: 'open',
+        completedDay: null,
+        reminderSlotIds: ['slot-morning', 'slot-evening', 'slot-deleted'],
+        deletedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+      {
+        id: 2,
+        title: 'Task using default fallback',
+        note: '',
+        dueDay: MONDAY_DAY,
+        done: false,
+        repeatable: false,
+        status: 'open',
+        completedDay: null,
+        deletedAt: null,
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ],
+  };
+
+  const activeSet = new Set(['slot-morning', 'slot-noon', 'slot-evening']);
+  assert.deepEqual(ReminderPlanner.getTaskActiveSlotIds(snap.tasks[0], activeSet), [
+    'slot-evening',
+    'slot-morning',
+  ]);
+  assert.deepEqual(ReminderPlanner.getTaskActiveSlotIds(snap.tasks[1], activeSet), []);
+
+  // When default task slot is null: only task 1 (explicit slots) schedules into Morning & Evening
+  const noDefaultEvents = ReminderPlanner.buildDesiredEvents(
+    snap,
+    MONDAY_DAY,
+    { taskReminderSlotId: null, horizonDays: 1 },
+    'UTC'
+  );
+  assert.deepEqual(
+    noDefaultEvents.map((e) => e.slotId),
+    ['slot-morning', 'slot-evening']
+  );
+  assert.match(noDefaultEvents[0].description, /Task with explicit slots/);
+  assert.doesNotMatch(noDefaultEvents[0].description, /Task using default fallback/);
+  assert.match(noDefaultEvents[1].description, /Task with explicit slots/);
+
+  // When default task slot is slot-noon: task 1 still uses only Morning & Evening (override), task 2 uses Noon
+  const withDefaultEvents = ReminderPlanner.buildDesiredEvents(
+    snap,
+    MONDAY_DAY,
+    { taskReminderSlotId: 'slot-noon', horizonDays: 1 },
+    'UTC'
+  );
+  assert.deepEqual(
+    withDefaultEvents.map((e) => e.slotId),
+    ['slot-morning', 'slot-noon', 'slot-evening']
+  );
+  assert.match(withDefaultEvents[1].description, /Task using default fallback/);
+  assert.doesNotMatch(withDefaultEvents[1].description, /Task with explicit slots/);
+});

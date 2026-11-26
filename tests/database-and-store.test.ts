@@ -1175,9 +1175,27 @@ test('HabitDatabase and TrackerStore manage reminderSlots CRUD, habit reminderSl
   const clearedVitamins = await db.updateHabit(hWithSlots.id, { reminderSlotIds: [] });
   assert.equal('reminderSlotIds' in clearedVitamins, false);
 
+  // Tasks also support explicit reminderSlotIds CRUD + deletion cascade
+  const tSlot = await db.createReminderSlot({ label: 'Task Slot', time: '15:00' });
+  const tWithSlots = await db.createTask({
+    title: 'Pay invoice',
+    note: '',
+    dueDay: 20770,
+    reminderSlotIds: [evening.id, tSlot.id, evening.id],
+  });
+  assert.deepEqual(tWithSlots.reminderSlotIds, [evening.id, tSlot.id].sort());
+
+  await db.deleteReminderSlot(tSlot.id);
+  const afterTaskSlotDelete = await db.getAllSnapshot();
+  const reloadedTask = afterTaskSlotDelete.tasks.find((task) => task.id === tWithSlots.id)!;
+  assert.deepEqual(reloadedTask.reminderSlotIds, [evening.id]);
+
+  const clearedTask = await db.updateTask(tWithSlots.id, { reminderSlotIds: [] });
+  assert.equal('reminderSlotIds' in clearedTask, false);
+
   await db.replaceSnapshot({ habits: [], checkins: [], notes: [], tasks: [] });
 
-  // TrackerStore integration: create/update/delete slots & clear matching taskReminderSlotId
+  // TrackerStore integration: create/update/delete slots, task slots, repeatable prefill, & clear matching taskReminderSlotId
   const store = new TrackerStore();
   try {
     store.init();
@@ -1201,19 +1219,39 @@ test('HabitDatabase and TrackerStore manage reminderSlots CRUD, habit reminderSl
     const stretch = store.snapshot().habits.find((h) => h.name === 'Stretch')!;
     assert.deepEqual(stretch.reminderSlotIds, [slotA.id, slotB.id].sort());
 
+    store.openCreateTask();
+    await store.saveTask({
+      title: 'Weekly Review',
+      note: '',
+      dueDay: store.todayDay(),
+      repeatable: true,
+      reminderSlotIds: [slotA.id, slotB.id],
+    });
+    store.closeTaskModal();
+    const reviewTask = store.snapshot().tasks.find((task) => task.title === 'Weekly Review')!;
+    assert.deepEqual(reviewTask.reminderSlotIds, [slotA.id, slotB.id].sort());
+
+    // Completing repeatable task with slots pre-fills reminderSlotIds for the next occurrence
+    await store.toggleTaskDone(reviewTask);
+    assert.deepEqual(store.taskDraftPrefill()?.reminderSlotIds, [slotA.id, slotB.id].sort());
+    store.closeTaskModal();
+
     store.setTaskReminderSlotId(slotA.id);
     assert.equal(store.reminderPrefs().taskReminderSlotId, slotA.id);
 
     await store.updateReminderSlot(slotA.id, { label: 'Focus', time: '09:00' });
     assert.equal(store.activeReminderSlots().find((s) => s.id === slotA.id)?.label, 'Focus');
 
-    // Deleting slotA removes it from activeReminderSlots, strips from Stretch, and resets taskReminderSlotId -> null
+    // Deleting slotA removes it from activeReminderSlots, strips from Stretch and Weekly Review, and resets taskReminderSlotId -> null
     await store.deleteReminderSlot(slotA.id);
     assert.deepEqual(
       store.activeReminderSlots().map((s) => s.id),
       [slotB.id]
     );
     assert.deepEqual(store.snapshot().habits.find((h) => h.id === stretch.id)?.reminderSlotIds, [
+      slotB.id,
+    ]);
+    assert.deepEqual(store.snapshot().tasks.find((t) => t.id === reviewTask.id)?.reminderSlotIds, [
       slotB.id,
     ]);
     assert.equal(store.reminderPrefs().taskReminderSlotId, null);
@@ -1721,6 +1759,176 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
 
     await store.switchToEntry();
     assert.equal(store.mode(), null);
+  } finally {
+    store.dispose();
+  }
+});
+
+test('TrackerStore handles Drive revision errors, calendar confirmation errors, and task deletion', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  let failRevisions = false;
+  let failInspect = false;
+  let failRestore = false;
+  let failApplyCal = false;
+  let failDeleteCal = false;
+
+  const mockSession = {
+    getRememberedMode: () => 'google' as const,
+    hasAccessToken: () => true,
+    getAccessToken: () => 'tok-1',
+    getTokenExpiresAt: () => Date.now() + 60_000,
+    getAccountEmail: () => 'alex@example.com',
+    subscribeAuthChanges: () => () => {},
+    chooseGuest() {},
+    async signInWithGoogle() {
+      return 'tok-1';
+    },
+    clearAccessTokenOnly() {},
+    async clearSessionAndReturnToEntry() {},
+  } as unknown as SessionManager;
+
+  const mockDriveSync = {
+    resetUploadCache() {},
+    async prepareSync(_m: unknown, _t: unknown, local: DomainSnapshot) {
+      return {
+        status: 'up-to-date',
+        remoteFileId: 'f1',
+        remoteVersion: '1',
+        remoteModifiedTime: null,
+        localChanged: false,
+        mergedSnapshot: local,
+        mergedBytes: new Uint8Array([1]),
+        summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 16 },
+      } satisfies SyncPreparationResult;
+    },
+    async confirmAndUpload() {},
+    async listRevisions() {
+      if (failRevisions) throw new Error('401 Authorization expired');
+      return { fileId: 'f1', revisions: [{ id: 'rev-1', modifiedTime: '2026-11-25T00:00:00Z' }] };
+    },
+    async inspectRevision() {
+      if (failInspect) throw new Error('401 expired');
+      return {
+        fileId: 'f1',
+        revisionId: 'rev-1',
+        snapshot: { habits: [], checkins: [], notes: [], tasks: [] },
+        bytes: new Uint8Array([1]),
+        summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 16 },
+      };
+    },
+    async restoreRevision() {
+      if (failRestore) throw new Error('403 Forbidden permission');
+      return {
+        fileId: 'f1',
+        restoredSnapshot: { habits: [], checkins: [], notes: [], tasks: [] },
+        summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 16 },
+      };
+    },
+  } as unknown as DriveSyncService;
+
+  const mockCalendarSync = {
+    async syncRemoteCalendarId() {
+      return null;
+    },
+    async prepareSyncPlan() {
+      return {
+        calendarId: 'cal-1',
+        willCreateCalendar: false,
+        willUpdateCalendarTz: false,
+        duplicateCalendarIds: [],
+        timeZone: 'UTC',
+        todayDay: 20770,
+        todayCleared: false,
+        targetSignature: 'sig',
+        toCreate: [
+          {
+            dayIndex: 20770,
+            slotId: 's1',
+            slotLabel: 'Morning',
+            slotTime: '09:00',
+            dateStr: '2026-11-25',
+            summary: 'Habits',
+            description: 'Desc',
+            startDateTime: '2026-11-25T09:00:00',
+            endDateTime: '2026-11-25T09:15:00',
+            timeZone: 'UTC',
+            signature: 's',
+          },
+        ],
+        toUpdate: [],
+        toDelete: [],
+        unchangedCount: 0,
+        desiredEvents: [],
+      } satisfies CalendarSyncPlan;
+    },
+    async applySyncPlan() {
+      if (failApplyCal) throw new Error('401 expired');
+      return {
+        calendarId: 'cal-1',
+        timeZone: 'UTC',
+        targetSignature: 'sig',
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        duplicatesRemoved: 0,
+      };
+    },
+    async deleteReminderCalendar() {
+      if (failDeleteCal) throw new Error('403 permission error');
+    },
+  } as unknown as CalendarReminderService;
+
+  const store = new TrackerStore({
+    session: mockSession,
+    driveSync: mockDriveSync,
+    calendarSync: mockCalendarSync,
+  });
+
+  try {
+    store.init();
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Task creation & soft delete
+    await store.quickAddTask('Temporary', store.todayDay());
+    const added = store.snapshot().tasks.find((task) => task.title === 'Temporary')!;
+    await store.deleteTask(added.id);
+    assert.notEqual(store.snapshot().tasks.find((task) => task.id === added.id)?.deletedAt, null);
+
+    // Revisions error paths
+    failRevisions = true;
+    await store.openDriveRevisions();
+    assert.match(store.revisionsError() ?? '', /401/);
+
+    failRevisions = false;
+    failInspect = true;
+    await store.openDriveRevisions();
+    await store.inspectDriveRevision('rev-1');
+    assert.match(store.revisionsError() ?? '', /401/);
+
+    failInspect = false;
+    failRestore = true;
+    await store.restoreDriveRevision('rev-1');
+    assert.match(store.revisionsError() ?? '', /403/);
+    store.closeDriveRevisions();
+
+    // Calendar confirm/delete paths
+    await store.prepareCalendarSync();
+    await store.confirmCalendarSync();
+    assert.equal(store.reminderPrefs().calendarId, 'cal-1');
+
+    failApplyCal = true;
+    await store.prepareCalendarSync();
+    await store.confirmCalendarSync();
+    assert.match(store.calendarError() ?? '', /401/);
+    store.cancelCalendarSync();
+
+    failDeleteCal = true;
+    store.requestDeleteCalendar();
+    await store.confirmDeleteCalendar();
+    assert.match(store.calendarError() ?? '', /403/);
+    store.cancelDeleteCalendar();
   } finally {
     store.dispose();
   }

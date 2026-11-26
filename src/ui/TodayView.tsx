@@ -192,8 +192,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
               <For each={scheduledHabits()}>
                 {(habit) => {
                   const checkinEntry = () => checkinMap().get(habit.id);
-                  const activeTarget = () =>
-                    HabitSchedule.getAtDay(habit, props.todayDay).dailyTarget;
+                  const activeSchedule = () => HabitSchedule.getAtDay(habit, props.todayDay);
+                  const activeTarget = () => activeSchedule().dailyTarget;
                   const currentValue = () =>
                     HabitSchedule.getCheckinValueForDay(habit, checkinEntry(), props.todayDay);
                   const isDone = () =>
@@ -367,22 +367,6 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <span class="font-mono tabular-nums">
                               {Math.round(metrics().completionRate * 100)}% (30d)
                             </span>
-                            <Show when={assignedSlots().length > 0}>
-                              <span aria-hidden="true">·</span>
-                              <span class="inline-flex flex-wrap items-center gap-1 text-[#93C5FD]">
-                                <For each={assignedSlots()}>
-                                  {(slot) => (
-                                    <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] tabular-nums">
-                                      <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
-                                      <span>
-                                        {slot.time}
-                                        {slot.label ? ` ${slot.label}` : ''}
-                                      </span>
-                                    </span>
-                                  )}
-                                </For>
-                              </span>
-                            </Show>
                             <Show when={existingNote() && !isNoteOpen()}>
                               <span aria-hidden="true">·</span>
                               <span
@@ -393,6 +377,33 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               </span>
                             </Show>
                           </div>
+                          <Show
+                            when={
+                              activeSchedule().weeklyTarget !== null || assignedSlots().length > 0
+                            }
+                          >
+                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <Show when={activeSchedule().weeklyTarget !== null}>
+                                <span
+                                  class="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-[#C8CDD8] tabular-nums"
+                                  aria-label="Flexible weekly schedule"
+                                >
+                                  {activeSchedule().weeklyTarget}× / week
+                                </span>
+                              </Show>
+                              <For each={assignedSlots()}>
+                                {(slot) => (
+                                  <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
+                                    <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                    <span>
+                                      {slot.time}
+                                      {slot.label ? ` ${slot.label}` : ''}
+                                    </span>
+                                  </span>
+                                )}
+                              </For>
+                            </div>
+                          </Show>
                         </div>
 
                         <button
@@ -505,92 +516,143 @@ export function TodayView(props: TodayViewProps): JSX.Element {
             >
               <ul class="divide-y divide-white/[0.06]">
                 <For each={partitionedTasks().overdue}>
-                  {(task) => (
-                    <li class="flex items-start gap-3.5 px-5 py-3.5 transition-colors hover:bg-white/[0.02]">
-                      <button
-                        type="button"
-                        onClick={() => void props.onToggleTask(task)}
-                        aria-label={`Complete task ${task.title}`}
-                        class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[#EF4444]/40 bg-[#0A0B0E] text-transparent transition-colors hover:border-[#EF4444]"
-                      >
-                        <CheckIcon class="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => props.onOpenEditTask(task)}
-                        class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
-                      >
-                        <p
-                          class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
-                          title={task.title}
+                  {(task) => {
+                    const taskSlots = createMemo(() =>
+                      (task.reminderSlotIds ?? [])
+                        .map((id) => activeSlotMap().get(id))
+                        .filter((s): s is ReminderSlot => Boolean(s))
+                        .sort(
+                          (a, b) => a.time.localeCompare(b.time) || a.label.localeCompare(b.label)
+                        )
+                    );
+                    return (
+                      <li class="flex items-start gap-3.5 px-5 py-3.5 transition-colors hover:bg-white/[0.02]">
+                        <button
+                          type="button"
+                          onClick={() => void props.onToggleTask(task)}
+                          aria-label={`Complete task ${task.title}`}
+                          class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[#EF4444]/40 bg-[#0A0B0E] text-transparent transition-colors hover:border-[#EF4444]"
                         >
-                          {task.title}
-                        </p>
-                        <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#FCA5A5]">
-                          <AlertIcon class="h-3.5 w-3.5 shrink-0 text-[#EF4444]" />
-                          <span class="font-mono tabular-nums">
-                            Overdue · {CivilCalendar.formatShortDate(task.dueDay ?? props.todayDay)}
-                          </span>
-                          <Show when={task.repeatable}>
-                            <span aria-hidden="true" class="text-[#5B6270]">
-                              ·
+                          <CheckIcon class="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onOpenEditTask(task)}
+                          class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
+                        >
+                          <p
+                            class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                            title={task.title}
+                          >
+                            {task.title}
+                          </p>
+                          <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#FCA5A5]">
+                            <AlertIcon class="h-3.5 w-3.5 shrink-0 text-[#EF4444]" />
+                            <span class="font-mono tabular-nums">
+                              Overdue ·{' '}
+                              {CivilCalendar.formatShortDate(task.dueDay ?? props.todayDay)}
                             </span>
-                            <span class="inline-flex items-center gap-1 text-[#60A5FA]">
-                              <RepeatIcon class="h-3 w-3" />
-                              Repeats
-                            </span>
+                            <Show when={task.repeatable}>
+                              <span aria-hidden="true" class="text-[#5B6270]">
+                                ·
+                              </span>
+                              <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                                <RepeatIcon class="h-3 w-3" />
+                                Repeats
+                              </span>
+                            </Show>
+                          </div>
+                          <Show when={taskSlots().length > 0}>
+                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <For each={taskSlots()}>
+                                {(slot) => (
+                                  <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
+                                    <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                    <span>
+                                      {slot.time}
+                                      {slot.label ? ` ${slot.label}` : ''}
+                                    </span>
+                                  </span>
+                                )}
+                              </For>
+                            </div>
                           </Show>
-                        </div>
-                      </button>
-                    </li>
-                  )}
+                        </button>
+                      </li>
+                    );
+                  }}
                 </For>
 
                 <For each={partitionedTasks().dueToday}>
-                  {(task) => (
-                    <li class="flex items-start gap-3.5 px-5 py-3.5 transition-colors hover:bg-white/[0.02]">
-                      <button
-                        type="button"
-                        onClick={() => void props.onToggleTask(task)}
-                        aria-label={`Complete task ${task.title}`}
-                        class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-[#0A0B0E] text-transparent transition-colors hover:border-white/30"
-                      >
-                        <CheckIcon class="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => props.onOpenEditTask(task)}
-                        class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
-                      >
-                        <p
-                          class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
-                          title={task.title}
+                  {(task) => {
+                    const taskSlots = createMemo(() =>
+                      (task.reminderSlotIds ?? [])
+                        .map((id) => activeSlotMap().get(id))
+                        .filter((s): s is ReminderSlot => Boolean(s))
+                        .sort(
+                          (a, b) => a.time.localeCompare(b.time) || a.label.localeCompare(b.label)
+                        )
+                    );
+                    return (
+                      <li class="flex items-start gap-3.5 px-5 py-3.5 transition-colors hover:bg-white/[0.02]">
+                        <button
+                          type="button"
+                          onClick={() => void props.onToggleTask(task)}
+                          aria-label={`Complete task ${task.title}`}
+                          class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-[#0A0B0E] text-transparent transition-colors hover:border-white/30"
                         >
-                          {task.title}
-                        </p>
-                        <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#8E95A5]">
-                          <span>Due today</span>
-                          <Show when={task.repeatable}>
-                            <span aria-hidden="true" class="text-[#5B6270]">
-                              ·
-                            </span>
-                            <span class="inline-flex items-center gap-1 text-[#60A5FA]">
-                              <RepeatIcon class="h-3 w-3" />
-                              Repeats
-                            </span>
+                          <CheckIcon class="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onOpenEditTask(task)}
+                          class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
+                        >
+                          <p
+                            class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                            title={task.title}
+                          >
+                            {task.title}
+                          </p>
+                          <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#8E95A5]">
+                            <span>Due today</span>
+                            <Show when={task.repeatable}>
+                              <span aria-hidden="true" class="text-[#5B6270]">
+                                ·
+                              </span>
+                              <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                                <RepeatIcon class="h-3 w-3" />
+                                Repeats
+                              </span>
+                            </Show>
+                            <Show when={task.note}>
+                              <span aria-hidden="true" class="text-[#5B6270]">
+                                ·
+                              </span>
+                              <span class="line-clamp-2 max-w-full break-words" title={task.note}>
+                                {task.note}
+                              </span>
+                            </Show>
+                          </div>
+                          <Show when={taskSlots().length > 0}>
+                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <For each={taskSlots()}>
+                                {(slot) => (
+                                  <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
+                                    <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                    <span>
+                                      {slot.time}
+                                      {slot.label ? ` ${slot.label}` : ''}
+                                    </span>
+                                  </span>
+                                )}
+                              </For>
+                            </div>
                           </Show>
-                          <Show when={task.note}>
-                            <span aria-hidden="true" class="text-[#5B6270]">
-                              ·
-                            </span>
-                            <span class="line-clamp-2 max-w-full break-words" title={task.note}>
-                              {task.note}
-                            </span>
-                          </Show>
-                        </div>
-                      </button>
-                    </li>
-                  )}
+                        </button>
+                      </li>
+                    );
+                  }}
                 </For>
               </ul>
             </Show>
@@ -655,63 +717,89 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                 >
                   <ul class="divide-y divide-white/[0.06]">
                     <For each={noDateTasks()}>
-                      {(task) => (
-                        <li class="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.02]">
-                          <button
-                            type="button"
-                            onClick={() => void props.onToggleTask(task)}
-                            aria-label={`Complete goal ${task.title}`}
-                            class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-[#0A0B0E] text-transparent transition-colors hover:border-white/30"
-                          >
-                            <CheckIcon class="h-4 w-4" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => props.onOpenEditTask(task)}
-                            class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
-                          >
-                            <p
-                              class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
-                              title={task.title}
+                      {(task) => {
+                        const taskSlots = createMemo(() =>
+                          (task.reminderSlotIds ?? [])
+                            .map((id) => activeSlotMap().get(id))
+                            .filter((s): s is ReminderSlot => Boolean(s))
+                            .sort(
+                              (a, b) =>
+                                a.time.localeCompare(b.time) || a.label.localeCompare(b.label)
+                            )
+                        );
+                        return (
+                          <li class="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.02]">
+                            <button
+                              type="button"
+                              onClick={() => void props.onToggleTask(task)}
+                              aria-label={`Complete goal ${task.title}`}
+                              class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-[#0A0B0E] text-transparent transition-colors hover:border-white/30"
                             >
-                              {task.title}
-                            </p>
-                            <Show when={task.note || task.repeatable}>
-                              <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#8E95A5]">
-                                <Show when={task.repeatable}>
-                                  <span class="inline-flex items-center gap-1 text-[#60A5FA]">
-                                    <RepeatIcon class="h-3 w-3" />
-                                    Repeats
-                                  </span>
+                              <CheckIcon class="h-4 w-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => props.onOpenEditTask(task)}
+                              class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
+                            >
+                              <p
+                                class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                                title={task.title}
+                              >
+                                {task.title}
+                              </p>
+                              <Show when={task.note || task.repeatable}>
+                                <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#8E95A5]">
+                                  <Show when={task.repeatable}>
+                                    <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                                      <RepeatIcon class="h-3 w-3" />
+                                      Repeats
+                                    </span>
+                                    <Show when={task.note}>
+                                      <span aria-hidden="true" class="text-[#5B6270]">
+                                        ·
+                                      </span>
+                                    </Show>
+                                  </Show>
                                   <Show when={task.note}>
-                                    <span aria-hidden="true" class="text-[#5B6270]">
-                                      ·
+                                    <span
+                                      class="line-clamp-2 max-w-full break-words"
+                                      title={task.note}
+                                    >
+                                      {task.note}
                                     </span>
                                   </Show>
-                                </Show>
-                                <Show when={task.note}>
-                                  <span
-                                    class="line-clamp-2 max-w-full break-words"
-                                    title={task.note}
-                                  >
-                                    {task.note}
-                                  </span>
-                                </Show>
-                              </div>
-                            </Show>
-                          </button>
+                                </div>
+                              </Show>
+                              <Show when={taskSlots().length > 0}>
+                                <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                  <For each={taskSlots()}>
+                                    {(slot) => (
+                                      <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
+                                        <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                        <span>
+                                          {slot.time}
+                                          {slot.label ? ` ${slot.label}` : ''}
+                                        </span>
+                                      </span>
+                                    )}
+                                  </For>
+                                </div>
+                              </Show>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => void props.onScheduleTaskToday(task)}
-                            title="Schedule for today"
-                            class="h-8 shrink-0 cursor-pointer rounded-lg border border-white/[0.08] bg-[#0A0B0E] px-2.5 text-[11px] font-medium whitespace-nowrap text-[#9AA1B1] transition-colors hover:bg-[#1C1F26] hover:text-[#60A5FA]"
-                          >
-                            Today
-                          </button>
-                        </li>
-                      )}
+                            <button
+                              type="button"
+                              onClick={() => void props.onScheduleTaskToday(task)}
+                              title="Schedule for today"
+                              class="h-8 shrink-0 cursor-pointer rounded-lg border border-white/[0.08] bg-[#0A0B0E] px-2.5 text-[11px] font-medium whitespace-nowrap text-[#9AA1B1] transition-colors hover:bg-[#1C1F26] hover:text-[#60A5FA]"
+                            >
+                              Today
+                            </button>
+                          </li>
+                        );
+                      }}
                     </For>
                   </ul>
                 </Show>

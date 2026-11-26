@@ -172,6 +172,155 @@ describe('CustomControls', () => {
     fireEvent.input(input, { target: { value: '99' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect((input as HTMLInputElement).value).toBe('10');
+
+    // Commit via Enter key
+    fireEvent.focus(input);
+    fireEvent.input(input, { target: { value: '14' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(onSetValue).toHaveBeenCalledWith(14));
+
+    // Invalid input reverts on blur without calling onSetValue again
+    const prevCalls = onSetValue.mock.calls.length;
+    fireEvent.focus(input);
+    fireEvent.input(input, { target: { value: 'invalid' } });
+    fireEvent.blur(input);
+    expect(onSetValue).toHaveBeenCalledTimes(prevCalls);
+    expect((input as HTMLInputElement).value).toBe('10');
+  });
+
+  it('HistoryRangePicker supports edge editing, Year-Month picker, and two-click custom range selection', () => {
+    const onSelectPreset = vi.fn();
+    const onSelectCustomRange = vi.fn();
+    const onChangeTimeZone = vi.fn();
+    const resolved = DateRangeResolver.resolve('custom', TODAY, {
+      customStartDay: TODAY - 5,
+      customEndDay: TODAY,
+    });
+
+    render(() => (
+      <HistoryRangePicker
+        preset="custom"
+        customStartDay={TODAY - 5}
+        customEndDay={TODAY}
+        resolvedRange={resolved}
+        todayDay={TODAY}
+        timeZone="local"
+        onSelectPreset={onSelectPreset}
+        onSelectCustomRange={onSelectCustomRange}
+        onChangeTimeZone={onChangeTimeZone}
+      />
+    ));
+
+    // Open picker
+    fireEvent.click(screen.getByRole('button', { name: /^custom/i }));
+    expect(
+      screen.getByRole('dialog', { name: /choose date range and timezone/i })
+    ).toBeInTheDocument();
+
+    // Switch via Year-Month picker
+    fireEvent.click(screen.getByRole('button', { name: /november 2026/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^oct$/i }));
+    expect(screen.getByText('October 2026')).toBeInTheDocument();
+
+    // Navigate back to November 2026 and pick From edge
+    fireEvent.click(screen.getByRole('button', { name: /next month/i }));
+    fireEvent.click(screen.getByRole('button', { name: /nov 20, 2026/i }));
+    expect(screen.getByText(/picking start date \(from\)/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^10$/ }));
+    expect(onSelectCustomRange).toHaveBeenCalledWith(
+      CivilCalendar.fromLocalDate(2026, 11, 10),
+      TODAY
+    );
+
+    // Two-click draft range selection (closes popover on 2nd click)
+    fireEvent.click(screen.getByRole('button', { name: /^12$/ }));
+    expect(screen.getByText(/pick end date/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^18$/ }));
+    expect(onSelectCustomRange).toHaveBeenCalledWith(
+      CivilCalendar.fromLocalDate(2026, 11, 12),
+      CivilCalendar.fromLocalDate(2026, 11, 18)
+    );
+  });
+
+  it('supports mobile HistoryRangePicker modal, outside pointerdown closing, CustomTimePicker minute selection, and dirty increment', async () => {
+    const prevInnerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
+    try {
+      const onSelectCustomRange = vi.fn();
+      const resolved = DateRangeResolver.resolve('last_30', TODAY);
+
+      render(() => (
+        <HistoryRangePicker
+          preset="last_30"
+          customStartDay={TODAY - 29}
+          customEndDay={TODAY}
+          resolvedRange={resolved}
+          todayDay={TODAY}
+          timeZone="UTC"
+          onSelectPreset={() => {}}
+          onSelectCustomRange={onSelectCustomRange}
+          onChangeTimeZone={() => {}}
+        />
+      ));
+
+      fireEvent.click(screen.getByRole('button', { name: /last 30 days/i }));
+      expect(screen.getByText(/date range & timezone/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /close date range picker/i }));
+      expect(screen.queryByText(/date range & timezone/i)).not.toBeInTheDocument();
+
+      // CustomTimePicker minute selection and pointerdown dismissal
+      const onTimeChange = vi.fn();
+      render(() => (
+        <CustomTimePicker value="09:00" onChange={onTimeChange} ariaLabel="Pick time" />
+      ));
+      fireEvent.click(screen.getByRole('button', { name: /pick time/i }));
+      fireEvent.click(screen.getByRole('button', { name: '45' }));
+      expect(onTimeChange).toHaveBeenCalledWith('09:45');
+      fireEvent.pointerDown(document.body);
+      expect(
+        screen.queryByRole('dialog', { name: /choose reminder time/i })
+      ).not.toBeInTheDocument();
+
+      // DatePicker Today + No date + pointerdown dismissal
+      const onDateChange = vi.fn();
+      render(() => (
+        <DatePicker
+          id="dp2"
+          value={TODAY + 1}
+          todayDay={TODAY}
+          allowClear={true}
+          onChange={onDateChange}
+        />
+      ));
+      fireEvent.click(screen.getByRole('button', { name: /tomorrow/i }));
+      fireEvent.click(screen.getByRole('button', { name: /^today$/i }));
+      expect(onDateChange).toHaveBeenCalledWith(TODAY);
+      fireEvent.click(screen.getByRole('button', { name: /tomorrow/i }));
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole('dialog', { name: /choose date/i })).not.toBeInTheDocument();
+
+      // MeasuredQuickControls dirty draft + clicking +1 commits dirty + 1 via onSetValue
+      const onIncrement = vi.fn().mockResolvedValue(undefined);
+      const onSetValue = vi.fn().mockResolvedValue(undefined);
+      render(() => (
+        <MeasuredQuickControls
+          habitName="Water"
+          accentColor="#3B82F6"
+          unit="cups"
+          value={2}
+          target={8}
+          onIncrement={onIncrement}
+          onSetValue={onSetValue}
+        />
+      ));
+      const input = screen.getByRole('textbox', { name: /set water value/i });
+      fireEvent.focus(input);
+      fireEvent.input(input, { target: { value: '5' } });
+      fireEvent.click(screen.getByRole('button', { name: /add 1 cups to water/i }));
+      await waitFor(() => expect(onSetValue).toHaveBeenCalledWith(6));
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { value: prevInnerWidth, configurable: true });
+    }
   });
 });
 
@@ -187,22 +336,66 @@ describe('PwaControls', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('PWAInstallButton handles beforeinstallprompt and iOS install guide', async () => {
+  it('PWAInstallButton handles beforeinstallprompt, dismissed outcome, and appinstalled', async () => {
     render(() => <PWAInstallButton variant="full" />);
     expect(screen.queryByRole('button', { name: /install app/i })).not.toBeInTheDocument();
 
-    const promptMock = vi.fn().mockResolvedValue(undefined);
-    const evt = new Event('beforeinstallprompt') as Event & {
+    const promptDismissed = vi.fn().mockResolvedValue(undefined);
+    const evt1 = new Event('beforeinstallprompt') as Event & {
       prompt: () => Promise<void>;
       userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
     };
-    evt.prompt = promptMock;
-    evt.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' });
+    evt1.prompt = promptDismissed;
+    evt1.userChoice = Promise.resolve({ outcome: 'dismissed', platform: 'web' });
 
-    window.dispatchEvent(evt);
-    const installBtn = screen.getByRole('button', { name: /install app/i });
-    fireEvent.click(installBtn);
+    window.dispatchEvent(evt1);
+    fireEvent.click(screen.getByRole('button', { name: /install app/i }));
+    await waitFor(() => expect(promptDismissed).toHaveBeenCalledTimes(1));
 
-    await waitFor(() => expect(promptMock).toHaveBeenCalledTimes(1));
+    const promptAccepted = vi.fn().mockResolvedValue(undefined);
+    const evt2 = new Event('beforeinstallprompt') as Event & {
+      prompt: () => Promise<void>;
+      userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+    };
+    evt2.prompt = promptAccepted;
+    evt2.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' });
+    window.dispatchEvent(evt2);
+    window.dispatchEvent(new Event('appinstalled'));
+    expect(screen.queryByRole('button', { name: /install app/i })).not.toBeInTheDocument();
+  });
+
+  it('PWAInstallButton shows iOS Safari install guide modal and closes via Done and Escape', () => {
+    const origUaDesc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'userAgent');
+    Object.defineProperty(Navigator.prototype, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
+      configurable: true,
+    });
+
+    try {
+      render(() => <PWAInstallButton variant="compact" />);
+      const installBtn = screen.getByRole('button', { name: /install/i });
+      fireEvent.click(installBtn);
+
+      expect(
+        screen.getByRole('dialog', { name: /install on iphone \/ ipad/i })
+      ).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(
+        screen.queryByRole('dialog', { name: /install on iphone \/ ipad/i })
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(installBtn);
+      expect(
+        screen.getByRole('dialog', { name: /install on iphone \/ ipad/i })
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /^done$/i }));
+      expect(
+        screen.queryByRole('dialog', { name: /install on iphone \/ ipad/i })
+      ).not.toBeInTheDocument();
+    } finally {
+      if (origUaDesc) {
+        Object.defineProperty(Navigator.prototype, 'userAgent', origUaDesc);
+      }
+    }
   });
 });

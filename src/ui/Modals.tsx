@@ -45,11 +45,13 @@ import {
   BellIcon,
   CalendarIcon,
   CheckIcon,
+  ChevronDownIcon,
   ClockIcon,
   CloseIcon,
   CloudSyncIcon,
   DownloadIcon,
   DriveIcon,
+  EditIcon,
   HistoryClockIcon,
   PlusIcon,
   RepeatIcon,
@@ -103,10 +105,6 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
   const [weekdays, setWeekdays] = createSignal(ALL_WEEKDAYS_MASK);
   const [weeklyTarget, setWeeklyTarget] = createSignal(3);
   const [selectedSlotIds, setSelectedSlotIds] = createSignal<string[]>([]);
-  const [newSlotOpen, setNewSlotOpen] = createSignal(false);
-  const [newSlotLabel, setNewSlotLabel] = createSignal('');
-  const [newSlotTime, setNewSlotTime] = createSignal('09:00');
-  const [creatingSlot, setCreatingSlot] = createSignal(false);
   const [startDay, setStartDay] = createSignal<number>(untrack(() => props.todayDay));
   const [applyScope, setApplyScope] = createSignal<ScheduleApplyScope>('from_day');
   const [error, setError] = createSignal<string | null>(null);
@@ -149,9 +147,6 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       setSelectedSlotIds([]);
       setStartDay(props.todayDay);
     }
-    setNewSlotOpen(false);
-    setNewSlotLabel('');
-    setNewSlotTime('09:00');
     setApplyScope('from_day');
     setError(null);
   });
@@ -233,31 +228,6 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
       scheduleChanged() &&
       (startDay() < props.todayDay || hasExistingHistory())
     );
-
-  const toggleSlot = (slotId: string) => {
-    setSelectedSlotIds((prev) =>
-      prev.includes(slotId) ? prev.filter((id) => id !== slotId) : [...prev, slotId]
-    );
-  };
-
-  const handleQuickCreateSlot = async () => {
-    setCreatingSlot(true);
-    setError(null);
-    try {
-      const created = await props.onCreateReminderSlot({
-        label: normalizeReminderSlotLabel(newSlotLabel()),
-        time: normalizeReminderSlotTime(newSlotTime()),
-      });
-      setSelectedSlotIds((prev) => (prev.includes(created.id) ? prev : [...prev, created.id]));
-      setNewSlotLabel('');
-      setNewSlotTime('09:00');
-      setNewSlotOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create reminder slot.');
-    } finally {
-      setCreatingSlot(false);
-    }
-  };
 
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();
@@ -924,96 +894,18 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
                 </div>
 
                 {/* Explicit Reminder Slots Assignment */}
-                <div class="space-y-2.5">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="block text-xs font-medium text-[#9AA1B1]">Reminder slots</span>
-                    <button
-                      type="button"
-                      onClick={() => setNewSlotOpen((prev) => !prev)}
-                      class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-[#60A5FA] hover:underline"
-                    >
-                      <PlusIcon class="h-3.5 w-3.5" />
-                      <span>{newSlotOpen() ? 'Close' : 'New slot'}</span>
-                    </button>
-                  </div>
-
-                  <Show when={props.reminderSlots.length > 0}>
-                    <div
-                      class="flex flex-wrap gap-2"
-                      role="group"
-                      aria-label="Habit reminder slots"
-                    >
-                      <For each={props.reminderSlots}>
-                        {(slot) => {
-                          const selected = () => selectedSlotIds().includes(slot.id);
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => toggleSlot(slot.id)}
-                              aria-pressed={selected()}
-                              class={`inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
-                                selected()
-                                  ? 'border-[#3B82F6]/60 bg-[#3B82F6]/15 text-[#F5F7FA]'
-                                  : 'border-white/[0.08] bg-[#0A0B0E] text-[#9AA1B1] hover:border-white/20 hover:text-[#F5F7FA]'
-                              }`}
-                            >
-                              <ClockIcon
-                                class={`h-3.5 w-3.5 shrink-0 ${
-                                  selected() ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-                                }`}
-                              />
-                              <span class="font-mono tabular-nums">{slot.time}</span>
-                              <Show when={slot.label}>
-                                <span class="text-[#C8CDD8]">· {slot.label}</span>
-                              </Show>
-                            </button>
-                          );
-                        }}
-                      </For>
-                    </div>
-                  </Show>
-
-                  <Show when={newSlotOpen()}>
-                    <div class="space-y-2.5 rounded-2xl border border-white/[0.08] bg-[#0A0B0E] p-3">
-                      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <input
-                          type="text"
-                          value={newSlotLabel()}
-                          onInput={(e) => setNewSlotLabel(e.currentTarget.value)}
-                          maxlength={32}
-                          placeholder="Label (optional, e.g. Morning)"
-                          aria-label="New slot label"
-                          class="h-10 w-full rounded-xl border border-white/[0.1] bg-[#14161B] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
-                        />
-                        <CustomTimePicker
-                          id="habit-new-slot-time"
-                          value={newSlotTime()}
-                          onChange={(val) => setNewSlotTime(val)}
-                          ariaLabel="New slot time"
-                        />
-                      </div>
-                      <div class="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => void handleQuickCreateSlot()}
-                          disabled={creatingSlot()}
-                          class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl bg-[#3B82F6] px-3 text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
-                        >
-                          <PlusIcon class="h-3.5 w-3.5" />
-                          <span>{creatingSlot() ? 'Adding...' : 'Add & Select Slot'}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </Show>
-
-                  <p class="text-[11px] text-[#8E95A5]">
-                    {props.reminderSlots.length === 0
-                      ? 'No reminder slots created yet. Habits have no reminders by default unless a slot is assigned.'
-                      : selectedSlotIds().length === 0
-                        ? 'No reminder assigned (default). Select one or more slots to receive reminders.'
-                        : `Assigned to ${selectedSlotIds().length} reminder ${selectedSlotIds().length === 1 ? 'slot' : 'slots'}.`}
-                  </p>
-                </div>
+                <ReminderSlotSelector
+                  idPrefix="habit"
+                  groupLabel="Habit reminder slots"
+                  emptyText="No reminder slots created yet. Habits have no reminders by default unless a slot is assigned."
+                  unselectedHint="No reminder assigned (default). Select one or more slots to receive reminders."
+                  open={props.open}
+                  reminderSlots={props.reminderSlots}
+                  selectedSlotIds={selectedSlotIds()}
+                  onChangeSelected={setSelectedSlotIds}
+                  onCreateReminderSlot={props.onCreateReminderSlot}
+                  onError={setError}
+                />
               </div>
 
               <div class="flex shrink-0 items-center justify-end gap-3 border-t border-white/[0.06] bg-[#14161B] px-6 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-6">
@@ -1040,18 +932,168 @@ export function HabitModal(props: HabitModalProps): JSX.Element {
   );
 }
 
+interface ReminderSlotSelectorProps {
+  idPrefix: string;
+  groupLabel: string;
+  emptyText: string;
+  unselectedHint: string;
+  open: boolean;
+  reminderSlots: ReminderSlot[];
+  selectedSlotIds: string[];
+  onChangeSelected: (next: string[]) => void;
+  onCreateReminderSlot?: (input: { label: string; time: string }) => Promise<ReminderSlot>;
+  onError: (msg: string | null) => void;
+}
+
+function ReminderSlotSelector(props: ReminderSlotSelectorProps): JSX.Element {
+  const [newSlotOpen, setNewSlotOpen] = createSignal(false);
+  const [newSlotLabel, setNewSlotLabel] = createSignal('');
+  const [newSlotTime, setNewSlotTime] = createSignal('09:00');
+  const [creatingSlot, setCreatingSlot] = createSignal(false);
+
+  createEffect(() => {
+    if (!props.open) return;
+    setNewSlotOpen(false);
+    setNewSlotLabel('');
+    setNewSlotTime('09:00');
+  });
+
+  const toggleSlot = (slotId: string) => {
+    const next = props.selectedSlotIds.includes(slotId)
+      ? props.selectedSlotIds.filter((id) => id !== slotId)
+      : [...props.selectedSlotIds, slotId];
+    props.onChangeSelected(next);
+  };
+
+  const handleQuickCreateSlot = async () => {
+    if (!props.onCreateReminderSlot) return;
+    setCreatingSlot(true);
+    props.onError(null);
+    try {
+      const created = await props.onCreateReminderSlot({
+        label: normalizeReminderSlotLabel(newSlotLabel()),
+        time: normalizeReminderSlotTime(newSlotTime()),
+      });
+      if (!props.selectedSlotIds.includes(created.id)) {
+        props.onChangeSelected([...props.selectedSlotIds, created.id]);
+      }
+      setNewSlotLabel('');
+      setNewSlotTime('09:00');
+      setNewSlotOpen(false);
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : 'Failed to create reminder slot.');
+    } finally {
+      setCreatingSlot(false);
+    }
+  };
+
+  return (
+    <div class="space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="block text-xs font-medium text-[#9AA1B1]">Reminder slots</span>
+        <Show when={props.onCreateReminderSlot}>
+          <button
+            type="button"
+            onClick={() => setNewSlotOpen((prev) => !prev)}
+            class="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-[#60A5FA] hover:underline"
+          >
+            <PlusIcon class="h-3.5 w-3.5" />
+            <span>{newSlotOpen() ? 'Close' : 'New slot'}</span>
+          </button>
+        </Show>
+      </div>
+
+      <Show when={props.reminderSlots.length > 0}>
+        <div class="flex flex-wrap gap-2" role="group" aria-label={props.groupLabel}>
+          <For each={props.reminderSlots}>
+            {(slot) => {
+              const selected = () => props.selectedSlotIds.includes(slot.id);
+              return (
+                <button
+                  type="button"
+                  onClick={() => toggleSlot(slot.id)}
+                  aria-pressed={selected()}
+                  class={`inline-flex min-h-[36px] cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    selected()
+                      ? 'border-[#3B82F6]/60 bg-[#3B82F6]/15 text-[#F5F7FA]'
+                      : 'border-white/[0.08] bg-[#0A0B0E] text-[#9AA1B1] hover:border-white/20 hover:text-[#F5F7FA]'
+                  }`}
+                >
+                  <ClockIcon
+                    class={`h-3.5 w-3.5 shrink-0 ${
+                      selected() ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
+                    }`}
+                  />
+                  <span class="font-mono tabular-nums">{slot.time}</span>
+                  <Show when={slot.label}>
+                    <span class="text-[#C8CDD8]">· {slot.label}</span>
+                  </Show>
+                </button>
+              );
+            }}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={newSlotOpen() && props.onCreateReminderSlot}>
+        <div class="space-y-2.5 rounded-2xl border border-white/[0.08] bg-[#0A0B0E] p-3">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input
+              type="text"
+              value={newSlotLabel()}
+              onInput={(e) => setNewSlotLabel(e.currentTarget.value)}
+              maxlength={32}
+              placeholder="Label (optional, e.g. Morning)"
+              aria-label="New slot label"
+              class="h-10 w-full rounded-xl border border-white/[0.1] bg-[#14161B] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+            />
+            <CustomTimePicker
+              id={`${props.idPrefix}-new-slot-time`}
+              value={newSlotTime()}
+              onChange={(val) => setNewSlotTime(val)}
+              ariaLabel="New slot time"
+            />
+          </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleQuickCreateSlot()}
+              disabled={creatingSlot()}
+              class="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl bg-[#3B82F6] px-3 text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
+            >
+              <PlusIcon class="h-3.5 w-3.5" />
+              <span>{creatingSlot() ? 'Adding...' : 'Add & Select Slot'}</span>
+            </button>
+          </div>
+        </div>
+      </Show>
+
+      <p class="text-[11px] text-[#8E95A5]">
+        {props.reminderSlots.length === 0
+          ? props.emptyText
+          : props.selectedSlotIds.length === 0
+            ? props.unselectedHint
+            : `Assigned to ${props.selectedSlotIds.length} reminder ${props.selectedSlotIds.length === 1 ? 'slot' : 'slots'}.`}
+      </p>
+    </div>
+  );
+}
+
 interface TaskModalProps {
   open: boolean;
   mode: TaskModalMode;
   editingTask: Task | null;
   prefill: TaskDraftPrefill | null;
+  reminderSlots?: ReminderSlot[];
   todayDay: number;
   onClose: () => void;
+  onCreateReminderSlot?: (input: { label: string; time: string }) => Promise<ReminderSlot>;
   onSave: (data: {
     title: string;
     note: string;
     dueDay: number | null;
     repeatable: boolean;
+    reminderSlotIds: string[];
     status?: TaskStatus;
   }) => Promise<void>;
 }
@@ -1088,30 +1130,41 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
   const [note, setNote] = createSignal('');
   const [dueDay, setDueDay] = createSignal<number | null>(untrack(() => props.todayDay));
   const [repeatable, setRepeatable] = createSignal(false);
+  const [selectedSlotIds, setSelectedSlotIds] = createSignal<string[]>([]);
   const [status, setStatus] = createSignal<TaskStatus>('open');
   const [error, setError] = createSignal<string | null>(null);
   const [saving, setSaving] = createSignal(false);
 
+  const availableSlots = () => props.reminderSlots ?? [];
+
   createEffect(() => {
     if (!props.open) return;
     const task = props.mode === 'edit' ? props.editingTask : null;
+    const activeIds = new Set(untrack(() => availableSlots()).map((s) => s.id));
     if (task) {
       setTitle(task.title);
       setNote(task.note);
       setDueDay(task.dueDay);
       setRepeatable(task.repeatable);
+      setSelectedSlotIds(
+        normalizeReminderSlotIds(task.reminderSlotIds).filter((id) => activeIds.has(id))
+      );
       setStatus(TodayBoard.getStatus(task));
     } else if (props.prefill) {
       setTitle(props.prefill.title);
       setNote(props.prefill.note);
       setDueDay(props.prefill.dueDay);
       setRepeatable(props.prefill.repeatable);
+      setSelectedSlotIds(
+        normalizeReminderSlotIds(props.prefill.reminderSlotIds).filter((id) => activeIds.has(id))
+      );
       setStatus('open');
     } else {
       setTitle('');
       setNote('');
       setDueDay(props.todayDay);
       setRepeatable(false);
+      setSelectedSlotIds([]);
       setStatus('open');
     }
     setError(null);
@@ -1132,6 +1185,7 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
         note: note().trim(),
         dueDay: dueDay(),
         repeatable: repeatable(),
+        reminderSlotIds: selectedSlotIds(),
         status: props.mode === 'edit' ? status() : 'open',
       });
       props.onClose();
@@ -1294,6 +1348,21 @@ export function TaskModal(props: TaskModalProps): JSX.Element {
                     </p>
                   </div>
                 </label>
+
+                <Show when={availableSlots().length > 0 || props.onCreateReminderSlot}>
+                  <ReminderSlotSelector
+                    idPrefix="task"
+                    groupLabel="Task reminder slots"
+                    emptyText="No reminder slots created yet. Tasks follow the default task reminder slot unless a slot is assigned."
+                    unselectedHint="No specific slot assigned (uses default task slot if enabled)."
+                    open={props.open}
+                    reminderSlots={availableSlots()}
+                    selectedSlotIds={selectedSlotIds()}
+                    onChangeSelected={setSelectedSlotIds}
+                    onCreateReminderSlot={props.onCreateReminderSlot}
+                    onError={setError}
+                  />
+                </Show>
 
                 <Show when={props.mode === 'edit'}>
                   <div class="space-y-2">
@@ -2093,8 +2162,12 @@ const HORIZON_OPTIONS = [
 
 function ReminderSlotRow(props: {
   slot: ReminderSlot;
-  assignedCount: number;
+  habitCount: number;
+  taskCount: number;
+  isDefaultTaskSlot: boolean;
+  isEditing: boolean;
   busy: boolean;
+  onToggleEdit: (id: string) => void;
   onUpdateLabel: (id: string, label: string) => Promise<void>;
   onUpdateTime: (id: string, time: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -2113,44 +2186,111 @@ function ReminderSlotRow(props: {
     }
   };
 
+  const usageSummary = () => {
+    const h = props.habitCount;
+    const t = props.taskCount;
+    if (h > 0 && t > 0) return `${h}h · ${t}t`;
+    if (h > 0) return `${h} ${h === 1 ? 'habit' : 'habits'}`;
+    if (t > 0) return `${t} ${t === 1 ? 'task' : 'tasks'}`;
+    if (props.isDefaultTaskSlot) return 'default';
+    return 'unused';
+  };
+
   return (
-    <div class="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.08] bg-[#14161B] p-2.5 sm:flex-nowrap">
-      <div class="w-28 shrink-0">
-        <CustomTimePicker
-          value={props.slot.time}
-          onChange={(val) => void props.onUpdateTime(props.slot.id, val)}
-          ariaLabel={`Time for ${props.slot.label || props.slot.time}`}
-        />
+    <div class="transition-colors">
+      <div class="flex items-center justify-between gap-2 px-3 py-2">
+        <button
+          type="button"
+          onClick={() => props.onToggleEdit(props.slot.id)}
+          aria-expanded={props.isEditing}
+          aria-label={`Edit ${props.slot.label || props.slot.time} slot`}
+          class="flex min-h-[36px] min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
+        >
+          <span class="shrink-0 font-mono text-xs font-medium text-[#F5F7FA] tabular-nums">
+            {props.slot.time}
+          </span>
+          <span
+            class={`truncate text-xs ${props.slot.label ? 'text-[#C8CDD8]' : 'text-[#6B7280]'}`}
+          >
+            {props.slot.label || 'No label'}
+          </span>
+        </button>
+
+        <div class="flex shrink-0 items-center gap-1">
+          <span class="mr-1 font-mono text-[11px] whitespace-nowrap text-[#8E95A5] tabular-nums">
+            {usageSummary()}
+          </span>
+          <button
+            type="button"
+            onClick={() => props.onToggleEdit(props.slot.id)}
+            disabled={props.busy}
+            aria-label={
+              props.isEditing
+                ? `Done editing ${props.slot.label || props.slot.time} slot`
+                : `Customize ${props.slot.label || props.slot.time} slot`
+            }
+            class={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+              props.isEditing
+                ? 'bg-[#3B82F6]/15 text-[#60A5FA]'
+                : 'text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]'
+            }`}
+          >
+            <Show when={props.isEditing} fallback={<EditIcon class="h-3.5 w-3.5" />}>
+              <CheckIcon class="h-3.5 w-3.5" />
+            </Show>
+          </button>
+          <button
+            type="button"
+            onClick={() => void props.onDelete(props.slot.id)}
+            disabled={props.busy}
+            aria-label={`Delete ${props.slot.label || props.slot.time} slot`}
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[#8E95A5] transition-colors hover:bg-[#EF4444]/10 hover:text-[#FCA5A5] disabled:opacity-50"
+          >
+            <TrashIcon class="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
-      <input
-        type="text"
-        value={labelDraft()}
-        onInput={(e) => setLabelDraft(e.currentTarget.value)}
-        onBlur={() => commitLabel()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            e.currentTarget.blur();
-          }
-        }}
-        maxlength={32}
-        disabled={props.busy}
-        placeholder="Slot label (optional)"
-        aria-label={`Label for ${props.slot.time} slot`}
-        class="h-10 min-w-[120px] flex-1 rounded-xl border border-white/[0.08] bg-[#0A0B0E] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none disabled:opacity-50"
-      />
-      <span class="shrink-0 font-mono text-[11px] whitespace-nowrap text-[#8E95A5] tabular-nums">
-        {props.assignedCount} {props.assignedCount === 1 ? 'habit' : 'habits'}
-      </span>
-      <button
-        type="button"
-        onClick={() => void props.onDelete(props.slot.id)}
-        disabled={props.busy}
-        aria-label={`Delete ${props.slot.label || props.slot.time} slot`}
-        class="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-[#EF4444]/10 hover:text-[#FCA5A5] disabled:opacity-50"
-      >
-        <TrashIcon class="h-4 w-4" />
-      </button>
+
+      <Show when={props.isEditing}>
+        <div class="flex flex-wrap items-center gap-2 border-t border-white/[0.06] bg-[#0D0F14] px-3 py-2.5 sm:flex-nowrap">
+          <div class="w-28 shrink-0">
+            <CustomTimePicker
+              value={props.slot.time}
+              onChange={(val) => void props.onUpdateTime(props.slot.id, val)}
+              ariaLabel={`Time for ${props.slot.label || props.slot.time}`}
+            />
+          </div>
+          <input
+            type="text"
+            value={labelDraft()}
+            onInput={(e) => setLabelDraft(e.currentTarget.value)}
+            onBlur={() => commitLabel()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+                props.onToggleEdit(props.slot.id);
+              }
+            }}
+            maxlength={32}
+            disabled={props.busy}
+            placeholder="Slot label (optional)"
+            aria-label={`Label for ${props.slot.time} slot`}
+            class="h-10 min-w-[120px] flex-1 rounded-xl border border-white/[0.08] bg-[#14161B] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none disabled:opacity-50"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              commitLabel();
+              props.onToggleEdit(props.slot.id);
+            }}
+            disabled={props.busy}
+            class="h-10 shrink-0 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-3 text-xs font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933] disabled:opacity-50"
+          >
+            Done
+          </button>
+        </div>
+      </Show>
     </div>
   );
 }
@@ -2160,6 +2300,11 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
   const [newSlotTime, setNewSlotTime] = createSignal('09:00');
   const [slotBusy, setSlotBusy] = createSignal(false);
   const [slotError, setSlotError] = createSignal<string | null>(null);
+  const [slotsExpanded, setSlotsExpanded] = createSignal(
+    untrack(() => props.reminderSlots.length === 0)
+  );
+  const [editingSlotId, setEditingSlotId] = createSignal<string | null>(null);
+  let wasOpen = false;
 
   const badgeSupported = ReminderPlanner.isAppBadgeSupported();
   const isStandalone = ReminderPlanner.isStandalonePwa();
@@ -2174,6 +2319,21 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
       }
     }
     return count;
+  };
+
+  const assignedTaskCount = (slotId: string): number => {
+    let count = 0;
+    for (const task of props.snapshot.tasks) {
+      if (task.deletedAt !== null || TodayBoard.getStatus(task) !== 'open') continue;
+      if (normalizeReminderSlotIds(task.reminderSlotIds).includes(slotId)) {
+        count += 1;
+      }
+    }
+    return count;
+  };
+
+  const toggleEditingSlot = (id: string) => {
+    setEditingSlotId((prev) => (prev === id ? null : id));
   };
 
   const todayDesiredEvents = () =>
@@ -2231,6 +2391,9 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
     setSlotError(null);
     try {
       await props.onDeleteSlot(id);
+      if (editingSlotId() === id) {
+        setEditingSlotId(null);
+      }
     } catch (err) {
       setSlotError(err instanceof Error ? err.message : 'Failed to delete reminder slot.');
     } finally {
@@ -2241,7 +2404,15 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
   useBodyScrollLock(() => props.open);
 
   createEffect(() => {
-    if (!props.open) return;
+    if (!props.open) {
+      wasOpen = false;
+      return;
+    }
+    if (!wasOpen) {
+      wasOpen = true;
+      setSlotsExpanded(untrack(() => props.reminderSlots.length === 0));
+      setEditingSlotId(null);
+    }
     setSlotError(null);
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !e.defaultPrevented && !props.busy && !slotBusy()) {
@@ -2280,7 +2451,7 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                     Reminders &amp; App Badge
                   </h2>
                   <p class="text-xs text-[#8E95A5]">
-                    Manage reminder slots for specific habits, icon badge counts, and Google
+                    Manage reminder slots for habits and tasks, icon badge counts, and Google
                     Calendar pushes.
                   </p>
                 </div>
@@ -2379,80 +2550,108 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                 </Show>
               </section>
 
-              {/* Dynamic Reminder Slots Section */}
-              <section class="space-y-3 rounded-2xl border border-white/[0.08] bg-[#0A0B0E] p-4">
-                <div class="flex items-start justify-between gap-3">
+              {/* Dynamic Reminder Slots Section (Collapsible) */}
+              <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0A0B0E]">
+                <button
+                  type="button"
+                  onClick={() => setSlotsExpanded((prev) => !prev)}
+                  aria-expanded={slotsExpanded()}
+                  class="flex w-full cursor-pointer items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-white/[0.02]"
+                >
                   <div class="min-w-0 flex-1 space-y-1">
-                    <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center gap-2">
                       <ClockIcon class="h-4 w-4 shrink-0 text-[#60A5FA]" />
-                      <p class="text-sm font-medium text-[#F5F7FA]">Reminder Slots</p>
+                      <span class="text-sm font-medium text-[#F5F7FA]">Reminder Slots</span>
                     </div>
-                    <p class="text-xs text-[#8E95A5]">
-                      Create reusable time slots and assign them when editing habits. Habits have no
-                      reminders by default until a slot is assigned.
-                    </p>
+                    <Show when={!slotsExpanded() && props.reminderSlots.length > 0}>
+                      <p class="truncate font-mono text-[11px] text-[#8E95A5] tabular-nums">
+                        {props.reminderSlots
+                          .map((s) => (s.label ? `${s.time} ${s.label}` : s.time))
+                          .join(' · ')}
+                      </p>
+                    </Show>
                   </div>
-                  <span class="shrink-0 font-mono text-xs text-[#8E95A5] tabular-nums">
-                    {props.reminderSlots.length}{' '}
-                    {props.reminderSlots.length === 1 ? 'slot' : 'slots'}
-                  </span>
-                </div>
-
-                <Show
-                  when={props.reminderSlots.length > 0}
-                  fallback={
-                    <div class="rounded-xl border border-white/[0.06] bg-[#14161B] p-3 text-xs text-[#8E95A5]">
-                      No reminder slots yet. Add a time slot below and assign it to habits you want
-                      reminders for.
-                    </div>
-                  }
-                >
-                  <div class="space-y-2">
-                    <For each={props.reminderSlots}>
-                      {(slot) => (
-                        <ReminderSlotRow
-                          slot={slot}
-                          assignedCount={assignedHabitCount(slot.id)}
-                          busy={props.busy || slotBusy()}
-                          onUpdateLabel={handleUpdateSlotLabel}
-                          onUpdateTime={handleUpdateSlotTime}
-                          onDelete={handleDeleteSlot}
-                        />
-                      )}
-                    </For>
-                  </div>
-                </Show>
-
-                <form
-                  onSubmit={(e) => void handleAddSlot(e)}
-                  class="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3 sm:flex-nowrap"
-                >
-                  <div class="w-28 shrink-0">
-                    <CustomTimePicker
-                      id="new-reminder-slot-time"
-                      value={newSlotTime()}
-                      onChange={(val) => setNewSlotTime(val)}
-                      ariaLabel="New reminder slot time"
+                  <div class="flex shrink-0 items-center gap-2">
+                    <span class="font-mono text-xs whitespace-nowrap text-[#8E95A5] tabular-nums">
+                      {props.reminderSlots.length}{' '}
+                      {props.reminderSlots.length === 1 ? 'slot' : 'slots'}
+                    </span>
+                    <ChevronDownIcon
+                      class={`h-4 w-4 text-[#8E95A5] transition-transform duration-150 ${
+                        slotsExpanded() ? '' : '-rotate-90'
+                      }`}
                     />
                   </div>
-                  <input
-                    type="text"
-                    value={newSlotLabel()}
-                    onInput={(e) => setNewSlotLabel(e.currentTarget.value)}
-                    maxlength={32}
-                    placeholder="Label (e.g. Morning, Evening)"
-                    aria-label="New reminder slot label"
-                    class="h-10 min-w-[130px] flex-1 rounded-xl border border-white/[0.1] bg-[#14161B] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={props.busy || slotBusy()}
-                    class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-[#3B82F6] px-3.5 text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
-                  >
-                    <PlusIcon class="h-3.5 w-3.5" />
-                    <span>Add slot</span>
-                  </button>
-                </form>
+                </button>
+
+                <Show when={slotsExpanded()}>
+                  <div class="space-y-3 border-t border-white/[0.06] px-4 pt-3 pb-4">
+                    <p class="text-xs text-[#8E95A5]">
+                      Create reusable time slots and assign them when editing habits or tasks. Both
+                      have no reminders by default until a slot is assigned.
+                    </p>
+
+                    <Show
+                      when={props.reminderSlots.length > 0}
+                      fallback={
+                        <div class="rounded-xl border border-white/[0.06] bg-[#14161B] p-3 text-xs text-[#8E95A5]">
+                          No reminder slots yet. Add a time slot below and assign it to habits or
+                          tasks you want reminders for.
+                        </div>
+                      }
+                    >
+                      <div class="divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.08] bg-[#14161B]">
+                        <For each={props.reminderSlots}>
+                          {(slot) => (
+                            <ReminderSlotRow
+                              slot={slot}
+                              habitCount={assignedHabitCount(slot.id)}
+                              taskCount={assignedTaskCount(slot.id)}
+                              isDefaultTaskSlot={props.prefs.taskReminderSlotId === slot.id}
+                              isEditing={editingSlotId() === slot.id}
+                              busy={props.busy || slotBusy()}
+                              onToggleEdit={toggleEditingSlot}
+                              onUpdateLabel={handleUpdateSlotLabel}
+                              onUpdateTime={handleUpdateSlotTime}
+                              onDelete={handleDeleteSlot}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+
+                    <form
+                      onSubmit={(e) => void handleAddSlot(e)}
+                      class="flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3 sm:flex-nowrap"
+                    >
+                      <div class="w-28 shrink-0">
+                        <CustomTimePicker
+                          id="new-reminder-slot-time"
+                          value={newSlotTime()}
+                          onChange={(val) => setNewSlotTime(val)}
+                          ariaLabel="New reminder slot time"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={newSlotLabel()}
+                        onInput={(e) => setNewSlotLabel(e.currentTarget.value)}
+                        maxlength={32}
+                        placeholder="Label (e.g. Morning, Evening)"
+                        aria-label="New reminder slot label"
+                        class="h-10 min-w-[130px] flex-1 rounded-xl border border-white/[0.1] bg-[#14161B] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={props.busy || slotBusy()}
+                        class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl bg-[#3B82F6] px-3.5 text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
+                      >
+                        <PlusIcon class="h-3.5 w-3.5" />
+                        <span>Add slot</span>
+                      </button>
+                    </form>
+                  </div>
+                </Show>
               </section>
 
               {/* Google Calendar Smart Push Section */}
@@ -2502,7 +2701,7 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                         for="task-reminder-slot-select"
                         class="block text-xs font-medium text-[#9AA1B1]"
                       >
-                        Tasks reminder slot
+                        Default task reminder slot
                       </label>
                       <CustomSelect<string>
                         id="task-reminder-slot-select"
@@ -2516,7 +2715,7 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                             : ''
                         }
                         options={[
-                          { value: '', label: 'Off (no task reminders)' },
+                          { value: '', label: 'Off (only tasks with slots)' },
                           ...props.reminderSlots.map((slot): SelectOption<string> => ({
                             value: slot.id,
                             label: slot.label ? `${slot.time} · ${slot.label}` : slot.time,
@@ -2557,31 +2756,40 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                     Calendar for habits and tasks with assigned slots.
                   </p>
 
-                  <div class="space-y-1 rounded-xl border border-white/[0.06] bg-[#14161B] p-3 text-xs">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <span class="text-[#8E95A5]">Calendar timezone</span>
-                      <span class="break-anywhere font-mono text-[#F5F7FA]">{resolvedTz()}</span>
-                    </div>
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <span class="text-[#8E95A5]">Today&apos;s reminders</span>
-                      <span
-                        class={`font-mono ${
-                          todayDesiredEvents().length === 0 ? 'text-[#60A5FA]' : 'text-[#F5F7FA]'
-                        }`}
-                      >
-                        {todayDesiredEvents().length > 0
-                          ? `${todayDesiredEvents().length} ${todayDesiredEvents().length === 1 ? 'slot' : 'slots'} (${todayDesiredEvents()
-                              .map((e) => e.slotTime)
-                              .join(', ')})`
-                          : props.pendingToday.totalPendingCount === 0
-                            ? 'Cleared (all done today)'
-                            : 'None assigned'}
+                  <div class="space-y-1.5 rounded-xl border border-white/[0.06] bg-[#14161B] p-3 text-xs">
+                    <div class="flex items-baseline justify-between gap-3">
+                      <span class="shrink-0 text-[#8E95A5]">Calendar timezone</span>
+                      <span class="break-anywhere text-right font-mono text-[#F5F7FA]">
+                        {resolvedTz()}
                       </span>
                     </div>
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                      <span class="text-[#8E95A5]">Calendar status</span>
+                    <div class="space-y-0.5">
+                      <div class="flex items-baseline justify-between gap-3">
+                        <span class="shrink-0 text-[#8E95A5]">Today&apos;s reminders</span>
+                        <span
+                          class={`text-right font-mono tabular-nums ${
+                            todayDesiredEvents().length === 0 ? 'text-[#60A5FA]' : 'text-[#F5F7FA]'
+                          }`}
+                        >
+                          {todayDesiredEvents().length > 0
+                            ? `${todayDesiredEvents().length} ${todayDesiredEvents().length === 1 ? 'slot' : 'slots'}`
+                            : props.pendingToday.totalPendingCount === 0
+                              ? 'Cleared (all done today)'
+                              : 'None assigned'}
+                        </span>
+                      </div>
+                      <Show when={todayDesiredEvents().length > 0}>
+                        <p class="text-right font-mono text-[11px] text-[#8E95A5] tabular-nums">
+                          {todayDesiredEvents()
+                            .map((e) => e.slotTime)
+                            .join(' · ')}
+                        </p>
+                      </Show>
+                    </div>
+                    <div class="flex items-baseline justify-between gap-3">
+                      <span class="shrink-0 text-[#8E95A5]">Calendar status</span>
                       <span
-                        class={`font-mono ${
+                        class={`text-right font-mono ${
                           props.calendarSyncNeeded
                             ? 'text-[#F59E0B]'
                             : props.prefs.calendarId
@@ -2603,10 +2811,10 @@ export function RemindersModal(props: RemindersModalProps): JSX.Element {
                       type="button"
                       onClick={() => void props.onPrepareCalendarSync()}
                       disabled={props.busy}
-                      class="inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl bg-[#3B82F6] px-4 text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
+                      class="inline-flex min-h-10 min-w-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#3B82F6] px-4 py-2 text-center text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
                     >
                       <CalendarIcon class="h-3.5 w-3.5 shrink-0" />
-                      <span>
+                      <span class="break-anywhere">
                         {props.busy
                           ? 'Checking Calendar...'
                           : props.hasGoogleToken

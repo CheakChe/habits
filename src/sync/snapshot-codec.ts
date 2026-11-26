@@ -23,7 +23,7 @@ import { SnapshotReader } from './snapshot-reader';
 import { StringTable } from './string-table';
 
 const MAGIC = [0x48, 0x42, 0x54, 0x31] as const; // "HBT1"
-const FORMAT_VERSION = 9;
+const FORMAT_VERSION = 10;
 
 function encodeScaledTarget(value: number | null | undefined): number {
   const clean = normalizeDailyTarget(value);
@@ -117,6 +117,9 @@ export class SnapshotCodec {
       idTable.intern(task.id);
       stringTable.intern(task.title);
       stringTable.intern(task.note);
+      for (const slotId of normalizeReminderSlotIds(task.reminderSlotIds)) {
+        stringTable.intern(slotId);
+      }
     }
     for (const slot of sortedSlots) {
       stringTable.intern(slot.id);
@@ -279,6 +282,11 @@ export class SnapshotCodec {
       body.writeUint8(encodeTaskStatus(task));
       body.writeFloat64(task.createdAt);
       body.writeFloat64(task.updatedAt);
+      const taskSlotIds = normalizeReminderSlotIds(task.reminderSlotIds);
+      body.writeVarUint(taskSlotIds.length);
+      for (const slotId of taskSlotIds) {
+        body.writeVarUint(stringTable.intern(slotId));
+      }
     }
 
     // Reminder slots (v9+)
@@ -573,13 +581,25 @@ export class SnapshotCodec {
       }
       const createdAt = reader.readFloat64();
       const updatedAt = reader.readFloat64();
+      let taskReminderSlotIds: string[] = [];
+      if (version >= 10) {
+        const slotRefCount = reader.readVarUint();
+        if (slotRefCount > 1_000) {
+          throw new Error(`Unreasonable task reminderSlotIds count: ${slotRefCount}`);
+        }
+        const rawSlotIds: string[] = [];
+        for (let s = 0; s < slotRefCount; s++) {
+          rawSlotIds.push(stringTable.get(reader.readVarUint()));
+        }
+        taskReminderSlotIds = normalizeReminderSlotIds(rawSlotIds);
+      }
       const done = status === 'done';
       const completedDay = !done
         ? null
         : hasExplicitCompletedDay
           ? explicitCompletedDay
           : CivilCalendar.fromTimestamp(updatedAt);
-      tasks.push({
+      const unpackedTask: Task = {
         id,
         title,
         note,
@@ -591,7 +611,11 @@ export class SnapshotCodec {
         deletedAt,
         createdAt,
         updatedAt,
-      });
+      };
+      if (taskReminderSlotIds.length > 0) {
+        unpackedTask.reminderSlotIds = taskReminderSlotIds;
+      }
+      tasks.push(unpackedTask);
     }
 
     const reminderSlots: ReminderSlot[] = [];

@@ -150,6 +150,10 @@ export class ReminderPlanner {
     return normalizeReminderSlotIds(habit.reminderSlotIds).filter((id) => activeSlotIds.has(id));
   }
 
+  public static getTaskActiveSlotIds(task: Task, activeSlotIds: Set<string>): string[] {
+    return normalizeReminderSlotIds(task.reminderSlotIds).filter((id) => activeSlotIds.has(id));
+  }
+
   public static resolveCalendarTimeZone(trackerTimeZone: string): string {
     if (!trackerTimeZone || trackerTimeZone === 'local') {
       const detected = CivilCalendar.getDeviceTimeZone();
@@ -277,12 +281,20 @@ export class ReminderPlanner {
 
       const dateStr = CivilCalendar.toInputDateValue(dayIndex);
 
+      const taskMatchesSlot = (task: Task, slotId: string): boolean => {
+        const explicitIds = ReminderPlanner.getTaskActiveSlotIds(task, activeSlotIds);
+        if (explicitIds.length > 0) {
+          return explicitIds.includes(slotId);
+        }
+        return taskSlotId !== null && slotId === taskSlotId;
+      };
+
       for (const slot of activeSlots) {
         const slotHabits = pendingHabits.filter((h) =>
           normalizeReminderSlotIds(h.reminderSlotIds).includes(slot.id)
         );
-        const slotOverdueTasks = slot.id === taskSlotId ? overdueTasks : [];
-        const slotDueTasks = slot.id === taskSlotId ? dueOnDayTasks : [];
+        const slotOverdueTasks = overdueTasks.filter((t) => taskMatchesSlot(t, slot.id));
+        const slotDueTasks = dueOnDayTasks.filter((t) => taskMatchesSlot(t, slot.id));
 
         if (slotHabits.length === 0 && slotOverdueTasks.length === 0 && slotDueTasks.length === 0) {
           continue;

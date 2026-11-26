@@ -61,6 +61,7 @@ export interface CreateTaskInput {
   note: string;
   dueDay: number | null;
   repeatable?: boolean;
+  reminderSlotIds?: string[];
 }
 
 export interface UpdateTaskPatch {
@@ -71,6 +72,7 @@ export interface UpdateTaskPatch {
   status?: TaskStatus;
   completedDay?: number | null;
   repeatable?: boolean;
+  reminderSlotIds?: string[];
 }
 
 function normalizeHabitRecord(habit: Habit): Habit {
@@ -141,6 +143,32 @@ function normalizeTaskStatus(task: Pick<Task, 'done'> & { status?: TaskStatus })
     return task.status;
   }
   return task.done ? 'done' : 'open';
+}
+
+function normalizeTaskRecord(task: Task): Task {
+  const status = normalizeTaskStatus(task);
+  const done = status === 'done';
+  const cleanSlotIds = normalizeReminderSlotIds(task.reminderSlotIds);
+  const { reminderSlotIds: _ignoredSlotIds, ...rest } = task;
+  const cleaned: Task = {
+    ...rest,
+    done,
+    status,
+    completedDay:
+      task.completedDay !== undefined
+        ? done
+          ? task.completedDay
+          : null
+        : done
+          ? CivilCalendar.fromTimestamp(task.updatedAt)
+          : null,
+    repeatable: Boolean(task.repeatable),
+    deletedAt: task.deletedAt ?? null,
+  };
+  if (cleanSlotIds.length > 0) {
+    cleaned.reminderSlotIds = cleanSlotIds;
+  }
+  return cleaned;
 }
 
 export class HabitDatabase {
@@ -239,27 +267,7 @@ export class HabitDatabase {
         .map((c) => normalizeCheckinRecord(c))
         .sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
       notes: notes.sort((a, b) => a.habitId - b.habitId || a.dayIndex - b.dayIndex),
-      tasks: tasks
-        .map((t) => {
-          const status = normalizeTaskStatus(t);
-          const done = status === 'done';
-          return {
-            ...t,
-            done,
-            status,
-            completedDay:
-              t.completedDay !== undefined
-                ? done
-                  ? t.completedDay
-                  : null
-                : done
-                  ? CivilCalendar.fromTimestamp(t.updatedAt)
-                  : null,
-            repeatable: Boolean(t.repeatable),
-            deletedAt: t.deletedAt ?? null,
-          };
-        })
-        .sort((a, b) => a.id - b.id),
+      tasks: tasks.map((t) => normalizeTaskRecord(t)).sort((a, b) => a.id - b.id),
       ...(sortedSlots.length > 0 ? { reminderSlots: sortedSlots } : {}),
     };
   }
@@ -299,7 +307,7 @@ export class HabitDatabase {
       notesStore.put(note);
     }
     for (const task of snapshot.tasks) {
-      tasksStore.put(task);
+      tasksStore.put(normalizeTaskRecord(task));
     }
     for (const slot of snapshot.reminderSlots ?? []) {
       slotsStore.put(normalizeReminderSlotRecord(slot));
@@ -484,6 +492,7 @@ export class HabitDatabase {
     const now = this.nextTimestamp();
     const tx = db.transaction('tasks', 'readwrite');
     const store = tx.objectStore('tasks');
+    const cleanSlotIds = normalizeReminderSlotIds(input.reminderSlotIds);
     const payload: Omit<Task, 'id'> = {
       title: input.title.trim(),
       note: input.note.trim(),
@@ -492,6 +501,7 @@ export class HabitDatabase {
       status: 'open',
       completedDay: null,
       repeatable: Boolean(input.repeatable),
+      ...(cleanSlotIds.length > 0 ? { reminderSlotIds: cleanSlotIds } : {}),
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -538,8 +548,14 @@ export class HabitDatabase {
       nextCompletedDay = existingCompletedDay;
     }
 
+    const resolvedSlotIds =
+      patch.reminderSlotIds !== undefined
+        ? normalizeReminderSlotIds(patch.reminderSlotIds)
+        : normalizeReminderSlotIds(existing.reminderSlotIds);
+
+    const { reminderSlotIds: _prevSlotIds, ...existingWithoutSlotIds } = existing;
     const updated: Task = {
-      ...existing,
+      ...existingWithoutSlotIds,
       title: patch.title !== undefined ? patch.title.trim() : existing.title,
       note: patch.note !== undefined ? patch.note.trim() : existing.note,
       dueDay: patch.dueDay !== undefined ? patch.dueDay : existing.dueDay,
@@ -550,6 +566,9 @@ export class HabitDatabase {
       deletedAt: existing.deletedAt ?? null,
       updatedAt: this.nextTimestamp(existing.updatedAt),
     };
+    if (resolvedSlotIds.length > 0) {
+      updated.reminderSlotIds = resolvedSlotIds;
+    }
     store.put(updated);
     await this.promisifyTx(tx);
     return updated;
@@ -637,12 +656,14 @@ export class HabitDatabase {
 
   public async deleteReminderSlot(id: string): Promise<void> {
     const db = await this.open();
-    const tx = db.transaction(['reminderSlots', 'habits'], 'readwrite');
+    const tx = db.transaction(['reminderSlots', 'habits', 'tasks'], 'readwrite');
     const slotsStore = tx.objectStore('reminderSlots');
     const habitsStore = tx.objectStore('habits');
-    const [existingSlot, allHabits] = await Promise.all([
+    const tasksStore = tx.objectStore('tasks');
+    const [existingSlot, allHabits, allTasks] = await Promise.all([
       this.promisifyRequest<ReminderSlot | undefined>(slotsStore.get(id)),
       this.promisifyRequest<Habit[]>(habitsStore.getAll()),
+      this.promisifyRequest<Task[]>(tasksStore.getAll()),
     ]);
     const now = this.nextTimestamp(existingSlot?.updatedAt);
     if (existingSlot) {
@@ -662,6 +683,18 @@ export class HabitDatabase {
           updatedAt: this.nextTimestamp(habit.updatedAt),
         });
         habitsStore.put(normalized);
+      }
+    }
+    for (const task of allTasks) {
+      const currentIds = normalizeReminderSlotIds(task.reminderSlotIds);
+      if (currentIds.includes(id)) {
+        const nextIds = currentIds.filter((slotId) => slotId !== id);
+        const normalized = normalizeTaskRecord({
+          ...task,
+          reminderSlotIds: nextIds,
+          updatedAt: this.nextTimestamp(task.updatedAt),
+        });
+        tasksStore.put(normalized);
       }
     }
     await this.promisifyTx(tx);

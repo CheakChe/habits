@@ -428,6 +428,37 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
     return map;
   });
 
+  const heatmapCellMap = createMemo(() => {
+    const map = new Map<number, HeatmapDayCell>();
+    for (const week of props.heatmapData.weeks) {
+      for (const cell of week.days) {
+        if (cell.inRange) {
+          map.set(cell.dayIndex, cell);
+        }
+      }
+    }
+    return map;
+  });
+
+  const activeHeatmapCell = createMemo(() => {
+    const hovered = hoveredCell();
+    if (hovered) {
+      return {
+        dayIndex: hovered.dayIndex,
+        done: hovered.done,
+        scheduled: hovered.scheduled,
+        isHovered: true,
+      };
+    }
+    const selected = heatmapCellMap().get(props.selectedDay);
+    return {
+      dayIndex: props.selectedDay,
+      done: selected?.done ?? null,
+      scheduled: selected?.scheduled ?? null,
+      isHovered: false,
+    };
+  });
+
   const activeHeatmapDayNotes = createMemo(() => {
     const day = hoveredCell()?.dayIndex ?? props.selectedDay;
     return dayNotesMap().get(day) ?? [];
@@ -1488,44 +1519,58 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-1 text-[11px] text-[#8E95A5]">
-          <div class="min-w-0 flex-1 space-y-0.5">
-            <Show
-              when={hoveredCell()}
-              fallback={
-                <span class="block font-mono tabular-nums">
-                  Selected: {CivilCalendar.formatShortDate(props.selectedDay)}
-                  <Show when={activeHeatmapDayNotes().length > 0}>
-                    {' '}
-                    · {activeHeatmapDayNotes().length}{' '}
-                    {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:{' '}
-                    <span class="text-[#C8CDD8]">“{activeHeatmapDayNotes()[0]}”</span>
-                  </Show>
+        <div class="flex flex-col gap-3 border-t border-white/[0.06] pt-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div class="min-w-0 flex-1 space-y-1">
+            <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-xs tabular-nums">
+              <Show when={!activeHeatmapCell().isHovered}>
+                <span class="text-[#8E95A5]">Selected</span>
+              </Show>
+              <span
+                class={
+                  activeHeatmapCell().isHovered
+                    ? 'font-medium text-[#93C5FD]'
+                    : 'font-medium text-[#F5F7FA]'
+                }
+              >
+                {CivilCalendar.formatShortDate(activeHeatmapCell().dayIndex)}
+              </span>
+              <Show
+                when={activeHeatmapCell().done !== null && activeHeatmapCell().scheduled !== null}
+              >
+                <span aria-hidden="true" class="text-[#6B7280]">
+                  ·
                 </span>
-              }
-            >
-              {(cell) => (
-                <span class="block truncate font-mono text-[#F5F7FA] tabular-nums">
-                  {CivilCalendar.formatShortDate(cell().dayIndex)} · {cell().done}/
-                  {cell().scheduled} completed
-                  <Show when={activeHeatmapDayNotes().length > 0}>
-                    {' '}
-                    · {activeHeatmapDayNotes().length}{' '}
-                    {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:{' '}
-                    <span class="text-[#93C5FD]">“{activeHeatmapDayNotes()[0]}”</span>
-                  </Show>
+                <span class="text-[#C8CDD8]">
+                  {activeHeatmapCell().scheduled === 0 && activeHeatmapCell().done === 0
+                    ? 'Rest day'
+                    : `${activeHeatmapCell().done}/${activeHeatmapCell().scheduled} completed`}
                 </span>
-              )}
+              </Show>
+            </div>
+
+            <Show when={activeHeatmapDayNotes().length > 0}>
+              <p class="line-clamp-2 text-xs leading-relaxed break-words text-[#8E95A5]">
+                <span class="font-mono tabular-nums">
+                  {activeHeatmapDayNotes().length}{' '}
+                  {activeHeatmapDayNotes().length === 1 ? 'note' : 'notes'}:
+                </span>{' '}
+                <span class={activeHeatmapCell().isHovered ? 'text-[#93C5FD]' : 'text-[#C8CDD8]'}>
+                  “{activeHeatmapDayNotes()[0]}”
+                </span>
+                <Show when={activeHeatmapDayNotes().length > 1}>
+                  <span class="text-[#6B7280]"> (+{activeHeatmapDayNotes().length - 1} more)</span>
+                </Show>
+              </p>
             </Show>
           </div>
 
           <div
-            class="flex shrink-0 items-center gap-1.5"
+            class="flex shrink-0 items-center gap-1.5 self-start text-[11px] text-[#8E95A5] sm:self-center"
             title="Rest = unscheduled · Red = unclosed severity · Blue = 100% done"
           >
             <span>Rest</span>
             <span class="h-[14px] w-[14px] rounded-[3px] border border-white/[0.06] bg-[#0D1016]" />
-            <span class="ml-1">0%</span>
+            <span class="ml-1 font-mono tabular-nums">0%</span>
             <span class="h-[14px] w-[14px] rounded-[3px] bg-[#EF4444]" />
             <span class="h-[14px] w-[14px] rounded-[3px] bg-[#B91C1C]" />
             <span class="h-[14px] w-[14px] rounded-[3px] bg-[#881B22]" />
@@ -1566,15 +1611,18 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
             <For each={props.habitBreakdown}>
               {(row) => {
                 const pct = () => Math.round(row.completionRate * 100);
+                const trendDelta = () => props.habitTrends.get(row.habit.id)?.deltaPct ?? null;
+                const bonusCount = () => props.habitTrends.get(row.habit.id)?.bonusCount ?? 0;
+                const streakUnit = () => (row.streakUnit === 'weeks' ? 'w' : 'd');
                 return (
                   <li>
                     <button
                       type="button"
                       onClick={() => props.onSelectHabitFilter([row.habit.id])}
-                      class="flex w-full cursor-pointer flex-col justify-between gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.02] sm:flex-row sm:items-center sm:px-6"
+                      class="flex w-full cursor-pointer flex-col gap-2.5 px-4 py-4 text-left transition-colors hover:bg-white/[0.02] sm:px-6"
                     >
-                      <div class="min-w-0 flex-1 space-y-1">
-                        <div class="flex items-start gap-2.5">
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="flex min-w-0 flex-1 items-start gap-2.5">
                           <HabitBadge appearanceRaw={row.habit.color} size="sm" />
                           <span
                             class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
@@ -1586,79 +1634,65 @@ export function HistoryChartsPanel(props: HistoryChartsPanelProps): JSX.Element 
                             <span class="shrink-0 text-[11px] text-[#6B7280]">(Archived)</span>
                           </Show>
                         </div>
-                        <div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-mono text-xs text-[#8E95A5] tabular-nums">
-                          <span>
+
+                        <div class="flex shrink-0 items-baseline gap-2.5 font-mono tabular-nums">
+                          <Show when={trendDelta() !== null}>
+                            <span
+                              class={`text-xs ${
+                                trendDelta()! > 0
+                                  ? 'text-[#60A5FA]'
+                                  : trendDelta()! < 0
+                                    ? 'text-[#FCA5A5]'
+                                    : 'text-[#8E95A5]'
+                              }`}
+                              title="Second half vs first half of period"
+                            >
+                              {trendDelta()! > 0
+                                ? `↗ +${trendDelta()}%`
+                                : trendDelta()! < 0
+                                  ? `↘ ${trendDelta()}%`
+                                  : '→ 0%'}
+                            </span>
+                          </Show>
+                          <span class="text-sm font-semibold text-[#F5F7FA]">{pct()}%</span>
+                        </div>
+                      </div>
+
+                      <div class="h-1.5 w-full overflow-hidden rounded-full border border-white/[0.06] bg-[#0A0B0E]">
+                        <div
+                          class="h-full rounded-full transition-all"
+                          style={{
+                            width: `${pct()}%`,
+                            'background-color': HabitAppearance.getColor(row.habit.color),
+                          }}
+                        />
+                      </div>
+
+                      <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 font-mono text-xs text-[#8E95A5] tabular-nums">
+                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                          <span class="whitespace-nowrap">
                             {row.completedDays} done · {row.missedDays} missed
                           </span>
                           <Show when={row.totalValue !== undefined}>
-                            <span aria-hidden="true">·</span>
-                            <span class="text-[#C8CDD8]">
+                            <span class="whitespace-nowrap text-[#C8CDD8]">
                               {HabitSchedule.formatNumericValue(row.totalValue!)}
                               {row.unit ? ` ${row.unit}` : ''} total
                             </span>
                           </Show>
                           <Show when={row.habit.weeklyTarget !== null}>
-                            <span aria-hidden="true">·</span>
-                            <span>{row.habit.weeklyTarget}×/wk</span>
+                            <span class="whitespace-nowrap">{row.habit.weeklyTarget}×/wk</span>
                           </Show>
-                          <Show when={(props.habitTrends.get(row.habit.id)?.bonusCount ?? 0) > 0}>
-                            <span aria-hidden="true">·</span>
-                            <span class="text-[#60A5FA]">
-                              +{props.habitTrends.get(row.habit.id)!.bonusCount} bonus
+                          <Show when={bonusCount() > 0}>
+                            <span class="whitespace-nowrap text-[#60A5FA]">
+                              +{bonusCount()} bonus
                             </span>
                           </Show>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            {row.currentStreak}
-                            {row.streakUnit === 'weeks' ? 'w' : 'd'} current
-                          </span>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            {row.longestStreak}
-                            {row.streakUnit === 'weeks' ? 'w' : 'd'} best
-                          </span>
-                          <Show
-                            when={
-                              props.habitTrends.get(row.habit.id)?.deltaPct !== null &&
-                              props.habitTrends.get(row.habit.id)?.deltaPct !== undefined
-                            }
-                          >
-                            {(() => {
-                              const d = props.habitTrends.get(row.habit.id)!.deltaPct!;
-                              return (
-                                <>
-                                  <span aria-hidden="true">·</span>
-                                  <span
-                                    class={
-                                      d > 0
-                                        ? 'text-[#60A5FA]'
-                                        : d < 0
-                                          ? 'text-[#FCA5A5]'
-                                          : 'text-[#8E95A5]'
-                                    }
-                                    title="Second half vs first half of period"
-                                  >
-                                    {d > 0 ? `↗ +${d}%` : d < 0 ? `↘ ${d}%` : '→ 0%'}
-                                  </span>
-                                </>
-                              );
-                            })()}
-                          </Show>
                         </div>
-                      </div>
 
-                      <div class="flex shrink-0 items-center gap-3 sm:w-52">
-                        <div class="h-2 flex-1 overflow-hidden rounded-full border border-white/[0.06] bg-[#0A0B0E]">
-                          <div
-                            class="h-full rounded-full transition-all"
-                            style={{
-                              width: `${pct()}%`,
-                              'background-color': HabitAppearance.getColor(row.habit.color),
-                            }}
-                          />
-                        </div>
-                        <span class="w-10 text-right font-mono text-sm font-medium text-[#F5F7FA] tabular-nums">
-                          {pct()}%
+                        <span class="whitespace-nowrap text-[#9AA1B1]">
+                          {row.currentStreak}
+                          {streakUnit()} current · {row.longestStreak}
+                          {streakUnit()} best
                         </span>
                       </div>
                     </button>

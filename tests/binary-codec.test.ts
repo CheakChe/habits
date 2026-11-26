@@ -990,3 +990,126 @@ test('SnapshotMerger, rebaseForRestore, and BackupService merge and preserve rem
   );
   assert.deepEqual(imported.mergedSnapshot.habits[0].reminderSlotIds, ['slot-1']);
 });
+
+test('SnapshotCodec v10 encodes/decodes Task.reminderSlotIds deterministically, omits when empty, and unpacks v9 cleanly', () => {
+  const baseDay = CivilCalendar.fromLocalDate(2026, 11, 1);
+
+  const snap: DomainSnapshot = {
+    habits: [],
+    checkins: [],
+    notes: [],
+    tasks: [
+      {
+        id: 1,
+        title: 'Task with slots',
+        note: 'Details',
+        dueDay: baseDay,
+        done: false,
+        status: 'open',
+        completedDay: null,
+        repeatable: true,
+        reminderSlotIds: ['slot-b', 'slot-a', 'slot-b', ' '],
+        deletedAt: null,
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+      {
+        id: 2,
+        title: 'Task without slots',
+        note: '',
+        dueDay: null,
+        done: false,
+        status: 'open',
+        completedDay: null,
+        repeatable: false,
+        reminderSlotIds: [],
+        deletedAt: null,
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+    ],
+    reminderSlots: [
+      {
+        id: 'slot-a',
+        label: 'Morning',
+        time: '08:30',
+        createdAt: 100,
+        updatedAt: 100,
+        deletedAt: null,
+      },
+      {
+        id: 'slot-b',
+        label: 'Evening',
+        time: '21:00',
+        createdAt: 200,
+        updatedAt: 200,
+        deletedAt: null,
+      },
+    ],
+  };
+
+  const reordered: DomainSnapshot = {
+    ...snap,
+    tasks: [{ ...snap.tasks[1] }, { ...snap.tasks[0], reminderSlotIds: ['slot-a', 'slot-b'] }],
+  };
+
+  const bytes1 = SnapshotCodec.pack(snap);
+  const bytes2 = SnapshotCodec.pack(reordered);
+  assert.equal(Helpers.bytesEqual(bytes1, bytes2), true);
+
+  const unpacked = SnapshotCodec.unpack(bytes1);
+  assert.deepEqual(unpacked.tasks[0].reminderSlotIds, ['slot-a', 'slot-b']);
+  assert.equal('reminderSlotIds' in unpacked.tasks[1], false);
+
+  // Backward compatibility: hand-craft a v9 snapshot (task records without taskReminderSlotIds)
+  const stringTable = new StringTable();
+  const idTable = new IdTable();
+  const taskIdIdx = idTable.intern(7);
+  const titleIdx = stringTable.intern('Legacy v9 task');
+  const noteIdx = stringTable.intern('Note');
+  const slotIdIdx = stringTable.intern('slot-v9');
+  const slotLabelIdx = stringTable.intern('Midday');
+  const slotTimeIdx = stringTable.intern('12:00');
+
+  const body = new SnapshotBytes(128);
+  body.writeUint8(0x48);
+  body.writeUint8(0x42);
+  body.writeUint8(0x54);
+  body.writeUint8(0x31);
+  body.writeUint8(9); // version = 9
+  stringTable.writeTo(body);
+  idTable.writeTo(body);
+  body.writeVarUint(0); // habits
+  body.writeVarUint(0); // notes
+  body.writeVarUint(1); // tasks
+  body.writeVarUint(taskIdIdx);
+  body.writeVarUint(titleIdx);
+  body.writeVarUint(noteIdx);
+  body.writeUint8(0); // hasDueDay
+  body.writeUint8(0); // done
+  body.writeUint8(0); // deletedAt
+  body.writeUint8(0); // completedDay
+  body.writeUint8(0); // repeatable
+  body.writeUint8(0); // status = open
+  body.writeFloat64(1000);
+  body.writeFloat64(2000);
+  // v9 reminderSlots
+  body.writeVarUint(1);
+  body.writeVarUint(slotIdIdx);
+  body.writeVarUint(slotLabelIdx);
+  body.writeVarUint(slotTimeIdx);
+  body.writeUint8(0); // deletedAt = null
+  body.writeFloat64(100);
+  body.writeFloat64(100);
+
+  const payload = body.toUint8Array();
+  const frame = new SnapshotBytes(payload.byteLength + 4);
+  frame.writeBytes(payload);
+  frame.writeUint32BE(SnapshotBytes.computeChecksum(payload));
+
+  const unpackedV9 = SnapshotCodec.unpack(frame.toUint8Array());
+  assert.equal(unpackedV9.tasks.length, 1);
+  assert.equal(unpackedV9.tasks[0].title, 'Legacy v9 task');
+  assert.equal('reminderSlotIds' in unpackedV9.tasks[0], false);
+  assert.equal(unpackedV9.reminderSlots?.length, 1);
+});

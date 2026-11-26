@@ -52,6 +52,7 @@ export interface TaskDraftPrefill {
   note: string;
   dueDay: number | null;
   repeatable: boolean;
+  reminderSlotIds?: string[];
 }
 
 const EMPTY_SNAPSHOT: DomainSnapshot = {
@@ -1153,14 +1154,16 @@ export class TrackerStore {
     await this.reloadFromDb();
   }
 
-  public openCreateTask(options?: { dueDay?: number | null }): void {
+  public openCreateTask(options?: { dueDay?: number | null; reminderSlotIds?: string[] }): void {
     this.setEditingTask(null);
     this.setTaskModalMode('create');
+    const cleanSlots = options?.reminderSlotIds?.filter((s) => s.trim().length > 0) ?? [];
     this.setTaskDraftPrefill({
       title: '',
       note: '',
       dueDay: options?.dueDay !== undefined ? options.dueDay : this.todayDay(),
       repeatable: false,
+      ...(cleanSlots.length > 0 ? { reminderSlotIds: cleanSlots } : {}),
     });
     this.setTaskModalOpen(true);
   }
@@ -1182,6 +1185,7 @@ export class TrackerStore {
     note: string;
     dueDay: number | null;
     repeatable?: boolean;
+    reminderSlotIds?: string[];
     status?: TaskStatus;
   }): Promise<void> {
     const target = this.taskModalMode() === 'edit' ? this.editingTask() : null;
@@ -1193,6 +1197,7 @@ export class TrackerStore {
         note: data.note,
         dueDay: data.dueDay,
         repeatable: data.repeatable,
+        reminderSlotIds: data.reminderSlotIds,
         status: nextStatus,
         completedDay:
           nextStatus === 'done'
@@ -1233,11 +1238,13 @@ export class TrackerStore {
     if (nextDone && task.repeatable) {
       this.setEditingTask(null);
       this.setTaskModalMode('next');
+      const inheritedSlots = task.reminderSlotIds?.filter((s) => s.trim().length > 0) ?? [];
       this.setTaskDraftPrefill({
         title: task.title,
         note: task.note,
         dueDay: TodayBoard.suggestNextOccurrenceDueDay(task, this.todayDay()),
         repeatable: true,
+        ...(inheritedSlots.length > 0 ? { reminderSlotIds: inheritedSlots } : {}),
       });
       this.setTaskModalOpen(true);
     }

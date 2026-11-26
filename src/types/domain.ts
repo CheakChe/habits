@@ -131,6 +131,8 @@ export interface Task {
   status: TaskStatus;
   completedDay: number | null;
   repeatable: boolean;
+  /** Explicitly assigned reminder slot IDs (omitted/empty uses default task reminder slot if configured) */
+  reminderSlotIds?: string[];
   deletedAt: number | null;
   createdAt: number;
   updatedAt: number;

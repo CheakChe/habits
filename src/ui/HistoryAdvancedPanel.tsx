@@ -1170,7 +1170,7 @@ export function HistoryAdvancedPanel(props: HistoryAdvancedPanelProps): JSX.Elem
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-1 text-[11px] text-[#8E95A5]">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-3 text-xs text-[#8E95A5]">
             <Show
               when={hoveredHeatDay()}
               fallback={
