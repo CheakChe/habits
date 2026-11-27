@@ -83,7 +83,7 @@ export class DriveSyncService {
     return accessToken;
   }
 
-  private async handleResponseError(res: Response): Promise<never> {
+  private handleResponseError(res: Response): never {
     if (res.status === 401 || res.status === 403) {
       throw new NonRetryableError(
         'Google Drive authorization expired or insufficient permissions.'
@@ -130,7 +130,7 @@ export class DriveSyncService {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        await this.handleResponseError(res);
+        this.handleResponseError(res);
       }
       const data = (await res.json()) as { files?: DriveFileMeta[] };
       return this.sortFilesNewestFirst(data.files ?? []);
@@ -144,7 +144,7 @@ export class DriveSyncService {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        await this.handleResponseError(res);
+        this.handleResponseError(res);
       }
       const buffer = await res.arrayBuffer();
       return new Uint8Array(buffer);
@@ -162,7 +162,7 @@ export class DriveSyncService {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        await this.handleResponseError(res);
+        this.handleResponseError(res);
       }
       const buffer = await res.arrayBuffer();
       return new Uint8Array(buffer);
@@ -188,7 +188,7 @@ export class DriveSyncService {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
-          await this.handleResponseError(res);
+          this.handleResponseError(res);
         }
         return (await res.json()) as {
           revisions?: Array<{
@@ -303,7 +303,7 @@ export class DriveSyncService {
         body,
       });
       if (!res.ok) {
-        await this.handleResponseError(res);
+        this.handleResponseError(res);
       }
     });
   }

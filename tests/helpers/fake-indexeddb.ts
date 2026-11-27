@@ -46,25 +46,74 @@ function createRequest<T>(executor: () => T): IDBRequest<T> {
   return req as unknown as IDBRequest<T>;
 }
 
+interface DatabaseEntry {
+  version: number;
+  stores: Map<string, StoreSchema>;
+}
+
+export interface SeedStoreSpec {
+  keyPath: KeyPath;
+  autoIncrement?: boolean;
+  nextId?: number;
+  indexes?: string[];
+  records?: Array<Record<string, unknown>>;
+}
+
 export class FakeIndexedDBFactory {
-  private readonly databases = new Map<string, Map<string, StoreSchema>>();
+  private readonly databases = new Map<string, DatabaseEntry>();
 
   public reset(): void {
     this.databases.clear();
   }
 
-  public open(name: string, _version?: number): IDBOpenDBRequest {
-    let stores = this.databases.get(name);
-    const needsUpgrade = !stores;
-    if (!stores) {
-      stores = new Map<string, StoreSchema>();
-      this.databases.set(name, stores);
+  public seedDatabase(
+    name: string,
+    version: number,
+    storesSpec: Record<string, SeedStoreSpec>
+  ): void {
+    const stores = new Map<string, StoreSchema>();
+    for (const [storeName, spec] of Object.entries(storesSpec)) {
+      const records = new Map<string, unknown>();
+      let maxNumericKey = 0;
+      for (const raw of spec.records ?? []) {
+        const rec = cloneRecord(raw);
+        const key = extractKey(rec, spec.keyPath);
+        records.set(encodeKey(key), rec);
+        if (typeof key === 'number' && key > maxNumericKey) {
+          maxNumericKey = key;
+        }
+      }
+      stores.set(storeName, {
+        keyPath: spec.keyPath,
+        autoIncrement: Boolean(spec.autoIncrement),
+        nextId: spec.nextId ?? maxNumericKey + 1,
+        records,
+        indexes: new Set(spec.indexes ?? []),
+      });
+    }
+    this.databases.set(name, { version, stores });
+  }
+
+  public open(name: string, version?: number): IDBOpenDBRequest {
+    let entry = this.databases.get(name);
+    const oldVersion = entry ? entry.version : 0;
+    const targetVersion = version ?? (entry ? entry.version : 1);
+    const needsUpgrade = !entry || targetVersion > oldVersion;
+    if (!entry) {
+      entry = {
+        version: targetVersion,
+        stores: new Map<string, StoreSchema>(),
+      };
+      this.databases.set(name, entry);
+    } else if (needsUpgrade) {
+      entry.version = targetVersion;
     }
 
-    const storeMap = stores;
+    const storeMap = entry.stores;
 
     const db: Record<string, unknown> = {
       name,
+      version: targetVersion,
       objectStoreNames: {
         contains(storeName: string): boolean {
           return storeMap.has(storeName);

@@ -43,8 +43,8 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
     <div class="space-y-6">
       <div class="flex flex-col justify-between gap-4 border-b border-white/[0.08] pb-6 sm:flex-row sm:items-end">
         <div class="space-y-1">
-          <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">Habits</h1>
-          <p class="text-sm text-[#8E95A5]">
+          <h1 class="font-display text-3xl font-semibold tracking-tight text-ink">Habits</h1>
+          <p class="text-sm text-ink-subtle">
             <span class="font-mono tabular-nums">{activeCount()}</span> active
             <span aria-hidden="true"> · </span>
             <span class="font-mono tabular-nums">{archivedCount()}</span> archived
@@ -52,14 +52,14 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
         </div>
 
         <div class="flex max-w-full flex-wrap items-center gap-2.5 self-start sm:gap-3 sm:self-auto">
-          <div class="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#14161B] p-1">
+          <div class="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-surface p-1">
             <button
               type="button"
               onClick={() => setFilter('active')}
               class={`h-8 shrink-0 cursor-pointer rounded-lg px-3 text-xs font-medium whitespace-nowrap transition-colors ${
                 filter() === 'active'
-                  ? 'bg-[#1C1F26] text-[#F5F7FA]'
-                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'bg-surface-elevated text-ink'
+                  : 'text-ink-subtle hover:text-ink'
               }`}
             >
               Active
@@ -69,8 +69,8 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
               onClick={() => setFilter('archived')}
               class={`h-8 shrink-0 cursor-pointer rounded-lg px-3 text-xs font-medium whitespace-nowrap transition-colors ${
                 filter() === 'archived'
-                  ? 'bg-[#1C1F26] text-[#F5F7FA]'
-                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'bg-surface-elevated text-ink'
+                  : 'text-ink-subtle hover:text-ink'
               }`}
             >
               Archived
@@ -80,7 +80,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           <button
             type="button"
             onClick={() => props.onCreateHabit()}
-            class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[#3B82F6] px-4 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-[#2563EB]"
+            class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-accent-hover"
           >
             <PlusIcon class="h-4 w-4" />
             <span>New Habit</span>
@@ -91,8 +91,8 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
       <Show
         when={filtered().length > 0}
         fallback={
-          <div class="space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] px-6 py-14 text-center">
-            <p class="text-sm text-[#8E95A5]">
+          <div class="space-y-4 rounded-2xl border border-white/[0.08] bg-surface px-6 py-14 text-center">
+            <p class="text-sm text-ink-subtle">
               {filter() === 'active'
                 ? 'No active habits yet. Create your first routine to start tracking.'
                 : 'No archived habits. Archiving hides a habit from Today while preserving all historical check-ins.'}
@@ -101,7 +101,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
               <button
                 type="button"
                 onClick={() => props.onCreateHabit()}
-                class="h-10 cursor-pointer rounded-xl bg-[#3B82F6] px-5 text-sm font-medium text-white transition-colors hover:bg-[#2563EB]"
+                class="h-10 cursor-pointer rounded-xl bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
               >
                 Create Habit
               </button>
@@ -109,7 +109,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           </div>
         }
       >
-        <div class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface">
           <ul class="divide-y divide-white/[0.06]">
             <For each={filtered()}>
               {(habit) => {
@@ -135,9 +135,9 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
 
                 const streakToneClass = () => {
                   const m = milestone();
-                  if (m === 100) return 'text-[#FBBF24]';
-                  if (m === 30) return 'text-[#93C5FD]';
-                  if (m === 7) return 'text-[#60A5FA]';
+                  if (m === 100) return 'text-milestone-gold';
+                  if (m === 30) return 'text-accent-tint';
+                  if (m === 7) return 'text-accent-soft';
                   return '';
                 };
 
@@ -168,19 +168,19 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         <div class="flex min-w-0 flex-1 items-start gap-3">
                           <HabitBadge appearanceRaw={habit.color} size="md" />
                           <h2
-                            class="line-clamp-2 text-base font-medium break-words text-[#F5F7FA]"
+                            class="line-clamp-2 text-base font-medium break-words text-ink"
                             title={habit.name}
                           >
                             {habit.name}
                           </h2>
                         </div>
-                        <span class="shrink-0 pt-0.5 font-mono text-xs font-medium whitespace-nowrap text-[#C8CDD8] tabular-nums">
+                        <span class="shrink-0 pt-0.5 font-mono text-xs font-medium whitespace-nowrap text-ink-secondary tabular-nums">
                           {Math.round(metrics().completionRate * 100)}%{' '}
-                          <span class="font-normal text-[#8E95A5]">(30d)</span>
+                          <span class="font-normal text-ink-subtle">(30d)</span>
                         </span>
                       </div>
 
-                      <div class="space-y-1 text-xs text-[#8E95A5]">
+                      <div class="space-y-1 text-xs text-ink-subtle">
                         <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 font-mono tabular-nums">
                           <span
                             class={`whitespace-nowrap ${streakToneClass()}`}
@@ -204,7 +204,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           <Show when={habit.archivedAt === null && weekly().scheduledDays > 0}>
                             <span
                               class={`whitespace-nowrap ${
-                                weekly().isComplete ? 'text-[#60A5FA]' : ''
+                                weekly().isComplete ? 'text-accent-soft' : ''
                               }`}
                             >
                               {weekly().isComplete
@@ -219,7 +219,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                             Started {CivilCalendar.formatShortDate(habit.startDay)}
                           </span>
                           <Show when={activeSchedule().dailyTarget !== null}>
-                            <span class="font-mono whitespace-nowrap text-[#C8CDD8] tabular-nums">
+                            <span class="font-mono whitespace-nowrap text-ink-secondary tabular-nums">
                               Goal {HabitSchedule.formatNumericValue(activeSchedule().dailyTarget!)}
                               {habit.unit ? ` ${habit.unit}` : ''}/day
                             </span>
@@ -238,7 +238,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                         <div class="flex flex-wrap items-center gap-1.5">
                           <Show when={activeSchedule().weeklyTarget !== null}>
                             <span
-                              class="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-[#C8CDD8] tabular-nums"
+                              class="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-ink-secondary tabular-nums"
                               aria-label="Flexible weekly schedule"
                             >
                               {activeSchedule().weeklyTarget}× / week
@@ -246,8 +246,8 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           </Show>
                           <For each={assignedSlots()}>
                             {(slot) => (
-                              <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
-                                <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                              <span class="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent-tint tabular-nums">
+                                <ClockIcon class="h-3 w-3 shrink-0 text-accent-soft" />
                                 <span>
                                   {slot.time}
                                   {slot.label ? ` ${slot.label}` : ''}
@@ -266,7 +266,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           (activeSchedule().weekdays & ALL_WEEKDAYS_MASK) !== ALL_WEEKDAYS_MASK
                         }
                         fallback={
-                          <span class="font-mono text-xs whitespace-nowrap text-[#8E95A5]">
+                          <span class="font-mono text-xs whitespace-nowrap text-ink-subtle">
                             Any day
                           </span>
                         }
@@ -285,7 +285,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                               return (
                                 <span
                                   class={`flex h-6 w-6 items-center justify-center rounded-md font-mono text-[11px] ${
-                                    active ? 'bg-white/[0.1] text-[#F5F7FA]' : 'text-[#4B5563]'
+                                    active ? 'bg-white/[0.1] text-ink' : 'text-ink-dead'
                                   }`}
                                 >
                                   {CivilCalendar.weekdayShortLabel(bit).slice(0, 1)}
@@ -301,7 +301,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                           type="button"
                           onClick={() => props.onEditHabit(habit)}
                           aria-label={`Edit ${habit.name}`}
-                          class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                          class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-ink-subtle transition-colors hover:bg-white/[0.06] hover:text-ink"
                         >
                           <EditIcon class="h-4 w-4" />
                         </button>
@@ -313,7 +313,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
                               ? `Restore ${habit.name}`
                               : `Archive ${habit.name}`
                           }
-                          class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                          class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-ink-subtle transition-colors hover:bg-white/[0.06] hover:text-ink"
                         >
                           <Show
                             when={habit.archivedAt !== null}

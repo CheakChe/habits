@@ -10,39 +10,39 @@ interface EntryViewProps {
 
 export function EntryView(props: EntryViewProps): JSX.Element {
   return (
-    <div class="flex min-h-screen flex-col justify-between bg-[#0A0B0E] px-6 py-10 text-[#F5F7FA]">
+    <div class="flex min-h-screen flex-col justify-between bg-canvas px-6 py-10 text-ink">
       <header class="mx-auto flex w-full max-w-5xl items-center justify-between">
-        <span class="font-display text-lg font-semibold tracking-tight text-[#F5F7FA]">Habits</span>
-        <span class="text-xs text-[#8E95A5]">Local-first tracker</span>
+        <span class="font-display text-lg font-semibold tracking-tight text-ink">Habits</span>
+        <span class="text-xs text-ink-subtle">Local-first tracker</span>
       </header>
 
       <main class="mx-auto my-auto grid w-full max-w-5xl grid-cols-1 items-center gap-12 py-12 lg:grid-cols-12">
         <div class="space-y-6 lg:col-span-7">
-          <h1 class="font-display text-4xl leading-[1.1] font-semibold tracking-[-0.025em] text-[#F5F7FA] sm:text-5xl">
+          <h1 class="font-display text-4xl leading-[1.1] font-semibold tracking-[-0.025em] text-ink sm:text-5xl">
             Build daily momentum without friction.
           </h1>
-          <p class="max-w-xl text-base leading-relaxed text-[#9AA1B1] sm:text-lg">
+          <p class="max-w-xl text-base leading-relaxed text-ink-muted sm:text-lg">
             Track scheduled habits, daily notes, tasks, and long-term streaks directly in your
             browser. Choose whether to keep everything strictly local or sync compact binary
             snapshots across devices via Google Drive.
           </p>
 
           <div class="grid max-w-xl grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
-            <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-[#14161B] p-5">
-              <div class="flex items-center gap-2.5 text-sm font-medium text-[#F5F7FA]">
-                <DriveIcon class="h-4 w-4 text-[#60A5FA]" />
+            <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-surface p-5">
+              <div class="flex items-center gap-2.5 text-sm font-medium text-ink">
+                <DriveIcon class="h-4 w-4 text-accent-soft" />
                 <span>Instant IndexedDB Store</span>
               </div>
-              <p class="text-xs leading-relaxed text-[#8E95A5]">
+              <p class="text-xs leading-relaxed text-ink-subtle">
                 Every check-in and note saves locally in milliseconds and works completely offline.
               </p>
             </div>
-            <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-[#14161B] p-5">
-              <div class="flex items-center gap-2.5 text-sm font-medium text-[#F5F7FA]">
-                <ShieldIcon class="h-4 w-4 text-[#60A5FA]" />
+            <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-surface p-5">
+              <div class="flex items-center gap-2.5 text-sm font-medium text-ink">
+                <ShieldIcon class="h-4 w-4 text-accent-soft" />
                 <span>Private App-Folder Sync</span>
               </div>
-              <p class="text-xs leading-relaxed text-[#8E95A5]">
+              <p class="text-xs leading-relaxed text-ink-subtle">
                 Google mode stores a single binary snapshot inside your hidden Drive app data
                 folder.
               </p>
@@ -51,10 +51,10 @@ export function EntryView(props: EntryViewProps): JSX.Element {
         </div>
 
         <div class="lg:col-span-5">
-          <div class="space-y-6 rounded-3xl border border-white/[0.08] bg-[#14161B] p-7 sm:p-8">
+          <div class="space-y-6 rounded-3xl border border-white/[0.08] bg-surface p-7 sm:p-8">
             <div class="space-y-1.5">
-              <h2 class="font-display text-xl font-semibold text-[#F5F7FA]">Choose how to start</h2>
-              <p class="text-sm text-[#8E95A5]">
+              <h2 class="font-display text-xl font-semibold text-ink">Choose how to start</h2>
+              <p class="text-sm text-ink-subtle">
                 Your choice is remembered on this device and can be changed anytime.
               </p>
             </div>
@@ -63,7 +63,7 @@ export function EntryView(props: EntryViewProps): JSX.Element {
               {(err) => (
                 <div
                   role="alert"
-                  class="rounded-xl border border-[#EF4444]/25 bg-[#EF4444]/10 px-4 py-3 text-xs text-[#FCA5A5]"
+                  class="rounded-xl border border-danger/25 bg-danger/10 px-4 py-3 text-xs text-danger-soft"
                 >
                   {err()}
                 </div>
@@ -115,13 +115,13 @@ export function EntryView(props: EntryViewProps): JSX.Element {
                 type="button"
                 onClick={() => props.onSelectGuest()}
                 disabled={props.isSigningIn}
-                class="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-[#1C1F26] text-sm font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933] disabled:opacity-50"
+                class="flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-surface-elevated text-sm font-medium text-ink transition-colors hover:bg-surface-hover disabled:opacity-50"
               >
                 <span>Continue as Guest</span>
               </button>
             </div>
 
-            <p class="text-xs leading-relaxed text-[#8E95A5]">
+            <p class="text-xs leading-relaxed text-ink-subtle">
               Guest mode never makes network requests. Google mode uses your private Drive app
               folder for snapshots and can optionally manage a separate Habits Reminders calendar.
             </p>
@@ -129,7 +129,7 @@ export function EntryView(props: EntryViewProps): JSX.Element {
         </div>
       </main>
 
-      <footer class="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 text-xs text-[#6B7280]">
+      <footer class="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 text-xs text-ink-dim">
         <span>Habits</span>
         <div class="flex items-center gap-4">
           <span>Offline-capable IndexedDB persistence</span>
@@ -137,7 +137,7 @@ export function EntryView(props: EntryViewProps): JSX.Element {
             href="./privacy.html"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-[#9AA1B1] underline-offset-4 hover:text-[#F5F7FA] hover:underline"
+            class="text-ink-muted underline-offset-4 hover:text-ink hover:underline"
           >
             Privacy Policy
           </a>

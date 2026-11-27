@@ -5,6 +5,10 @@ import { SnapshotCodec } from '../src/sync/snapshot-codec';
 import { DomainSnapshot } from '../src/types/domain';
 import { NonRetryableError } from '../src/utils/helpers';
 
+function resolveFetchUrl(input: string | URL | Request): string {
+  return typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+}
+
 function makeSnapshot(overrides?: Partial<DomainSnapshot>): DomainSnapshot {
   return {
     habits: overrides?.habits ?? [
@@ -104,27 +108,31 @@ test('DriveSyncService creates remote snapshot via POST on first sync and skips 
     body?: Uint8Array;
   }[] = [];
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     const headers = (init?.headers ?? {}) as Record<string, string>;
     const body = init?.body instanceof Uint8Array ? init.body : undefined;
     requests.push({ url, method, headers, body });
 
     if (method === 'GET' && url.includes('spaces=appDataFolder')) {
-      return new Response(JSON.stringify({ files: [] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ files: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
     }
     if (method === 'POST' && url.includes('uploadType=multipart')) {
-      return new Response(JSON.stringify({ id: 'file-123' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'file-123' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new DriveSyncService();
   const local = makeSnapshot();
@@ -179,28 +187,30 @@ test('DriveSyncService merges remote changes cleanly without uploading when remo
   });
   const remoteBytes = SnapshotCodec.pack(remoteSnapshot);
 
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     if (url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: [
-            {
-              id: 'file-1',
-              name: 'habits-snapshot.bin',
-              version: '7',
-              modifiedTime: '2026-11-20T12:00:00Z',
-            },
-          ],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'file-1',
+                name: 'habits-snapshot.bin',
+                version: '7',
+                modifiedTime: '2026-11-20T12:00:00Z',
+              },
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (url.includes('/file-1?alt=media')) {
-      return new Response(new Uint8Array(remoteBytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(remoteBytes), { status: 200 }));
     }
-    throw new Error(`Unexpected fetch: ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+  };
 
   const service = new DriveSyncService();
   const olderLocal = makeSnapshot();
@@ -219,16 +229,16 @@ test('DriveSyncService detects optimistic concurrency conflicts before POST/PATC
 
   // Case 1: Remote file created while user was confirming initial upload
   let lookupCall = 0;
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     if (url.includes('spaces=appDataFolder')) {
       lookupCall += 1;
       const files =
         lookupCall === 1 ? [] : [{ id: 'race-file', name: 'habits-snapshot.bin', version: '1' }];
-      return new Response(JSON.stringify({ files }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files }), { status: 200 }));
     }
-    throw new Error(`Should not attempt upload on concurrent create: ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Should not attempt upload on concurrent create: ${url}`));
+  };
 
   const service = new DriveSyncService();
   const prepNew = await service.prepareSync('google', 'tok', makeSnapshot());
@@ -240,29 +250,31 @@ test('DriveSyncService detects optimistic concurrency conflicts before POST/PATC
   // Case 2: Remote version changed before PATCH
   const remoteBytes = SnapshotCodec.pack(makeSnapshot());
   let lookupVersionCall = 0;
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     if (url.includes('spaces=appDataFolder')) {
       lookupVersionCall += 1;
-      return new Response(
-        JSON.stringify({
-          files: [
-            {
-              id: 'file-1',
-              name: 'habits-snapshot.bin',
-              version: lookupVersionCall === 1 ? '10' : '11',
-              modifiedTime: '2026-11-20T12:00:00Z',
-            },
-          ],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'file-1',
+                name: 'habits-snapshot.bin',
+                version: lookupVersionCall === 1 ? '10' : '11',
+                modifiedTime: '2026-11-20T12:00:00Z',
+              },
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (url.includes('alt=media')) {
-      return new Response(new Uint8Array(remoteBytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(remoteBytes), { status: 200 }));
     }
-    throw new Error(`Should not PATCH when version changed: ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Should not PATCH when version changed: ${url}`));
+  };
 
   const localNewer = makeSnapshot({
     habits: [
@@ -288,25 +300,27 @@ test('DriveSyncService detects optimistic concurrency conflicts before POST/PATC
   );
 
   // Case 3: HTTP 412 during PATCH
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     if (url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: [{ id: 'file-1', name: 'habits-snapshot.bin', version: '10' }],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [{ id: 'file-1', name: 'habits-snapshot.bin', version: '10' }],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (url.includes('alt=media')) {
-      return new Response(new Uint8Array(remoteBytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(remoteBytes), { status: 200 }));
     }
     if (method === 'PATCH') {
-      return new Response('Precondition failed', { status: 412 });
+      return Promise.resolve(new Response('Precondition failed', { status: 412 }));
     }
-    throw new Error(`Unexpected request: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected request: ${method} ${url}`));
+  };
 
   const service3 = new DriveSyncService();
   const prep412 = await service3.prepareSync('google', 'tok', localNewer);
@@ -323,19 +337,20 @@ test('DriveSyncService protects local data on corrupt/empty remote snapshots and
   });
 
   // Corrupt remote bytes
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     if (url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({ files: [{ id: 'bad-file', name: 'habits-snapshot.bin' }] }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(JSON.stringify({ files: [{ id: 'bad-file', name: 'habits-snapshot.bin' }] }), {
+          status: 200,
+        })
       );
     }
     if (url.includes('alt=media')) {
-      return new Response(new Uint8Array([1, 2, 3, 4, 5]), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array([1, 2, 3, 4, 5]), { status: 200 }));
     }
-    throw new Error(`Unexpected: ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected: ${url}`));
+  };
 
   const service = new DriveSyncService();
   await assert.rejects(
@@ -344,19 +359,21 @@ test('DriveSyncService protects local data on corrupt/empty remote snapshots and
   );
 
   // Empty remote file
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     if (url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({ files: [{ id: 'empty-file', name: 'habits-snapshot.bin' }] }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ files: [{ id: 'empty-file', name: 'habits-snapshot.bin' }] }),
+          { status: 200 }
+        )
       );
     }
     if (url.includes('alt=media')) {
-      return new Response(new Uint8Array([]), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array([]), { status: 200 }));
     }
-    throw new Error(`Unexpected: ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected: ${url}`));
+  };
 
   await assert.rejects(
     () => service.prepareSync('google', 'tok', makeSnapshot()),
@@ -365,10 +382,10 @@ test('DriveSyncService protects local data on corrupt/empty remote snapshots and
 
   // 401 unauthorized is non-retryable and triggers authorization error message
   let authAttempts = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (): Promise<Response> => {
     authAttempts += 1;
-    return new Response('Unauthorized', { status: 401 });
-  }) as typeof fetch;
+    return Promise.resolve(new Response('Unauthorized', { status: 401 }));
+  };
 
   await assert.rejects(
     () => service.prepareSync('google', 'tok', makeSnapshot()),
@@ -432,45 +449,47 @@ test('DriveSyncService consolidates duplicate habits-snapshot.bin files and clea
   const deletedFileIds: string[] = [];
   let patchPayload: Uint8Array | undefined;
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: [
-            {
-              id: 'dup-old',
-              name: 'habits-snapshot.bin',
-              version: '1',
-              modifiedTime: '2026-11-20T10:00:00Z',
-            },
-            {
-              id: 'primary-new',
-              name: 'habits-snapshot.bin',
-              version: '4',
-              modifiedTime: '2026-11-20T12:00:00Z',
-            },
-            {
-              id: 'dup-empty',
-              name: 'habits-snapshot.bin',
-              version: '1',
-              modifiedTime: '2026-11-20T09:00:00Z',
-            },
-          ],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'dup-old',
+                name: 'habits-snapshot.bin',
+                version: '1',
+                modifiedTime: '2026-11-20T10:00:00Z',
+              },
+              {
+                id: 'primary-new',
+                name: 'habits-snapshot.bin',
+                version: '4',
+                modifiedTime: '2026-11-20T12:00:00Z',
+              },
+              {
+                id: 'dup-empty',
+                name: 'habits-snapshot.bin',
+                version: '1',
+                modifiedTime: '2026-11-20T09:00:00Z',
+              },
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/primary-new?alt=media')) {
-      return new Response(new Uint8Array(primaryBytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(primaryBytes), { status: 200 }));
     }
     if (method === 'GET' && url.includes('/dup-old?alt=media')) {
-      return new Response(new Uint8Array(dupBytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(dupBytes), { status: 200 }));
     }
     if (method === 'GET' && url.includes('/dup-empty?alt=media')) {
-      return new Response(new Uint8Array([]), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array([]), { status: 200 }));
     }
     if (method === 'PATCH' && url.includes('/primary-new?uploadType=multipart')) {
       const { snapshotBytes } = extractMultipartPayload(
@@ -478,17 +497,21 @@ test('DriveSyncService consolidates duplicate habits-snapshot.bin files and clea
         (init!.headers as Record<string, string>)['Content-Type']
       );
       patchPayload = snapshotBytes;
-      return new Response(JSON.stringify({ id: 'primary-new', version: '5' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'primary-new', version: '5' }), { status: 200 })
+      );
     }
     if (method === 'DELETE' && url.includes('/files/dup-')) {
       deletedFileIds.push(url.split('/files/')[1]);
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
     if (method === 'GET' && url.includes('/primary-new/revisions')) {
-      return new Response(JSON.stringify({ revisions: [{ id: '1' }] }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ revisions: [{ id: '1' }] }), { status: 200 })
+      );
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new DriveSyncService();
   const prep = await service.prepareSync('google', 'tok', makeSnapshot());
@@ -538,33 +561,37 @@ test('DriveSyncService prunes old revisions beyond keep limit after PATCH and le
 
   const deletedRevisionIds: string[] = [];
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: [{ id: 'file-1', name: 'habits-snapshot.bin', version: '13' }],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [{ id: 'file-1', name: 'habits-snapshot.bin', version: '13' }],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/file-1?alt=media')) {
-      return new Response(new Uint8Array(remoteBytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(remoteBytes), { status: 200 }));
     }
     if (method === 'PATCH') {
-      return new Response(JSON.stringify({ id: 'file-1', version: '14' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'file-1', version: '14' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.includes('/file-1/revisions?')) {
-      return new Response(JSON.stringify({ revisions }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ revisions }), { status: 200 }));
     }
     if (method === 'DELETE' && url.includes('/file-1/revisions/')) {
       deletedRevisionIds.push(url.split('/revisions/')[1]);
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new DriveSyncService();
   const prep = await service.prepareSync('google', 'tok', localNewer);
@@ -614,42 +641,46 @@ test('DriveSyncService lists, inspects, and restores historical revisions cleanl
   const rev2Bytes = SnapshotCodec.pack(rev2HeadSnap);
   let restoredPatchBytes: Uint8Array | undefined;
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: [{ id: 'file-1', name: 'habits-snapshot.bin', version: '2' }],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [{ id: 'file-1', name: 'habits-snapshot.bin', version: '2' }],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/file-1/revisions?')) {
-      return new Response(
-        JSON.stringify({
-          revisions: [
-            {
-              id: 'rev-1',
-              modifiedTime: '2026-11-19T10:00:00Z',
-              size: String(rev1Bytes.byteLength),
-            },
-            {
-              id: 'rev-2',
-              modifiedTime: '2026-11-20T10:00:00Z',
-              size: String(rev2Bytes.byteLength),
-            },
-          ],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            revisions: [
+              {
+                id: 'rev-1',
+                modifiedTime: '2026-11-19T10:00:00Z',
+                size: String(rev1Bytes.byteLength),
+              },
+              {
+                id: 'rev-2',
+                modifiedTime: '2026-11-20T10:00:00Z',
+                size: String(rev2Bytes.byteLength),
+              },
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/revisions/rev-1?alt=media')) {
-      return new Response(new Uint8Array(rev1Bytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(rev1Bytes), { status: 200 }));
     }
     if (method === 'GET' && url.includes('/file-1?alt=media')) {
-      return new Response(new Uint8Array(rev2Bytes), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(rev2Bytes), { status: 200 }));
     }
     if (method === 'PATCH' && url.includes('/file-1?uploadType=multipart')) {
       const { snapshotBytes } = extractMultipartPayload(
@@ -657,10 +688,12 @@ test('DriveSyncService lists, inspects, and restores historical revisions cleanl
         (init!.headers as Record<string, string>)['Content-Type']
       );
       restoredPatchBytes = snapshotBytes;
-      return new Response(JSON.stringify({ id: 'file-1', version: '3' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'file-1', version: '3' }), { status: 200 })
+      );
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new DriveSyncService();
   const list = await service.listRevisions('google', 'tok');
@@ -701,19 +734,19 @@ test('DriveSyncService handles revision auth/empty/error states and tolerates cl
   );
 
   // Empty file list in listRevisions
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     if (url.includes('spaces=appDataFolder')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (url.includes('/revisions/rev-empty?alt=media')) {
-      return new Response(new Uint8Array(0), { status: 200 });
+      return Promise.resolve(new Response(new Uint8Array(0), { status: 200 }));
     }
     if (url.includes('/revisions/rev-404?alt=media')) {
-      return new Response('not found', { status: 404 });
+      return Promise.resolve(new Response('not found', { status: 404 }));
     }
-    return new Response('server error', { status: 500 });
-  }) as typeof fetch;
+    return Promise.resolve(new Response('server error', { status: 500 }));
+  };
 
   const emptyList = await service.listRevisions('google', 'tok');
   assert.equal(emptyList.fileId, null);

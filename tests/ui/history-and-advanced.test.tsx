@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@solidjs/testing-library';
 import { describe, expect, it, vi } from 'vitest';
 import { DomainSnapshot } from '../../src/types/domain';
-import { HistoryAdvancedPanel } from '../../src/ui/HistoryAdvancedPanel';
+import { HistoryAdvancedPanel } from '../../src/ui/history/HistoryAdvancedPanel';
 import { HistoryView } from '../../src/ui/HistoryView';
 import { AdvancedAnalytics } from '../../src/utils/advanced-analytics';
 import { CivilCalendar } from '../../src/utils/civil-calendar';
@@ -485,7 +485,7 @@ describe('HistoryView & HistoryAdvancedPanel', () => {
     expect(onInspectDayInCalendar).toHaveBeenCalledWith(TODAY);
   });
 
-  it('renders flexible off-schedule and partial measured habit controls in HistoryView selected day panel and saves note on Enter', async () => {
+  it('renders flexible off-schedule and partial measured habit controls in HistoryView selected day panel and saves note on Enter', () => {
     const onIncrementCheckinValue = vi.fn().mockResolvedValue(undefined);
     const onSaveNote = vi.fn().mockResolvedValue(undefined);
 

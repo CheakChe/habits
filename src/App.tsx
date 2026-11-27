@@ -1,4 +1,5 @@
-import { JSX, Match, Show, Switch, onCleanup, onMount } from 'solid-js';
+import { For, JSX, Match, Show, Switch, onCleanup, onMount } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 import { EntryView } from './ui/EntryView';
 import { HabitsView } from './ui/HabitsView';
 import { HistoryView } from './ui/HistoryView';
@@ -11,18 +12,23 @@ import {
   TasksTabIcon,
   TodayTabIcon,
 } from './ui/Icons';
-import {
-  AccountModal,
-  DriveRevisionsModal,
-  HabitModal,
-  RemindersModal,
-  SyncConfirmModal,
-  TaskModal,
-} from './ui/Modals';
+import { AccountModal } from './ui/modals/AccountModal';
+import { DriveRevisionsModal } from './ui/modals/DriveRevisionsModal';
+import { HabitModal } from './ui/modals/HabitModal';
+import { RemindersModal } from './ui/modals/RemindersModal';
+import { SyncConfirmModal } from './ui/modals/SyncConfirmModal';
+import { TaskModal } from './ui/modals/TaskModal';
 import { TasksView } from './ui/TasksView';
 import { TodayView } from './ui/TodayView';
 import { OfflineBanner, PWAInstallButton } from './ui/PwaControls';
 import { TrackerStore } from './ui/tracker-store';
+
+const NAV_ITEMS = [
+  { id: 'today', label: 'Today', icon: TodayTabIcon },
+  { id: 'habits', label: 'Habits', icon: HabitsTabIcon },
+  { id: 'tasks', label: 'Tasks', icon: TasksTabIcon },
+  { id: 'history', label: 'Progress', icon: HistoryTabIcon },
+] as const;
 
 export default function App(): JSX.Element {
   const store = new TrackerStore();
@@ -47,15 +53,15 @@ export default function App(): JSX.Element {
         />
       }
     >
-      <div class="min-h-screen overflow-x-clip bg-[#0A0B0E] pb-24 text-[#F5F7FA] md:pb-12">
+      <div class="min-h-screen overflow-x-clip bg-canvas pb-24 text-ink md:pb-12">
         {/* Top Bar Contract: 3 zones separated by gap-8 */}
-        <header class="sticky top-0 z-30 h-14 border-b border-white/[0.08] bg-[#0A0B0E]/85 backdrop-blur-md">
+        <header class="sticky top-0 z-30 h-14 border-b border-white/[0.08] bg-canvas/85 backdrop-blur-md">
           <div class="mx-auto flex h-full max-w-6xl items-center justify-between gap-4 px-4 sm:gap-8 sm:px-6">
             {/* Zone 1: Brand Wordmark */}
             <button
               type="button"
               onClick={() => store.setActiveTab('today')}
-              class="shrink-0 cursor-pointer font-display text-lg font-semibold tracking-tight whitespace-nowrap text-[#F5F7FA]"
+              class="shrink-0 cursor-pointer font-display text-lg font-semibold tracking-tight whitespace-nowrap text-ink"
             >
               Habits
             </button>
@@ -65,50 +71,21 @@ export default function App(): JSX.Element {
               aria-label="Primary navigation"
               class="hidden items-center gap-6 text-sm font-medium md:flex"
             >
-              <button
-                type="button"
-                onClick={() => store.setActiveTab('today')}
-                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
-                  store.activeTab() === 'today'
-                    ? 'border-[#3B82F6] text-[#F5F7FA]'
-                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => store.setActiveTab('habits')}
-                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
-                  store.activeTab() === 'habits'
-                    ? 'border-[#3B82F6] text-[#F5F7FA]'
-                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
-                }`}
-              >
-                Habits
-              </button>
-              <button
-                type="button"
-                onClick={() => store.setActiveTab('tasks')}
-                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
-                  store.activeTab() === 'tasks'
-                    ? 'border-[#3B82F6] text-[#F5F7FA]'
-                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
-                }`}
-              >
-                Tasks
-              </button>
-              <button
-                type="button"
-                onClick={() => store.setActiveTab('history')}
-                class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
-                  store.activeTab() === 'history'
-                    ? 'border-[#3B82F6] text-[#F5F7FA]'
-                    : 'border-transparent text-[#8E95A5] hover:text-[#F5F7FA]'
-                }`}
-              >
-                Progress
-              </button>
+              <For each={NAV_ITEMS}>
+                {(item) => (
+                  <button
+                    type="button"
+                    onClick={() => store.setActiveTab(item.id)}
+                    class={`shrink-0 cursor-pointer border-b-2 py-1.5 whitespace-nowrap transition-colors ${
+                      store.activeTab() === item.id
+                        ? 'border-accent text-ink'
+                        : 'border-transparent text-ink-subtle hover:text-ink'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                )}
+              </For>
             </nav>
 
             {/* Zone 3: Primary action (+ optional install trigger when available) */}
@@ -120,9 +97,9 @@ export default function App(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => store.setAccountModalOpen(true)}
-                    class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-[#14161B] px-3.5 text-xs font-medium whitespace-nowrap text-[#F5F7FA] transition-colors hover:bg-[#1C1F26]"
+                    class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-surface px-3.5 text-xs font-medium whitespace-nowrap text-ink transition-colors hover:bg-surface-elevated"
                   >
-                    <DriveIcon class="h-3.5 w-3.5 text-[#8E95A5]" />
+                    <DriveIcon class="h-3.5 w-3.5 text-ink-subtle" />
                     <span>Guest Mode</span>
                   </button>
                 }
@@ -135,7 +112,7 @@ export default function App(): JSX.Element {
                     store.setAccountModalOpen(true);
                   }}
                   disabled={store.syncBusy()}
-                  class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-[#3B82F6] px-3.5 text-xs font-medium whitespace-nowrap text-white transition-colors hover:bg-[#2563EB] disabled:opacity-50"
+                  class="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-xl bg-accent px-3.5 text-xs font-medium whitespace-nowrap text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
                 >
                   <CloudSyncIcon class="h-3.5 w-3.5" />
                   <span>
@@ -156,7 +133,7 @@ export default function App(): JSX.Element {
           <OfflineBanner />
 
           <Show when={store.mode() === 'google'}>
-            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-[#8E95A5]">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs text-ink-subtle">
               <span class="break-anywhere min-w-0">
                 {store.googleEmail()
                   ? `Google Mode (${store.googleEmail()}) · Private Drive snapshots`
@@ -168,8 +145,8 @@ export default function App(): JSX.Element {
                   onClick={() => store.openRemindersModal()}
                   class={`shrink-0 cursor-pointer whitespace-nowrap ${
                     store.isCalendarSyncNeeded()
-                      ? 'text-[#F59E0B] hover:underline'
-                      : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                      ? 'text-warning hover:underline'
+                      : 'text-ink-subtle hover:text-ink'
                   }`}
                 >
                   {store.isCalendarSyncNeeded() ? 'Reminders · Sync' : 'Reminders'}
@@ -177,14 +154,14 @@ export default function App(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => void store.openDriveRevisions()}
-                  class="shrink-0 cursor-pointer whitespace-nowrap text-[#8E95A5] hover:text-[#F5F7FA]"
+                  class="shrink-0 cursor-pointer whitespace-nowrap text-ink-subtle hover:text-ink"
                 >
                   Version History
                 </button>
                 <button
                   type="button"
                   onClick={() => store.setAccountModalOpen(true)}
-                  class="shrink-0 cursor-pointer whitespace-nowrap text-[#60A5FA] hover:underline"
+                  class="shrink-0 cursor-pointer whitespace-nowrap text-accent-soft hover:underline"
                 >
                   Account &amp; Mode
                 </button>
@@ -198,8 +175,8 @@ export default function App(): JSX.Element {
                 role="status"
                 class={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-xs ${
                   banner().kind === 'error'
-                    ? 'border-[#EF4444]/25 bg-[#EF4444]/10 text-[#FCA5A5]'
-                    : 'border-[#3B82F6]/30 bg-[#3B82F6]/10 text-[#93C5FD]'
+                    ? 'border-danger/25 bg-danger/10 text-danger-soft'
+                    : 'border-accent/30 bg-accent/10 text-accent-tint'
                 }`}
               >
                 <span class="break-anywhere min-w-0 flex-1">{banner().text}</span>
@@ -218,7 +195,7 @@ export default function App(): JSX.Element {
           <Show
             when={store.dbReady()}
             fallback={
-              <div class="rounded-2xl border border-white/[0.08] bg-[#14161B] p-12 text-center text-sm text-[#8E95A5]">
+              <div class="rounded-2xl border border-white/[0.08] bg-surface p-12 text-center text-sm text-ink-subtle">
                 Opening local IndexedDB store...
               </div>
             }
@@ -304,48 +281,22 @@ export default function App(): JSX.Element {
         {/* Mobile Bottom Tab Bar */}
         <nav
           aria-label="Mobile navigation"
-          class="fixed right-0 bottom-0 left-0 z-40 grid h-16 grid-cols-4 items-center border-t border-white/[0.08] bg-[#0A0B0E]/92 backdrop-blur-md md:hidden"
+          class="fixed right-0 bottom-0 left-0 z-40 grid h-16 grid-cols-4 items-center border-t border-white/[0.08] bg-canvas/92 backdrop-blur-md md:hidden"
         >
-          <button
-            type="button"
-            onClick={() => store.setActiveTab('today')}
-            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
-              store.activeTab() === 'today' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-            }`}
-          >
-            <TodayTabIcon class="h-5 w-5" />
-            <span>Today</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => store.setActiveTab('habits')}
-            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
-              store.activeTab() === 'habits' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-            }`}
-          >
-            <HabitsTabIcon class="h-5 w-5" />
-            <span>Habits</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => store.setActiveTab('tasks')}
-            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
-              store.activeTab() === 'tasks' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-            }`}
-          >
-            <TasksTabIcon class="h-5 w-5" />
-            <span>Tasks</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => store.setActiveTab('history')}
-            class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
-              store.activeTab() === 'history' ? 'text-[#60A5FA]' : 'text-[#8E95A5]'
-            }`}
-          >
-            <HistoryTabIcon class="h-5 w-5" />
-            <span>Progress</span>
-          </button>
+          <For each={NAV_ITEMS}>
+            {(item) => (
+              <button
+                type="button"
+                onClick={() => store.setActiveTab(item.id)}
+                class={`flex h-full cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-medium ${
+                  store.activeTab() === item.id ? 'text-accent-soft' : 'text-ink-subtle'
+                }`}
+              >
+                <Dynamic component={item.icon} class="h-5 w-5" />
+                <span>{item.label}</span>
+              </button>
+            )}
+          </For>
         </nav>
 
         {/* Modals */}

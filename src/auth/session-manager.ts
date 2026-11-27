@@ -61,9 +61,9 @@ export class SessionManager {
       deps.fetchFn ??
       (typeof fetch !== 'undefined'
         ? fetch.bind(globalThis)
-        : ((() => {
+        : () => {
             throw new Error('fetch is not available');
-          }) as typeof fetch));
+          });
     this.nowFn = deps.nowFn ?? (() => Date.now());
     this.getGisOAuth2Fn =
       deps.getGisOAuth2 ??
@@ -382,12 +382,13 @@ export class SessionManager {
     }
   }
 
-  public async clearSessionAndReturnToEntry(): Promise<void> {
+  public clearSessionAndReturnToEntry(): Promise<void> {
     this.cachedAccessToken = null;
     this.tokenExpiresAt = 0;
     this.writeRememberedEmail(null);
     this.setRememberedMode(null);
     this.notifyAuthListeners();
+    return Promise.resolve();
   }
 
   public clearAccessTokenOnly(): void {

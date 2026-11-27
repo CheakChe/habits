@@ -9,7 +9,8 @@ import {
   TaskStatusFilterSelection,
   TodayBoard,
 } from '../utils/today-board';
-import { CustomMultiSelect, CustomSelect, SelectOption } from './CustomControls';
+import { MultiSelect } from './controls/MultiSelect';
+import { Select, SelectOption } from './controls/Select';
 import {
   AlertIcon,
   ArchiveIcon,
@@ -153,18 +154,18 @@ export function TasksView(props: TasksViewProps): JSX.Element {
     <div class="space-y-6">
       <div class="flex flex-col justify-between gap-4 border-b border-white/[0.08] pb-6 sm:flex-row sm:items-end">
         <div class="space-y-1">
-          <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">Tasks</h1>
-          <p class="text-sm text-[#8E95A5]">
+          <h1 class="font-display text-3xl font-semibold tracking-tight text-ink">Tasks</h1>
+          <p class="text-sm text-ink-subtle">
             <span class="font-mono tabular-nums">{openCount()}</span> open
             <Show when={overdueCount() > 0}>
               <span aria-hidden="true"> · </span>
-              <span class="font-mono text-[#F59E0B] tabular-nums">{overdueCount()} overdue</span>
+              <span class="font-mono text-warning tabular-nums">{overdueCount()} overdue</span>
             </Show>
             <span aria-hidden="true"> · </span>
             <span class="font-mono tabular-nums">{doneCount()}</span> completed
             <Show when={notDoneCount() > 0}>
               <span aria-hidden="true"> · </span>
-              <span class="font-mono text-[#FCA5A5] tabular-nums">{notDoneCount()} not done</span>
+              <span class="font-mono text-danger-soft tabular-nums">{notDoneCount()} not done</span>
             </Show>
             <Show when={archivedCount() > 0}>
               <span aria-hidden="true"> · </span>
@@ -176,7 +177,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
         <button
           type="button"
           onClick={handleOpenCreate}
-          class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 self-start rounded-xl bg-[#3B82F6] px-4 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-[#2563EB] sm:self-auto"
+          class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 self-start rounded-xl bg-accent px-4 text-sm font-medium whitespace-nowrap text-white transition-colors hover:bg-accent-hover sm:self-auto"
         >
           <PlusIcon class="h-4 w-4" />
           <span>New Task</span>
@@ -186,21 +187,21 @@ export function TasksView(props: TasksViewProps): JSX.Element {
       {/* Search, Status Multi-Select & Sort */}
       <div class="flex flex-col justify-between gap-2.5 lg:flex-row lg:items-center">
         <div class="relative max-w-md flex-1">
-          <SearchIcon class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+          <SearchIcon class="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-ink-dim" />
           <input
             type="search"
             value={searchQuery()}
             onInput={(e) => setSearchQuery(e.currentTarget.value)}
             placeholder="Search tasks or notes..."
             aria-label="Search tasks or notes"
-            class="h-10 w-full rounded-xl border border-white/[0.08] bg-[#14161B] pr-9 pl-10 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+            class="h-10 w-full rounded-xl border border-white/[0.08] bg-surface pr-9 pl-10 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
           />
           <Show when={searchQuery().length > 0}>
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               aria-label="Clear search"
-              class="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-[#8E95A5] hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+              class="absolute top-1/2 right-2 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-lg text-ink-subtle hover:bg-white/[0.06] hover:text-ink"
             >
               <CloseIcon class="h-3.5 w-3.5" />
             </button>
@@ -208,7 +209,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
         </div>
 
         <div class="flex flex-wrap items-center gap-2.5 sm:flex-nowrap">
-          <CustomMultiSelect<TaskStatusBucket>
+          <MultiSelect<TaskStatusBucket>
             ariaLabel="Filter tasks by status"
             value={props.statusFilter}
             options={statusOptions()}
@@ -224,7 +225,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
             onChange={(val) => props.onChangeStatusFilter(val)}
           />
 
-          <CustomSelect
+          <Select<TaskSortMode>
             ariaLabel="Sort tasks"
             value={props.sortMode}
             options={[
@@ -234,7 +235,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
               { value: 'newest', label: 'Newest First' },
               { value: 'title', label: 'Title A–Z' },
             ]}
-            onChange={(val) => props.onChangeSortMode(val as TaskSortMode)}
+            onChange={(val) => props.onChangeSortMode(val)}
           />
         </div>
       </div>
@@ -242,8 +243,8 @@ export function TasksView(props: TasksViewProps): JSX.Element {
       <Show
         when={filtered().length > 0}
         fallback={
-          <div class="space-y-4 rounded-2xl border border-white/[0.08] bg-[#14161B] px-6 py-14 text-center">
-            <p class="text-sm text-[#8E95A5]">
+          <div class="space-y-4 rounded-2xl border border-white/[0.08] bg-surface px-6 py-14 text-center">
+            <p class="text-sm text-ink-subtle">
               {searchQuery().trim().length > 0
                 ? 'No tasks match your search.'
                 : isEmptySelection()
@@ -255,7 +256,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  class="h-10 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-4 text-sm font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933]"
+                  class="h-10 cursor-pointer rounded-xl border border-white/[0.08] bg-surface-elevated px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-hover"
                 >
                   Clear Search
                 </button>
@@ -264,7 +265,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                 <button
                   type="button"
                   onClick={() => props.onChangeStatusFilter([...OPEN_TASK_BUCKETS])}
-                  class="h-10 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-4 text-sm font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933]"
+                  class="h-10 cursor-pointer rounded-xl border border-white/[0.08] bg-surface-elevated px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-hover"
                 >
                   Show Open Tasks
                 </button>
@@ -278,7 +279,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                 <button
                   type="button"
                   onClick={() => props.onChangeStatusFilter('all')}
-                  class="h-10 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-4 text-sm font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933]"
+                  class="h-10 cursor-pointer rounded-xl border border-white/[0.08] bg-surface-elevated px-4 text-sm font-medium text-ink transition-colors hover:bg-surface-hover"
                 >
                   Show All Statuses
                 </button>
@@ -293,7 +294,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                 <button
                   type="button"
                   onClick={handleOpenCreate}
-                  class="h-10 cursor-pointer rounded-xl bg-[#3B82F6] px-5 text-sm font-medium text-white transition-colors hover:bg-[#2563EB]"
+                  class="h-10 cursor-pointer rounded-xl bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                 >
                   Create Task
                 </button>
@@ -302,7 +303,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
           </div>
         }
       >
-        <div class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B]">
+        <div class="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface">
           <ul class="divide-y divide-white/[0.06]">
             <For each={filtered()}>
               {(task) => {
@@ -333,8 +334,8 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                             }
                             class={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
                               status() === 'not_done'
-                                ? 'border-[#EF4444]/30 bg-[#EF4444]/10 text-[#FCA5A5]'
-                                : 'border-white/[0.08] bg-[#1C1F26] text-[#8E95A5]'
+                                ? 'border-danger/30 bg-danger/10 text-danger-soft'
+                                : 'border-white/[0.08] bg-surface-elevated text-ink-subtle'
                             }`}
                           >
                             <Show
@@ -355,10 +356,10 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                           }`}
                           class={`flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border transition-colors ${
                             status() === 'done'
-                              ? 'border-transparent bg-[#3B82F6] text-white'
+                              ? 'border-transparent bg-accent text-white'
                               : isOverdue()
-                                ? 'border-[#EF4444]/40 bg-[#0A0B0E] text-transparent hover:border-[#EF4444]'
-                                : 'border-white/[0.12] bg-[#0A0B0E] text-transparent hover:border-white/30'
+                                ? 'border-danger/40 bg-canvas text-transparent hover:border-danger'
+                                : 'border-white/[0.12] bg-canvas text-transparent hover:border-white/30'
                           }`}
                         >
                           <CheckIcon class="h-4 w-4" />
@@ -369,12 +370,12 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                         <p
                           class={`line-clamp-2 text-sm font-medium break-words ${
                             status() === 'done'
-                              ? 'text-[#8E95A5] line-through'
+                              ? 'text-ink-subtle line-through'
                               : status() === 'not_done'
-                                ? 'text-[#C8CDD8]'
+                                ? 'text-ink-secondary'
                                 : status() === 'archived'
-                                  ? 'text-[#8E95A5]'
-                                  : 'text-[#F5F7FA]'
+                                  ? 'text-ink-subtle'
+                                  : 'text-ink'
                           }`}
                           title={task.title}
                         >
@@ -382,17 +383,17 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                         </p>
                         <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs">
                           <Show when={status() === 'not_done'}>
-                            <span class="font-medium text-[#FCA5A5]">Not Done</span>
+                            <span class="font-medium text-danger-soft">Not Done</span>
                             <Show when={task.dueDay !== null}>
-                              <span aria-hidden="true" class="text-[#5B6270]">
+                              <span aria-hidden="true" class="text-ink-faint">
                                 ·
                               </span>
                             </Show>
                           </Show>
                           <Show when={status() === 'archived'}>
-                            <span class="font-medium text-[#8E95A5]">Archived</span>
+                            <span class="font-medium text-ink-subtle">Archived</span>
                             <Show when={task.dueDay !== null}>
-                              <span aria-hidden="true" class="text-[#5B6270]">
+                              <span aria-hidden="true" class="text-ink-faint">
                                 ·
                               </span>
                             </Show>
@@ -404,36 +405,36 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                                 when={task.dueDay !== null}
                                 fallback={
                                   <Show when={status() === 'open' || status() === 'done'}>
-                                    <span class="text-[#6B7280]">No due date</span>
+                                    <span class="text-ink-dim">No due date</span>
                                   </Show>
                                 }
                               >
-                                <span class="font-mono text-[#8E95A5] tabular-nums">
+                                <span class="font-mono text-ink-subtle tabular-nums">
                                   Due {CivilCalendar.formatShortDate(task.dueDay!)}
                                 </span>
                               </Show>
                             }
                           >
-                            <span class="inline-flex items-center gap-1 font-mono text-[#FCA5A5] tabular-nums">
-                              <AlertIcon class="h-3.5 w-3.5 text-[#EF4444]" />
+                            <span class="inline-flex items-center gap-1 font-mono text-danger-soft tabular-nums">
+                              <AlertIcon class="h-3.5 w-3.5 text-danger" />
                               Overdue · {CivilCalendar.formatShortDate(task.dueDay!)}
                             </span>
                           </Show>
                           <Show when={task.repeatable}>
-                            <span aria-hidden="true" class="text-[#5B6270]">
+                            <span aria-hidden="true" class="text-ink-faint">
                               ·
                             </span>
-                            <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                            <span class="inline-flex items-center gap-1 text-accent-soft">
                               <RepeatIcon class="h-3 w-3" />
                               Repeats
                             </span>
                           </Show>
                           <Show when={task.note}>
-                            <span aria-hidden="true" class="text-[#5B6270]">
+                            <span aria-hidden="true" class="text-ink-faint">
                               ·
                             </span>
                             <span
-                              class="line-clamp-2 max-w-full break-words text-[#9AA1B1]"
+                              class="line-clamp-2 max-w-full break-words text-ink-muted"
                               title={task.note}
                             >
                               {task.note}
@@ -444,8 +445,8 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                           <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <For each={assignedSlots()}>
                               {(slot) => (
-                                <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
-                                  <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                <span class="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent-tint tabular-nums">
+                                  <ClockIcon class="h-3 w-3 shrink-0 text-accent-soft" />
                                   <span>
                                     {slot.time}
                                     {slot.label ? ` ${slot.label}` : ''}
@@ -464,7 +465,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                           type="button"
                           onClick={() => void props.onScheduleTaskToday(task)}
                           title="Schedule for today"
-                          class="mr-1 h-8 cursor-pointer rounded-lg border border-white/[0.08] bg-[#0A0B0E] px-2.5 text-xs font-medium whitespace-nowrap text-[#9AA1B1] transition-colors hover:bg-[#1C1F26] hover:text-[#60A5FA]"
+                          class="mr-1 h-8 cursor-pointer rounded-lg border border-white/[0.08] bg-canvas px-2.5 text-xs font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-elevated hover:text-accent-soft"
                         >
                           Today
                         </button>
@@ -473,7 +474,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                         type="button"
                         onClick={() => props.onEditTask(task)}
                         aria-label={`Edit ${task.title}`}
-                        class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
+                        class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-ink-subtle transition-colors hover:bg-white/[0.06] hover:text-ink"
                       >
                         <EditIcon class="h-4 w-4" />
                       </button>
@@ -481,7 +482,7 @@ export function TasksView(props: TasksViewProps): JSX.Element {
                         type="button"
                         onClick={() => void props.onDeleteTask(task.id)}
                         aria-label={`Delete ${task.title}`}
-                        class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-[#EF4444]/10 hover:text-[#FCA5A5]"
+                        class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-ink-subtle transition-colors hover:bg-danger/10 hover:text-danger-soft"
                       >
                         <TrashIcon class="h-4 w-4" />
                       </button>

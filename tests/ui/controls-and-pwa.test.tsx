@@ -1,24 +1,22 @@
 import { fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  CustomMultiSelect,
-  CustomSelect,
-  CustomTimePicker,
-  DatePicker,
-  HistoryRangePicker,
-  MeasuredQuickControls,
-} from '../../src/ui/CustomControls';
+import { MultiSelect } from '../../src/ui/controls/MultiSelect';
+import { Select } from '../../src/ui/controls/Select';
+import { TimePicker } from '../../src/ui/controls/TimePicker';
+import { DatePicker } from '../../src/ui/controls/DatePicker';
+import { HistoryRangePicker } from '../../src/ui/controls/HistoryRangePicker';
+import { MeasuredQuickControls } from '../../src/ui/controls/MeasuredQuickControls';
 import { OfflineBanner, PWAInstallButton } from '../../src/ui/PwaControls';
 import { CivilCalendar } from '../../src/utils/civil-calendar';
 import { DateRangeResolver } from '../../src/utils/date-range';
 
 const TODAY = CivilCalendar.fromLocalDate(2026, 11, 25);
 
-describe('CustomControls', () => {
-  it('CustomSelect supports normal and portal mode, selection, and Escape dismissal', () => {
+describe('Controls & PWA', () => {
+  it('Select supports normal and portal mode, selection, and Escape dismissal', () => {
     const onChange = vi.fn();
     render(() => (
-      <CustomSelect
+      <Select
         ariaLabel="Sort order"
         value="a"
         portal={true}
@@ -42,10 +40,10 @@ describe('CustomControls', () => {
     expect(onChange).toHaveBeenCalledWith('b');
   });
 
-  it('CustomMultiSelect toggles items, quick preset, All, and Clear', () => {
+  it('MultiSelect toggles items, quick preset, All, and Clear', () => {
     const onChange = vi.fn();
     render(() => (
-      <CustomMultiSelect
+      <MultiSelect
         ariaLabel="Status filter"
         value={['a']}
         allLabel="All Items"
@@ -94,9 +92,9 @@ describe('CustomControls', () => {
     expect(onChange).toHaveBeenCalledWith(TODAY + 1);
   });
 
-  it('CustomTimePicker selects hours, minutes, and quick presets', () => {
+  it('TimePicker selects hours, minutes, and quick presets', () => {
     const onChange = vi.fn();
-    render(() => <CustomTimePicker value="09:00" onChange={onChange} ariaLabel="Slot time" />);
+    render(() => <TimePicker value="09:00" onChange={onChange} ariaLabel="Slot time" />);
 
     fireEvent.click(screen.getByRole('button', { name: /slot time/i }));
     expect(screen.getByRole('dialog', { name: /choose reminder time/i })).toBeInTheDocument();
@@ -242,7 +240,7 @@ describe('CustomControls', () => {
     );
   });
 
-  it('supports mobile HistoryRangePicker modal, outside pointerdown closing, CustomTimePicker minute selection, and dirty increment', async () => {
+  it('supports mobile HistoryRangePicker modal, outside pointerdown closing, TimePicker minute selection, and dirty increment', async () => {
     const prevInnerWidth = window.innerWidth;
     Object.defineProperty(window, 'innerWidth', { value: 375, configurable: true });
     try {
@@ -268,11 +266,9 @@ describe('CustomControls', () => {
       fireEvent.click(screen.getByRole('button', { name: /close date range picker/i }));
       expect(screen.queryByText(/date range & timezone/i)).not.toBeInTheDocument();
 
-      // CustomTimePicker minute selection and pointerdown dismissal
+      // TimePicker minute selection and pointerdown dismissal
       const onTimeChange = vi.fn();
-      render(() => (
-        <CustomTimePicker value="09:00" onChange={onTimeChange} ariaLabel="Pick time" />
-      ));
+      render(() => <TimePicker value="09:00" onChange={onTimeChange} ariaLabel="Pick time" />);
       fireEvent.click(screen.getByRole('button', { name: /pick time/i }));
       fireEvent.click(screen.getByRole('button', { name: '45' }));
       expect(onTimeChange).toHaveBeenCalledWith('09:45');

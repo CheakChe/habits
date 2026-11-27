@@ -417,48 +417,51 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
       getAccessToken: () => 'fake-token',
     };
     internals.driveSync = {
-      prepareSync: async () => {
+      prepareSync: () => {
         prepareCalls += 1;
-        return prepareCalls === 1
-          ? mergedPrep
-          : { ...mergedPrep, status: 'up-to-date', localChanged: false };
+        return Promise.resolve(
+          prepareCalls === 1
+            ? mergedPrep
+            : { ...mergedPrep, status: 'up-to-date', localChanged: false }
+        );
       },
-      confirmAndUpload: async () => {
-        throw new ConcurrentSyncError('Updated concurrently');
-      },
-      listRevisions: async () => ({
-        fileId: 'remote-1',
-        revisions: [
-          { id: 'rev-2', modifiedTime: '2026-11-20T12:10:00Z', size: 120 },
-          { id: 'rev-1', modifiedTime: '2026-11-19T12:10:00Z', size: 90 },
-        ],
-      }),
-      inspectRevision: async (_m, _t, fileId, revisionId) => ({
-        fileId,
-        revisionId,
-        snapshot: remoteOnlyHabit,
-        bytes: SnapshotCodec.pack(remoteOnlyHabit),
-        summary: {
-          habitsCount: 1,
-          checkinsCount: 0,
-          notesCount: 0,
-          tasksCount: 0,
-          byteSize: 90,
-        },
-      }),
-      restoreRevision: async (_m, _t, fileId, revisionId) => ({
-        fileId,
-        revisionId,
-        restoredSnapshot: remoteOnlyHabit,
-        restoredBytes: SnapshotCodec.pack(remoteOnlyHabit),
-        summary: {
-          habitsCount: 1,
-          checkinsCount: 0,
-          notesCount: 0,
-          tasksCount: 0,
-          byteSize: 90,
-        },
-      }),
+      confirmAndUpload: () => Promise.reject(new ConcurrentSyncError('Updated concurrently')),
+      listRevisions: () =>
+        Promise.resolve({
+          fileId: 'remote-1',
+          revisions: [
+            { id: 'rev-2', modifiedTime: '2026-11-20T12:10:00Z', size: 120 },
+            { id: 'rev-1', modifiedTime: '2026-11-19T12:10:00Z', size: 90 },
+          ],
+        }),
+      inspectRevision: (_m, _t, fileId, revisionId) =>
+        Promise.resolve({
+          fileId,
+          revisionId,
+          snapshot: remoteOnlyHabit,
+          bytes: SnapshotCodec.pack(remoteOnlyHabit),
+          summary: {
+            habitsCount: 1,
+            checkinsCount: 0,
+            notesCount: 0,
+            tasksCount: 0,
+            byteSize: 90,
+          },
+        }),
+      restoreRevision: (_m, _t, fileId, revisionId) =>
+        Promise.resolve({
+          fileId,
+          revisionId,
+          restoredSnapshot: remoteOnlyHabit,
+          restoredBytes: SnapshotCodec.pack(remoteOnlyHabit),
+          summary: {
+            habitsCount: 1,
+            checkinsCount: 0,
+            notesCount: 0,
+            tasksCount: 0,
+            byteSize: 90,
+          },
+        }),
     };
 
     await store.startDriveSync();
@@ -1442,24 +1445,25 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
       email = null;
       for (const fn of listeners) fn({ hasToken: false, email: null });
     },
-    async signInWithGoogle() {
-      if (signInError) throw signInError;
+    signInWithGoogle() {
+      if (signInError) return Promise.reject(signInError);
       token = 'tok-google';
       email = 'user@example.com';
       expiresAt = Date.now() + 60_000;
       for (const fn of listeners) fn({ hasToken: true, email });
-      return token;
+      return Promise.resolve(token);
     },
     clearAccessTokenOnly() {
       token = null;
       expiresAt = 0;
       for (const fn of listeners) fn({ hasToken: false, email });
     },
-    async clearSessionAndReturnToEntry() {
+    clearSessionAndReturnToEntry() {
       token = null;
       email = null;
       expiresAt = 0;
       for (const fn of listeners) fn({ hasToken: false, email: null });
+      return Promise.resolve();
     },
   } as unknown as SessionManager;
 
@@ -1470,12 +1474,12 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
 
   const mockDriveSync = {
     resetUploadCache() {},
-    async prepareSync(_mode: unknown, _tok: unknown, local: DomainSnapshot) {
+    prepareSync(_mode: unknown, _tok: unknown, local: DomainSnapshot) {
       if (prepareMode === 'auth-error') {
-        throw new Error('401 Authorization expired');
+        return Promise.reject(new Error('401 Authorization expired'));
       }
       if (prepareMode === 'local-changed-up-to-date') {
-        return {
+        return Promise.resolve({
           status: 'up-to-date',
           remoteFileId: 'file-1',
           remoteVersion: '1',
@@ -1484,10 +1488,10 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
           mergedSnapshot: local,
           mergedBytes: new Uint8Array([1, 2, 3]),
           summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
-        } satisfies SyncPreparationResult;
+        } satisfies SyncPreparationResult);
       }
       if (prepareMode === 'up-to-date') {
-        return {
+        return Promise.resolve({
           status: 'up-to-date',
           remoteFileId: 'file-1',
           remoteVersion: '1',
@@ -1496,9 +1500,9 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
           mergedSnapshot: local,
           mergedBytes: new Uint8Array([1, 2, 3]),
           summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
-        } satisfies SyncPreparationResult;
+        } satisfies SyncPreparationResult);
       }
-      return {
+      return Promise.resolve({
         status: 'needs-upload-confirm',
         remoteFileId: 'file-1',
         remoteVersion: '1',
@@ -1507,51 +1511,52 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
         mergedSnapshot: local,
         mergedBytes: new Uint8Array([1, 2, 3]),
         summary: { habitsCount: 1, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 40 },
-      } satisfies SyncPreparationResult;
+      } satisfies SyncPreparationResult);
     },
-    async confirmAndUpload() {
+    confirmAndUpload() {
       if (confirmMode === 'concurrent-merged') {
         prepareMode = 'up-to-date';
-        throw new ConcurrentSyncError('conflict');
+        return Promise.reject(new ConcurrentSyncError('conflict'));
       }
       if (confirmMode === 'concurrent-reprepare') {
         prepareMode = 'needs-upload';
-        throw new ConcurrentSyncError('conflict');
+        return Promise.reject(new ConcurrentSyncError('conflict'));
       }
       if (confirmMode === 'concurrent-fail') {
         prepareMode = 'auth-error';
-        throw new ConcurrentSyncError('conflict');
+        return Promise.reject(new ConcurrentSyncError('conflict'));
       }
       if (confirmMode === 'err') {
-        throw new Error('403 Forbidden permission');
+        return Promise.reject(new Error('403 Forbidden permission'));
       }
+      return Promise.resolve();
     },
-    async listRevisions() {
-      return {
+    listRevisions() {
+      return Promise.resolve({
         fileId: 'file-1',
         revisions: [{ id: 'rev-2', modifiedTime: '2026-11-25T00:00:00Z', size: 120 }],
-      };
+      });
     },
-    async inspectRevision() {
-      return {
+    inspectRevision() {
+      return Promise.resolve({
         revisionId: 'rev-2',
         snapshot: { habits: [], checkins: [], notes: [], tasks: [] },
         summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
-      };
+      });
     },
-    async restoreRevision() {
-      return {
+    restoreRevision() {
+      return Promise.resolve({
         restoredSnapshot: { habits: [], checkins: [], notes: [], tasks: [] },
         summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 32 },
-      };
+      });
     },
   } as unknown as DriveSyncService;
 
   let calPlanHasMutations = false;
   let calSyncError: Error | null = null;
   const mockCalendarSync = {
-    async syncRemoteCalendarId() {
-      return {
+    syncRemoteCalendarId() {
+      return Promise.resolve({
         calendarId: 'cal-remote-1',
         timeZone: 'Europe/Paris',
         timeZoneUpdatedAt: Date.now() + 1000,
@@ -1559,9 +1564,9 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
         horizonDays: 7,
         calendarEnabled: true,
         updatedAt: Date.now() + 1000,
-      };
+      });
     },
-    async prepareSyncPlan(
+    prepareSyncPlan(
       _mode: unknown,
       _tok: unknown,
       snap: DomainSnapshot,
@@ -1569,8 +1574,8 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
       prefs: ReminderPreferences,
       tz: string
     ) {
-      if (calSyncError) throw calSyncError;
-      return {
+      if (calSyncError) return Promise.reject(calSyncError);
+      return Promise.resolve({
         calendarId: 'cal-remote-1',
         willCreateCalendar: false,
         willUpdateCalendarTz: false,
@@ -1600,10 +1605,10 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
         toDelete: [],
         unchangedCount: 0,
         desiredEvents: [],
-      } satisfies CalendarSyncPlan;
+      } satisfies CalendarSyncPlan);
     },
-    async applySyncPlan() {
-      return {
+    applySyncPlan() {
+      return Promise.resolve({
         calendarId: 'cal-remote-1',
         timeZone: 'Europe/Paris',
         targetSignature: 'sig-1',
@@ -1611,9 +1616,11 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
         updated: 0,
         deleted: 0,
         duplicatesRemoved: 1,
-      };
+      });
     },
-    async deleteReminderCalendar() {},
+    deleteReminderCalendar() {
+      return Promise.resolve();
+    },
   } as unknown as CalendarReminderService;
 
   const store = new TrackerStore({
@@ -1782,17 +1789,19 @@ test('TrackerStore handles Drive revision errors, calendar confirmation errors, 
     getAccountEmail: () => 'alex@example.com',
     subscribeAuthChanges: () => () => {},
     chooseGuest() {},
-    async signInWithGoogle() {
-      return 'tok-1';
+    signInWithGoogle() {
+      return Promise.resolve('tok-1');
     },
     clearAccessTokenOnly() {},
-    async clearSessionAndReturnToEntry() {},
+    clearSessionAndReturnToEntry() {
+      return Promise.resolve();
+    },
   } as unknown as SessionManager;
 
   const mockDriveSync = {
     resetUploadCache() {},
-    async prepareSync(_m: unknown, _t: unknown, local: DomainSnapshot) {
-      return {
+    prepareSync(_m: unknown, _t: unknown, local: DomainSnapshot) {
+      return Promise.resolve({
         status: 'up-to-date',
         remoteFileId: 'f1',
         remoteVersion: '1',
@@ -1801,39 +1810,44 @@ test('TrackerStore handles Drive revision errors, calendar confirmation errors, 
         mergedSnapshot: local,
         mergedBytes: new Uint8Array([1]),
         summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 16 },
-      } satisfies SyncPreparationResult;
+      } satisfies SyncPreparationResult);
     },
-    async confirmAndUpload() {},
-    async listRevisions() {
-      if (failRevisions) throw new Error('401 Authorization expired');
-      return { fileId: 'f1', revisions: [{ id: 'rev-1', modifiedTime: '2026-11-25T00:00:00Z' }] };
+    confirmAndUpload() {
+      return Promise.resolve();
     },
-    async inspectRevision() {
-      if (failInspect) throw new Error('401 expired');
-      return {
+    listRevisions() {
+      if (failRevisions) return Promise.reject(new Error('401 Authorization expired'));
+      return Promise.resolve({
+        fileId: 'f1',
+        revisions: [{ id: 'rev-1', modifiedTime: '2026-11-25T00:00:00Z' }],
+      });
+    },
+    inspectRevision() {
+      if (failInspect) return Promise.reject(new Error('401 expired'));
+      return Promise.resolve({
         fileId: 'f1',
         revisionId: 'rev-1',
         snapshot: { habits: [], checkins: [], notes: [], tasks: [] },
         bytes: new Uint8Array([1]),
         summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 16 },
-      };
+      });
     },
-    async restoreRevision() {
-      if (failRestore) throw new Error('403 Forbidden permission');
-      return {
+    restoreRevision() {
+      if (failRestore) return Promise.reject(new Error('403 Forbidden permission'));
+      return Promise.resolve({
         fileId: 'f1',
         restoredSnapshot: { habits: [], checkins: [], notes: [], tasks: [] },
         summary: { habitsCount: 0, checkinsCount: 0, notesCount: 0, tasksCount: 0, byteSize: 16 },
-      };
+      });
     },
   } as unknown as DriveSyncService;
 
   const mockCalendarSync = {
-    async syncRemoteCalendarId() {
-      return null;
+    syncRemoteCalendarId() {
+      return Promise.resolve(null);
     },
-    async prepareSyncPlan() {
-      return {
+    prepareSyncPlan() {
+      return Promise.resolve({
         calendarId: 'cal-1',
         willCreateCalendar: false,
         willUpdateCalendarTz: false,
@@ -1861,11 +1875,11 @@ test('TrackerStore handles Drive revision errors, calendar confirmation errors, 
         toDelete: [],
         unchangedCount: 0,
         desiredEvents: [],
-      } satisfies CalendarSyncPlan;
+      } satisfies CalendarSyncPlan);
     },
-    async applySyncPlan() {
-      if (failApplyCal) throw new Error('401 expired');
-      return {
+    applySyncPlan() {
+      if (failApplyCal) return Promise.reject(new Error('401 expired'));
+      return Promise.resolve({
         calendarId: 'cal-1',
         timeZone: 'UTC',
         targetSignature: 'sig',
@@ -1873,10 +1887,11 @@ test('TrackerStore handles Drive revision errors, calendar confirmation errors, 
         updated: 0,
         deleted: 0,
         duplicatesRemoved: 0,
-      };
+      });
     },
-    async deleteReminderCalendar() {
-      if (failDeleteCal) throw new Error('403 permission error');
+    deleteReminderCalendar() {
+      if (failDeleteCal) return Promise.reject(new Error('403 permission error'));
+      return Promise.resolve();
     },
   } as unknown as CalendarReminderService;
 
@@ -1932,4 +1947,112 @@ test('TrackerStore handles Drive revision errors, calendar confirmation errors, 
   } finally {
     store.dispose();
   }
+});
+
+test('HabitDatabase upgrades a seeded v1 database to v2, creates reminderSlots, and normalizes legacy records', async (t) => {
+  const env = installTestGlobals();
+  t.after(env.restore);
+
+  const legacyDoneUpdatedAt = Date.UTC(2026, 10, 15, 14, 30, 0);
+  env.fakeDb.seedDatabase('habits_tracker_db', 1, {
+    habits: {
+      keyPath: 'id',
+      autoIncrement: true,
+      records: [
+        {
+          id: 1,
+          name: 'Legacy Daily',
+          color: '#3B82F6',
+          weekdays: 0xff,
+          weeklyTarget: null,
+          startDay: 20700,
+          archivedAt: null,
+          createdAt: 1000,
+          updatedAt: 2000,
+        },
+      ],
+    },
+    checkins: {
+      keyPath: ['habitId', 'dayIndex'],
+      indexes: ['by_habit', 'by_day'],
+      records: [
+        {
+          habitId: 1,
+          dayIndex: 20770,
+          done: true,
+          value: 0,
+          updatedAt: 3000,
+        },
+      ],
+    },
+    notes: {
+      keyPath: ['habitId', 'dayIndex'],
+      indexes: ['by_habit', 'by_day'],
+      records: [
+        {
+          habitId: 1,
+          dayIndex: 20770,
+          text: 'Legacy note',
+          updatedAt: 3500,
+        },
+      ],
+    },
+    tasks: {
+      keyPath: 'id',
+      autoIncrement: true,
+      records: [
+        {
+          id: 10,
+          title: 'Legacy Open Task',
+          note: '',
+          dueDay: 20770,
+          done: false,
+          deletedAt: null,
+          createdAt: 1000,
+          updatedAt: 1500,
+        },
+        {
+          id: 11,
+          title: 'Legacy Done Task',
+          note: 'old',
+          dueDay: 20760,
+          done: true,
+          deletedAt: null,
+          createdAt: 1000,
+          updatedAt: legacyDoneUpdatedAt,
+        },
+      ],
+    },
+  });
+
+  const db = new HabitDatabase();
+  const idb = await db.open();
+  assert.equal(idb.objectStoreNames.contains('reminderSlots'), true);
+
+  const snapshot = await db.getAllSnapshot();
+  assert.equal(snapshot.habits.length, 1);
+  assert.equal(snapshot.habits[0].weekdays, 0x7f);
+  assert.equal('scheduleHistory' in snapshot.habits[0], false);
+  assert.equal('reminderSlotIds' in snapshot.habits[0], false);
+
+  assert.equal(snapshot.checkins.length, 1);
+  assert.equal(snapshot.checkins[0].done, true);
+  assert.equal('value' in snapshot.checkins[0], false);
+
+  assert.equal(snapshot.tasks.length, 2);
+  assert.equal(snapshot.tasks[0].status, 'open');
+  assert.equal(snapshot.tasks[0].done, false);
+  assert.equal(snapshot.tasks[0].completedDay, null);
+  assert.equal(snapshot.tasks[0].repeatable, false);
+
+  assert.equal(snapshot.tasks[1].status, 'done');
+  assert.equal(snapshot.tasks[1].done, true);
+  assert.equal(typeof snapshot.tasks[1].completedDay, 'number');
+  assert.notEqual(snapshot.tasks[1].completedDay, null);
+  assert.equal(snapshot.tasks[1].repeatable, false);
+
+  // Verify newly created v2 reminderSlots store works cleanly
+  const slot = await db.createReminderSlot({ label: 'Morning', time: '08:30' });
+  assert.equal(slot.label, 'Morning');
+  assert.equal(slot.time, '08:30');
 });

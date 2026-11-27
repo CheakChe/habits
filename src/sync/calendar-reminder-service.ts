@@ -863,9 +863,10 @@ export class CalendarReminderService {
       }
       calendarId = createdCal.id;
     } else if (plan.willUpdateCalendarTz) {
+      const targetCalendarId = calendarId;
       await Helpers.withRetry(async () => {
         const res = await fetch(
-          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId!)}`,
+          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(targetCalendarId)}`,
           {
             method: 'PATCH',
             headers: {
@@ -882,11 +883,13 @@ export class CalendarReminderService {
       });
     }
 
+    const activeCalendarId = calendarId;
+
     let deleted = 0;
     for (const item of plan.toDelete) {
       await Helpers.withRetry(async () => {
         const res = await fetch(
-          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId!)}/events/${encodeURIComponent(item.existingId)}`,
+          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(activeCalendarId)}/events/${encodeURIComponent(item.existingId)}`,
           {
             method: 'DELETE',
             headers: this.authHeaders(token),
@@ -907,7 +910,7 @@ export class CalendarReminderService {
     for (const item of plan.toUpdate) {
       await Helpers.withRetry(async () => {
         const res = await fetch(
-          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId!)}/events/${encodeURIComponent(item.existingId)}`,
+          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(activeCalendarId)}/events/${encodeURIComponent(item.existingId)}`,
           {
             method: 'PATCH',
             headers: {
@@ -929,7 +932,7 @@ export class CalendarReminderService {
     for (const desired of plan.toCreate) {
       await Helpers.withRetry(async () => {
         const res = await fetch(
-          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(calendarId!)}/events`,
+          `${CALENDAR_API_BASE}/calendars/${encodeURIComponent(activeCalendarId)}/events`,
           {
             method: 'POST',
             headers: {

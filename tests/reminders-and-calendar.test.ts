@@ -15,6 +15,10 @@ const MONDAY_DAY = CivilCalendar.fromLocalDate(2026, 11, 16);
 const TUESDAY_DAY = MONDAY_DAY + 1;
 const WEDNESDAY_DAY = MONDAY_DAY + 2;
 
+function resolveFetchUrl(input: string | URL | Request): string {
+  return typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+}
+
 function makeSnapshot(overrides?: Partial<DomainSnapshot>): DomainSnapshot {
   return {
     habits: overrides?.habits ?? [],
@@ -381,11 +385,13 @@ test('ReminderPlanner syncAppBadge sets positive counts, clears on zero/null, an
   const calls: Array<{ fn: string; arg?: number }> = [];
   Object.defineProperty(globalThis, 'navigator', {
     value: {
-      setAppBadge: async (n?: number) => {
+      setAppBadge: (n?: number) => {
         calls.push({ fn: 'set', arg: n });
+        return Promise.resolve();
       },
-      clearAppBadge: async () => {
+      clearAppBadge: () => {
         calls.push({ fn: 'clear' });
+        return Promise.resolve();
       },
     },
     configurable: true,
@@ -403,8 +409,9 @@ test('ReminderPlanner syncAppBadge sets positive counts, clears on zero/null, an
   const callsNoClear: Array<{ fn: string; arg?: number }> = [];
   Object.defineProperty(globalThis, 'navigator', {
     value: {
-      setAppBadge: async (n?: number) => {
+      setAppBadge: (n?: number) => {
         callsNoClear.push({ fn: 'set', arg: n });
+        return Promise.resolve();
       },
     },
     configurable: true,
@@ -416,9 +423,7 @@ test('ReminderPlanner syncAppBadge sets positive counts, clears on zero/null, an
   // Throwing badge API does not crash callers
   Object.defineProperty(globalThis, 'navigator', {
     value: {
-      setAppBadge: async () => {
-        throw new Error('Blocked in iframe');
-      },
+      setAppBadge: () => Promise.reject(new Error('Blocked in iframe')),
     },
     configurable: true,
     writable: true,
@@ -450,9 +455,9 @@ test('ReminderPlanner inspects and requests Notification permission for iOS App 
       get permission() {
         return currentPerm;
       },
-      requestPermission: async () => {
+      requestPermission: () => {
         currentPerm = 'granted';
-        return currentPerm;
+        return Promise.resolve(currentPerm);
       },
     },
     configurable: true,
@@ -512,8 +517,8 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
   );
 
   const calls: Array<{ method: string; url: string; body?: Record<string, unknown> }> = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     const body =
       typeof init?.body === 'string'
@@ -522,24 +527,30 @@ test('CalendarReminderService enforces google auth and prepares/applies initial 
     calls.push({ method, url, body });
 
     if (method === 'GET' && url.includes('/drive/v3/files')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (method === 'POST' && url.includes('/upload/drive/v3/files')) {
-      return new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
-      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     }
     if (method === 'POST' && url.endsWith('/calendars')) {
-      return new Response(JSON.stringify({ id: 'cal-created-1', timeZone: 'UTC' }), {
-        status: 200,
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-created-1', timeZone: 'UTC' }), {
+          status: 200,
+        })
+      );
     }
     if (method === 'POST' && url.includes('/calendars/cal-created-1/events')) {
-      return new Response(JSON.stringify({ id: `ev-${calls.length}` }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: `ev-${calls.length}` }), { status: 200 })
+      );
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   // Plan with missing calendarId & empty calendarList triggers willCreateCalendar = true
   const initialPlan = await service.prepareSyncPlan(
@@ -625,104 +636,112 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
   });
 
   const requests: Array<{ method: string; url: string }> = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     requests.push({ method, url });
 
     if (method === 'GET' && url.includes('/drive/v3/files')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (method === 'POST' && url.includes('/upload/drive/v3/files')) {
-      return new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
-      return new Response(
-        JSON.stringify({
-          items: [{ id: 'cal-xyz', summary: 'Habits Reminders', timeZone: 'UTC' }],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: 'cal-xyz', summary: 'Habits Reminders', timeZone: 'UTC' }],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-xyz')) {
-      return new Response(JSON.stringify({ id: 'cal-xyz', timeZone: 'UTC' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-xyz', timeZone: 'UTC' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.includes('/calendars/cal-xyz/events')) {
-      return new Response(
-        JSON.stringify({
-          items: [
-            {
-              id: 'ev-past',
-              summary: 'Past',
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(MONDAY_DAY),
-                  habitsSlotId: 'slot-eve',
-                  habitsSignature: 'old',
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'ev-past',
+                summary: 'Past',
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(MONDAY_DAY),
+                    habitsSlotId: 'slot-eve',
+                    habitsSignature: 'old',
+                  },
                 },
               },
-            },
-            {
-              id: 'ev-today-completed',
-              summary: 'Habits — 1 habit left today',
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(TUESDAY_DAY),
-                  habitsSlotId: 'slot-eve',
-                  habitsSignature: 'today-sig',
+              {
+                id: 'ev-today-completed',
+                summary: 'Habits — 1 habit left today',
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(TUESDAY_DAY),
+                    habitsSlotId: 'slot-eve',
+                    habitsSignature: 'today-sig',
+                  },
                 },
               },
-            },
-            {
-              id: 'ev-legacy-no-slot',
-              summary: 'Habits — legacy',
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(WEDNESDAY_DAY),
-                  habitsSignature: 'legacy-sig',
+              {
+                id: 'ev-legacy-no-slot',
+                summary: 'Habits — legacy',
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(WEDNESDAY_DAY),
+                    habitsSignature: 'legacy-sig',
+                  },
                 },
               },
-            },
-            {
-              id: 'ev-wed-stale',
-              summary: 'Habits — stale',
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(WEDNESDAY_DAY),
-                  habitsSlotId: 'slot-eve',
-                  habitsSignature: 'stale-sig',
+              {
+                id: 'ev-wed-stale',
+                summary: 'Habits — stale',
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(WEDNESDAY_DAY),
+                    habitsSlotId: 'slot-eve',
+                    habitsSignature: 'stale-sig',
+                  },
                 },
               },
-            },
-            {
-              id: 'ev-cancelled',
-              status: 'cancelled',
-              extendedProperties: {
-                private: { habitsDayIndex: String(WEDNESDAY_DAY), habitsSlotId: 'slot-eve' },
+              {
+                id: 'ev-cancelled',
+                status: 'cancelled',
+                extendedProperties: {
+                  private: { habitsDayIndex: String(WEDNESDAY_DAY), habitsSlotId: 'slot-eve' },
+                },
               },
-            },
-          ],
-        }),
-        { status: 200 }
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'DELETE' && url.includes('/events/ev-past')) {
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
     if (method === 'DELETE' && url.includes('/events/ev-today-completed')) {
-      return new Response(null, { status: 404 }); // idempotent delete
+      return Promise.resolve(new Response(null, { status: 404 })); // idempotent delete
     }
     if (method === 'DELETE' && url.includes('/events/ev-legacy-no-slot')) {
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
     if (method === 'PATCH' && url.includes('/events/ev-wed-stale')) {
-      return new Response(JSON.stringify({ id: 'ev-wed-stale' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'ev-wed-stale' }), { status: 200 }));
     }
     if (method === 'DELETE' && url.endsWith('/calendars/cal-xyz')) {
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
   const plan = await service.prepareSyncPlan('google', 'tok-2', snap, TUESDAY_DAY, prefs, 'UTC');
@@ -748,10 +767,10 @@ test('CalendarReminderService deletes stale/completed events, updates changed da
 
   // 401 unauthorized maps immediately to NonRetryableError without retrying
   let attempts = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (): Promise<Response> => {
     attempts += 1;
-    return new Response('Unauthorized', { status: 401 });
-  }) as typeof fetch;
+    return Promise.resolve(new Response('Unauthorized', { status: 401 }));
+  };
   await assert.rejects(
     () => service.prepareSyncPlan('google', 'tok-bad', snap, TUESDAY_DAY, prefs, 'UTC'),
     (err: unknown) => err instanceof NonRetryableError && /expired/i.test(err.message)
@@ -805,40 +824,44 @@ test('CalendarReminderService reuses existing secondary calendar on a second dev
   });
 
   const deletedCalendarUrls: string[] = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/drive/v3/files')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (method === 'POST' && url.includes('/upload/drive/v3/files')) {
-      return new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'drive-rem-meta-1' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
-      return new Response(
-        JSON.stringify({
-          items: [
-            { id: 'cal-b-dup', summary: 'Habits Reminders', timeZone: 'UTC' },
-            { id: 'cal-a-primary', summary: 'Habits Reminders', timeZone: 'UTC' },
-            { id: 'personal', summary: 'Personal', timeZone: 'UTC' },
-          ],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [
+              { id: 'cal-b-dup', summary: 'Habits Reminders', timeZone: 'UTC' },
+              { id: 'cal-a-primary', summary: 'Habits Reminders', timeZone: 'UTC' },
+              { id: 'personal', summary: 'Personal', timeZone: 'UTC' },
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/calendars/cal-a-primary/events')) {
-      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     }
     if (method === 'POST' && url.includes('/calendars/cal-a-primary/events')) {
-      return new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 }));
     }
     if (method === 'DELETE' && url.endsWith('/calendars/cal-b-dup')) {
       deletedCalendarUrls.push(url);
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
   const plan = await service.prepareSyncPlan(
@@ -908,24 +931,28 @@ test('CalendarReminderService discovers calendarId via Drive appDataFolder when 
 
   let savedMetaBody = '';
   const deletedCalendars: string[] = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
       // Realistic behavior under calendar.app.created scope alone
-      return new Response('Forbidden', { status: 403 });
+      return Promise.resolve(new Response('Forbidden', { status: 403 }));
     }
     if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({ files: [{ id: 'meta-file-1', modifiedTime: '2026-11-22T00:00:00Z' }] }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ files: [{ id: 'meta-file-1', modifiedTime: '2026-11-22T00:00:00Z' }] }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.endsWith('/drive/v3/files/meta-file-1?alt=media')) {
-      return new Response(JSON.stringify({ calendarId: 'cal-pc', timeZone: 'UTC' }), {
-        status: 200,
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ calendarId: 'cal-pc', timeZone: 'UTC' }), {
+          status: 200,
+        })
+      );
     }
     if (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-file-1')) {
       savedMetaBody =
@@ -934,26 +961,30 @@ test('CalendarReminderService discovers calendarId via Drive appDataFolder when 
           : init?.body instanceof Uint8Array
             ? new TextDecoder().decode(init.body)
             : '';
-      return new Response(JSON.stringify({ id: 'meta-file-1' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'meta-file-1' }), { status: 200 }));
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-pc')) {
-      return new Response(JSON.stringify({ id: 'cal-pc', timeZone: 'UTC' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-pc', timeZone: 'UTC' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-phone')) {
-      return new Response(JSON.stringify({ id: 'cal-phone', timeZone: 'UTC' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-phone', timeZone: 'UTC' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.includes('/calendars/cal-pc/events')) {
-      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     }
     if (method === 'POST' && url.includes('/calendars/cal-pc/events')) {
-      return new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 }));
     }
     if (method === 'DELETE' && url.endsWith('/calendars/cal-phone')) {
       deletedCalendars.push('cal-phone');
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
   const plan = await service.prepareSyncPlan(
@@ -983,33 +1014,37 @@ test('CalendarReminderService.syncRemoteCalendarId pulls shared calendarId and f
   });
 
   let createdViaPost = false;
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({ files: [{ id: 'stale-file', modifiedTime: '2026-11-22T00:00:00Z' }] }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ files: [{ id: 'stale-file', modifiedTime: '2026-11-22T00:00:00Z' }] }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.endsWith('/drive/v3/files/stale-file?alt=media')) {
-      return new Response(JSON.stringify({ calendarId: null }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ calendarId: null }), { status: 200 }));
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-local')) {
-      return new Response(JSON.stringify({ id: 'cal-local', timeZone: 'Europe/Moscow' }), {
-        status: 200,
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-local', timeZone: 'Europe/Moscow' }), {
+          status: 200,
+        })
+      );
     }
     if (method === 'PATCH' && url.includes('/upload/drive/v3/files/stale-file')) {
-      return new Response('Not Found', { status: 404 });
+      return Promise.resolve(new Response('Not Found', { status: 404 }));
     }
     if (method === 'POST' && url.endsWith('/upload/drive/v3/files?uploadType=multipart')) {
       createdViaPost = true;
-      return new Response(JSON.stringify({ id: 'fresh-file' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'fresh-file' }), { status: 200 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
   const published = await service.syncRemoteCalendarId(
@@ -1053,20 +1088,22 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
     return JSON.parse(jsonPart) as Record<string, unknown>;
   };
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: remoteMeta ? [{ id: 'meta-tz-1', modifiedTime: '2026-11-22T00:00:00Z' }] : [],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: remoteMeta ? [{ id: 'meta-tz-1', modifiedTime: '2026-11-22T00:00:00Z' }] : [],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.endsWith('/drive/v3/files/meta-tz-1?alt=media')) {
-      return new Response(JSON.stringify(remoteMeta), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify(remoteMeta), { status: 200 }));
     }
     if (
       (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-tz-1')) ||
@@ -1076,18 +1113,20 @@ test('CalendarReminderService.syncRemoteCalendarId resolves timeZone with last-w
       if (parsed) {
         remoteMeta = parsed;
       }
-      return new Response(JSON.stringify({ id: 'meta-tz-1' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'meta-tz-1' }), { status: 200 }));
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-tz-1')) {
-      return new Response(JSON.stringify({ id: 'cal-tz-1', timeZone: 'Asia/Tokyo' }), {
-        status: 200,
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-tz-1', timeZone: 'Asia/Tokyo' }), {
+          status: 200,
+        })
+      );
     }
     if (method === 'DELETE' && url.endsWith('/calendars/cal-tz-1')) {
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
 
@@ -1441,65 +1480,69 @@ test('ReminderPlanner and CalendarReminderService support multiple dynamic slots
   assert.doesNotMatch(desiredDeletedTaskSlot[0].description, /Call bank/);
 
   // CalendarReminderService matches existing events by (dayIndex, slotId), deletes removed slot & duplicate slot events
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/drive/v3/files')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
-      return new Response(
-        JSON.stringify({
-          items: [{ id: 'cal-multi', summary: 'Habits Reminders', timeZone: 'UTC' }],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: 'cal-multi', summary: 'Habits Reminders', timeZone: 'UTC' }],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/calendars/cal-multi/events')) {
-      return new Response(
-        JSON.stringify({
-          items: [
-            {
-              id: 'ev-morning-ok',
-              summary: desired[0].summary,
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(MONDAY_DAY),
-                  habitsSlotId: 'slot-morning',
-                  habitsSignature: desired[0].signature,
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'ev-morning-ok',
+                summary: desired[0].summary,
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(MONDAY_DAY),
+                    habitsSlotId: 'slot-morning',
+                    habitsSignature: desired[0].signature,
+                  },
                 },
               },
-            },
-            {
-              id: 'ev-morning-dup',
-              summary: 'Duplicate morning',
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(MONDAY_DAY),
-                  habitsSlotId: 'slot-morning',
-                  habitsSignature: desired[0].signature,
+              {
+                id: 'ev-morning-dup',
+                summary: 'Duplicate morning',
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(MONDAY_DAY),
+                    habitsSlotId: 'slot-morning',
+                    habitsSignature: desired[0].signature,
+                  },
                 },
               },
-            },
-            {
-              id: 'ev-deleted-slot',
-              summary: 'Old Slot',
-              extendedProperties: {
-                private: {
-                  habitsDayIndex: String(MONDAY_DAY),
-                  habitsSlotId: 'slot-deleted',
-                  habitsSignature: 'old-sig',
+              {
+                id: 'ev-deleted-slot',
+                summary: 'Old Slot',
+                extendedProperties: {
+                  private: {
+                    habitsDayIndex: String(MONDAY_DAY),
+                    habitsSlotId: 'slot-deleted',
+                    habitsSignature: 'old-sig',
+                  },
                 },
               },
-            },
-          ],
-        }),
-        { status: 200 }
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
   const plan = await service.prepareSyncPlan(
@@ -1553,56 +1596,62 @@ test('CalendarReminderService handles paginated calendarList/events, 404/401 err
   // Paginated calendarList + paginated events + 404 on deleteReminderCalendar treated safely or mapped
   let calListCalls = 0;
   let eventsCalls = 0;
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/drive/v3/files')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
       calListCalls += 1;
       if (calListCalls === 1) {
-        return new Response(
-          JSON.stringify({ items: [{ id: 'other', summary: 'Work' }], nextPageToken: 'p2' }),
-          { status: 200 }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ items: [{ id: 'other', summary: 'Work' }], nextPageToken: 'p2' }),
+            { status: 200 }
+          )
         );
       }
-      return new Response(
-        JSON.stringify({
-          items: [{ id: 'cal-paged', summary: 'Habits Reminders', timeZone: 'UTC' }],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [{ id: 'cal-paged', summary: 'Habits Reminders', timeZone: 'UTC' }],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.includes('/calendars/cal-paged/events')) {
       eventsCalls += 1;
       if (eventsCalls === 1) {
-        return new Response(
-          JSON.stringify({
-            items: [
-              {
-                id: 'ev-stale-1',
-                extendedProperties: {
-                  private: { habitsDayIndex: String(MONDAY_DAY - 1), habitsSlotId: 'legacy' },
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  id: 'ev-stale-1',
+                  extendedProperties: {
+                    private: { habitsDayIndex: String(MONDAY_DAY - 1), habitsSlotId: 'legacy' },
+                  },
                 },
-              },
-            ],
-            nextPageToken: 'ep2',
-          }),
-          { status: 200 }
+              ],
+              nextPageToken: 'ep2',
+            }),
+            { status: 200 }
+          )
         );
       }
-      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     }
     if (method === 'DELETE' && url.includes('/calendars/cal-missing')) {
-      return new Response('not found', { status: 404 });
+      return Promise.resolve(new Response('not found', { status: 404 }));
     }
     if (method === 'DELETE' && url.includes('/calendars/cal-err')) {
-      return new Response('forbidden', { status: 403 });
+      return Promise.resolve(new Response('forbidden', { status: 403 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const plan = await service.prepareSyncPlan(
     'google',
@@ -1637,58 +1686,68 @@ test('CalendarReminderService handles corrupt remote meta, duplicate meta cleanu
   const deletedMetaFiles: string[] = [];
   let patchedCalTz = false;
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
 
     if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
-      return new Response(
-        JSON.stringify({
-          files: [
-            { id: 'meta-main', modifiedTime: '2026-11-22T00:00:00Z' },
-            { id: 'meta-dup', modifiedTime: '2026-11-21T00:00:00Z' },
-          ],
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [
+              { id: 'meta-main', modifiedTime: '2026-11-22T00:00:00Z' },
+              { id: 'meta-dup', modifiedTime: '2026-11-21T00:00:00Z' },
+            ],
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.endsWith('/drive/v3/files/meta-main?alt=media')) {
-      return new Response(
-        JSON.stringify({
-          calendarId: 'cal-remote',
-          knownCalendarIds: ['cal-older'],
-          timeZone: 'UTC',
-          timeZoneUpdatedAt: 1000,
-        }),
-        { status: 200 }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            calendarId: 'cal-remote',
+            knownCalendarIds: ['cal-older'],
+            timeZone: 'UTC',
+            timeZoneUpdatedAt: 1000,
+          }),
+          { status: 200 }
+        )
       );
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-remote')) {
-      return new Response(JSON.stringify({ id: 'cal-remote', timeZone: 'UTC' }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-remote', timeZone: 'UTC' }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-local-second')) {
-      return new Response(JSON.stringify({ id: 'cal-local-second', timeZone: 'UTC' }), {
-        status: 200,
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-local-second', timeZone: 'UTC' }), {
+          status: 200,
+        })
+      );
     }
     if (method === 'PATCH' && url.includes('/upload/drive/v3/files/meta-main')) {
-      return new Response(JSON.stringify({ id: 'meta-main' }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ id: 'meta-main' }), { status: 200 }));
     }
     if (method === 'DELETE' && url.endsWith('/drive/v3/files/meta-dup')) {
       deletedMetaFiles.push('meta-dup');
-      return new Response(null, { status: 204 });
+      return Promise.resolve(new Response(null, { status: 204 }));
     }
     if (method === 'PATCH' && url.endsWith('/calendars/cal-remote')) {
       patchedCalTz = true;
-      return new Response(JSON.stringify({ id: 'cal-remote', timeZone: 'Europe/Kyiv' }), {
-        status: 200,
-      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ id: 'cal-remote', timeZone: 'Europe/Kyiv' }), {
+          status: 200,
+        })
+      );
     }
     if (method === 'GET' && url.includes('/calendars/cal-remote/events')) {
-      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     }
-    throw new Error(`Unexpected fetch: ${method} ${url}`);
-  }) as typeof fetch;
+    return Promise.reject(new Error(`Unexpected fetch: ${method} ${url}`));
+  };
 
   const service = new CalendarReminderService();
   const synced = await service.syncRemoteCalendarId(
@@ -1727,17 +1786,19 @@ test('CalendarReminderService handles corrupt remote meta, duplicate meta cleanu
   assert.equal(applied.timeZone, 'Europe/Kyiv');
 
   // Corrupt JSON in meta file returns null safely in syncRemoteCalendarId
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     if (method === 'GET' && url.includes('/drive/v3/files?spaces=appDataFolder')) {
-      return new Response(JSON.stringify({ files: [{ id: 'meta-corrupt' }] }), { status: 200 });
+      return Promise.resolve(
+        new Response(JSON.stringify({ files: [{ id: 'meta-corrupt' }] }), { status: 200 })
+      );
     }
     if (method === 'GET' && url.endsWith('/drive/v3/files/meta-corrupt?alt=media')) {
-      return new Response('not valid json', { status: 200 });
+      return Promise.resolve(new Response('not valid json', { status: 200 }));
     }
-    return new Response(null, { status: 200 });
-  }) as typeof fetch;
+    return Promise.resolve(new Response(null, { status: 200 }));
+  };
 
   const nullResult = await service.syncRemoteCalendarId('google', 'tok-1', null, 'UTC');
   assert.equal(nullResult, null);
@@ -1750,20 +1811,20 @@ test('CalendarReminderService handles 404 stored calendar fallback and 403 insuf
   });
 
   // 1) Stored calendarId returns 404 -> falls back to discovering via calendarList or marking willCreateCalendar=true
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     if (method === 'GET' && url.includes('/drive/v3/files')) {
-      return new Response(JSON.stringify({ files: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
     }
     if (method === 'GET' && url.endsWith('/calendars/cal-gone')) {
-      return new Response('Gone', { status: 410 });
+      return Promise.resolve(new Response('Gone', { status: 410 }));
     }
     if (method === 'GET' && url.includes('/users/me/calendarList')) {
-      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: 200 }));
     }
-    return new Response(null, { status: 200 });
-  }) as typeof fetch;
+    return Promise.resolve(new Response(null, { status: 200 }));
+  };
 
   const service = new CalendarReminderService();
   const plan = await service.prepareSyncPlan(
@@ -1778,14 +1839,16 @@ test('CalendarReminderService handles 404 stored calendar fallback and 403 insuf
   assert.equal(plan.calendarId, null);
 
   // 2) 403 insufficientPermissions maps cleanly on calendar creation
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input.toString();
+  globalThis.fetch = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const url = resolveFetchUrl(input);
     const method = init?.method ?? 'GET';
     if (method === 'POST' && url.endsWith('/calendar/v3/calendars')) {
-      return new Response('insufficientPermissions: Missing calendar scope', { status: 403 });
+      return Promise.resolve(
+        new Response('insufficientPermissions: Missing calendar scope', { status: 403 })
+      );
     }
-    return new Response(null, { status: 200 });
-  }) as typeof fetch;
+    return Promise.resolve(new Response(null, { status: 200 }));
+  };
 
   await assert.rejects(
     () => service.applySyncPlan('google', 'tok-1', plan),

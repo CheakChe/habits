@@ -172,10 +172,10 @@ describe('App integration', () => {
     };
 
     vi.stubGlobal('__GOOGLE_OAUTH_CLIENT_ID__', 'test-client.apps.googleusercontent.com');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.toString();
+    const mockedFetch: typeof fetch = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
         const method = init?.method ?? 'GET';
 
         if (url.includes('oauth2/v3/userinfo')) {
@@ -208,7 +208,9 @@ describe('App integration', () => {
                 ? new TextDecoder().decode(init.body)
                 : init?.body instanceof Blob
                   ? await init.body.text()
-                  : String(init?.body ?? '');
+                  : typeof init?.body === 'string'
+                    ? init.body
+                    : '';
             if (bodyText.includes('habits-reminders.json')) {
               return new Response(JSON.stringify({ id: 'meta-1' }), { status: 200 });
             }
@@ -287,8 +289,9 @@ describe('App integration', () => {
           return new Response(JSON.stringify({ id: 'ev-1' }), { status: 200 });
         }
         return new Response(JSON.stringify({}), { status: 200 });
-      }) as typeof fetch
+      }
     );
+    vi.stubGlobal('fetch', mockedFetch);
 
     Object.defineProperty(window, 'google', {
       configurable: true,
@@ -390,5 +393,143 @@ describe('App integration', () => {
       vi.unstubAllGlobals();
       delete (window as { google?: unknown }).google;
     }
+  });
+
+  it('persists sequential +1 / +5 measured habit increments in TodayView', async () => {
+    render(() => <App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^today$/i })).toBeInTheDocument()
+    );
+
+    // Create a measured habit with target 10 cups
+    fireEvent.click(screen.getByRole('button', { name: /create first habit/i }));
+    const habitDialog = screen.getByRole('dialog', { name: /new habit/i });
+    fireEvent.input(within(habitDialog).getByLabelText(/^name$/i), { target: { value: 'Water' } });
+    fireEvent.click(within(habitDialog).getByRole('button', { name: /^measured$/i }));
+    fireEvent.input(within(habitDialog).getByLabelText(/^target$/i), { target: { value: '10' } });
+    fireEvent.input(within(habitDialog).getByLabelText(/unit \(optional\)/i), {
+      target: { value: 'cups' },
+    });
+    fireEvent.click(within(habitDialog).getByRole('button', { name: /create habit/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Water')).toBeInTheDocument();
+    expect(screen.getByText('0/10 cups')).toBeInTheDocument();
+
+    // Perform sequential +1, +5, +1, +5 increments
+    fireEvent.click(screen.getByRole('button', { name: /add 1 cups to water/i }));
+    await waitFor(() => expect(screen.getByText('1/10 cups')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /add 5 cups to water/i }));
+    await waitFor(() => expect(screen.getByText('6/10 cups')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /add 1 cups to water/i }));
+    await waitFor(() => expect(screen.getByText('7/10 cups')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /add 5 cups to water/i }));
+    await waitFor(() => expect(screen.getByText('12/10 cups')).toBeInTheDocument());
+
+    // Target reached => main completion toggle marks habit done
+    expect(screen.getByRole('button', { name: /reset water to 0/i })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+  });
+
+  it('updates Progress charts reactively when toggling habit filter and switching timezone', async () => {
+    render(() => <App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^today$/i })).toBeInTheDocument()
+    );
+
+    // Create two habits: Alpha and Beta
+    fireEvent.click(screen.getByRole('button', { name: /create first habit/i }));
+    let dialog = screen.getByRole('dialog', { name: /new habit/i });
+    fireEvent.input(within(dialog).getByLabelText(/^name$/i), { target: { value: 'Alpha' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /create habit/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /new habit/i }));
+    dialog = screen.getByRole('dialog', { name: /new habit/i });
+    fireEvent.input(within(dialog).getByLabelText(/^name$/i), { target: { value: 'Beta' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /create habit/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+
+    // Mark Alpha done today
+    fireEvent.click(screen.getByRole('button', { name: /mark alpha as done/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /mark alpha as not done/i })).toBeInTheDocument()
+    );
+
+    // Navigate to Progress -> Charts
+    const nav = screen.getByRole('navigation', { name: /primary navigation/i });
+    fireEvent.click(nav.querySelectorAll('button')[3]);
+    expect(screen.getByRole('heading', { name: /^progress$/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /charts/i }));
+    expect(screen.getByRole('heading', { name: /consistency trend/i })).toBeInTheDocument();
+
+    // Filter out Beta via habit filter multiselect
+    fireEvent.click(screen.getByRole('button', { name: /filter by habits/i }));
+    const listbox = screen.getByRole('listbox', { name: /filter by habits/i });
+    fireEvent.click(within(listbox).getByRole('option', { name: /beta/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /filter by habits/i })).toHaveTextContent(
+        /^alpha$/i
+      )
+    );
+
+    // Close habit filter and open Date Range & Timezone picker
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const rangeTrigger = screen.getByRole('button', { name: /last 30 days/i });
+    fireEvent.click(rangeTrigger);
+    const rangeDialog = screen.getByRole('dialog', { name: /choose date range and timezone/i });
+    fireEvent.click(within(rangeDialog).getByRole('button', { name: /all zones/i }));
+    fireEvent.input(within(rangeDialog).getByPlaceholderText(/search iana timezone/i), {
+      target: { value: 'America/New_York' },
+    });
+    fireEvent.click(within(rangeDialog).getByRole('button', { name: 'America/New_York' }));
+
+    await waitFor(() => expect(rangeTrigger).toHaveTextContent(/new york/i));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByRole('heading', { name: /consistency trend/i })).toBeInTheDocument();
+  });
+
+  it('renders a clear error banner when IndexedDB fails to open on boot without crashing', async () => {
+    const failingFactory = {
+      open() {
+        const req: Record<string, unknown> = {
+          result: null,
+          error: new Error('Failed to open local IndexedDB: permission denied'),
+          onupgradeneeded: null,
+          onsuccess: null,
+          onerror: null,
+        };
+        queueMicrotask(() => {
+          if (typeof req.onerror === 'function') {
+            (req.onerror as (ev: Event) => void)(new Event('error'));
+          }
+        });
+        return req as unknown as IDBOpenDBRequest;
+      },
+    };
+
+    Object.defineProperty(globalThis, 'indexedDB', {
+      value: failingFactory,
+      configurable: true,
+      writable: true,
+    });
+
+    render(() => <App />);
+    fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }));
+
+    const banner = await screen.findByRole('status');
+    expect(banner).toHaveTextContent(/failed to open local indexeddb/i);
+    expect(screen.getByRole('heading', { name: /^today$/i })).toBeInTheDocument();
   });
 });

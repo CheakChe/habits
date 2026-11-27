@@ -5,6 +5,53 @@
   --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* Surfaces */
+  --color-canvas: #0a0b0e;
+  --color-surface: #14161b;
+  --color-surface-elevated: #1c1f26;
+  --color-surface-hover: #252933;
+  --color-surface-popover: #181b22;
+  --color-surface-subtle: #0d0f14;
+  --color-surface-heat: #0d1016;
+  --color-surface-info: #182030;
+  --color-surface-danger: #2a1417;
+
+  /* Ink (Text) */
+  --color-ink: #f5f7fa;
+  --color-ink-secondary: #c8cdd8;
+  --color-ink-muted: #9aa1b1;
+  --color-ink-subtle: #8e95a5;
+  --color-ink-dim: #6b7280;
+  --color-ink-faint: #5b6270;
+  --color-ink-dead: #4b5563;
+
+  /* Brand & Semantic Accents */
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-soft: #60a5fa;
+  --color-accent-tint: #93c5fd;
+  --color-accent-pale: #dbeafe;
+
+  --color-warning: #f59e0b;
+  --color-warning-soft: #fcd34d;
+  --color-milestone-gold: #fbbf24;
+
+  --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
+  --color-danger-soft: #fca5a5;
+  --color-danger-lighter: #fecaca;
+  --color-danger-pale: #fee2e2;
+  --color-danger-tint: #e5c5c8;
+
+  /* Heatmap & Calendar Severity Ramp */
+  --color-heat-1: #581c24;
+  --color-heat-2: #881b22;
+  --color-heat-3: #b91c1c;
+  --color-heat-today: #3b181e;
+  --color-cal-missed-1: #7f1d1d;
+  --color-cal-missed-2: #991b1b;
+  --color-cal-today: #451a1d;
 }
 
 @layer base {
@@ -14,8 +61,8 @@
 
   html {
     font-family: var(--font-sans);
-    background-color: #0a0b0e;
-    color: #f5f7fa;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
   }
 
   body {

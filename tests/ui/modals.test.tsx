@@ -1,14 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@solidjs/testing-library';
 import { describe, expect, it, vi } from 'vitest';
 import { Habit, ReminderSlot, Task } from '../../src/types/domain';
-import {
-  AccountModal,
-  DriveRevisionsModal,
-  HabitModal,
-  RemindersModal,
-  SyncConfirmModal,
-  TaskModal,
-} from '../../src/ui/Modals';
+import { AccountModal } from '../../src/ui/modals/AccountModal';
+import { DriveRevisionsModal } from '../../src/ui/modals/DriveRevisionsModal';
+import { HabitModal } from '../../src/ui/modals/HabitModal';
+import { RemindersModal } from '../../src/ui/modals/RemindersModal';
+import { SyncConfirmModal } from '../../src/ui/modals/SyncConfirmModal';
+import { TaskModal } from '../../src/ui/modals/TaskModal';
 import { CivilCalendar } from '../../src/utils/civil-calendar';
 import { DEFAULT_REMINDER_PREFERENCES } from '../../src/utils/reminder-planner';
 
@@ -98,8 +96,8 @@ describe('HabitModal', () => {
         reminderSlots={SLOTS}
         todayDay={TODAY}
         onClose={() => {}}
-        onCreateReminderSlot={async () => SLOTS[0]}
-        onSave={async () => {}}
+        onCreateReminderSlot={() => Promise.resolve(SLOTS[0])}
+        onSave={() => Promise.resolve()}
       />
     ));
 
@@ -246,7 +244,7 @@ describe('TaskModal', () => {
         prefill={{ title: 'Pay rent', note: '', dueDay: TODAY + 30, repeatable: true }}
         todayDay={TODAY}
         onClose={onClose}
-        onSave={async () => {}}
+        onSave={() => Promise.resolve()}
       />
     ));
 
@@ -403,7 +401,7 @@ describe('SyncConfirmModal & AccountModal', () => {
         type: 'application/octet-stream',
       });
       Object.defineProperty(badFile, 'arrayBuffer', {
-        value: async () => new Uint8Array([9]).buffer,
+        value: () => Promise.resolve(new Uint8Array([9]).buffer),
       });
       fireEvent.change(fileInput, { target: { files: [badFile] } });
       await waitFor(() => expect(screen.getByText('Invalid snapshot')).toBeInTheDocument());
@@ -596,9 +594,7 @@ describe('DriveRevisionsModal & RemindersModal', () => {
         reminderSlots={SLOTS}
         todayDay={TODAY}
         onClose={() => {}}
-        onCreateReminderSlot={async () => {
-          throw new Error('Slot limit reached');
-        }}
+        onCreateReminderSlot={() => Promise.reject(new Error('Slot limit reached'))}
         onSave={onSave}
       />
     ));
@@ -636,9 +632,9 @@ describe('DriveRevisionsModal & RemindersModal', () => {
         inspectedRevision={null}
         restoring={false}
         onClose={() => {}}
-        onRefresh={async () => {}}
+        onRefresh={() => Promise.resolve()}
         onInspect={onInspect}
-        onRestore={async () => {}}
+        onRestore={() => Promise.resolve()}
       />
     ));
     expect(screen.getByText('Network error')).toBeInTheDocument();
@@ -655,9 +651,9 @@ describe('DriveRevisionsModal & RemindersModal', () => {
         inspectedRevision={null}
         restoring={false}
         onClose={() => {}}
-        onRefresh={async () => {}}
+        onRefresh={() => Promise.resolve()}
         onInspect={onInspect}
-        onRestore={async () => {}}
+        onRestore={() => Promise.resolve()}
       />
     ));
     expect(screen.getByText(/no drive versions yet/i)).toBeInTheDocument();
@@ -673,9 +669,9 @@ describe('DriveRevisionsModal & RemindersModal', () => {
         inspectedRevision={null}
         restoring={false}
         onClose={() => {}}
-        onRefresh={async () => {}}
+        onRefresh={() => Promise.resolve()}
         onInspect={onInspect}
-        onRestore={async () => {}}
+        onRestore={() => Promise.resolve()}
       />
     ));
     fireEvent.click(screen.getByRole('button', { name: /^inspect$/i }));
@@ -751,18 +747,18 @@ describe('DriveRevisionsModal & RemindersModal', () => {
         confirmDeleteOpen={false}
         onClose={() => {}}
         onToggleBadge={() => {}}
-        onRequestBadgePermission={async () => {}}
-        onCreateSlot={async () => SLOTS[0]}
+        onRequestBadgePermission={() => Promise.resolve()}
+        onCreateSlot={() => Promise.resolve(SLOTS[0])}
         onUpdateSlot={onUpdateSlot}
         onDeleteSlot={onDeleteSlot}
         onToggleCalendar={() => {}}
         onChangeTaskSlot={() => {}}
         onChangeHorizon={() => {}}
-        onPrepareCalendarSync={async () => {}}
-        onConfirmCalendarSync={async () => {}}
+        onPrepareCalendarSync={() => Promise.resolve()}
+        onConfirmCalendarSync={() => Promise.resolve()}
         onCancelCalendarSync={onCancelCalendarSync}
         onRequestDeleteCalendar={() => {}}
-        onConfirmDeleteCalendar={async () => {}}
+        onConfirmDeleteCalendar={() => Promise.resolve()}
         onCancelDeleteCalendar={() => {}}
       />
     ));
@@ -837,18 +833,18 @@ describe('DriveRevisionsModal & RemindersModal', () => {
         confirmDeleteOpen={false}
         onClose={() => {}}
         onToggleBadge={() => {}}
-        onRequestBadgePermission={async () => {}}
-        onCreateSlot={async () => multiSlots[0]}
-        onUpdateSlot={async () => {}}
-        onDeleteSlot={async () => {}}
+        onRequestBadgePermission={() => Promise.resolve()}
+        onCreateSlot={() => Promise.resolve(multiSlots[0])}
+        onUpdateSlot={() => Promise.resolve()}
+        onDeleteSlot={() => Promise.resolve()}
         onToggleCalendar={() => {}}
         onChangeTaskSlot={() => {}}
         onChangeHorizon={() => {}}
-        onPrepareCalendarSync={async () => {}}
-        onConfirmCalendarSync={async () => {}}
+        onPrepareCalendarSync={() => Promise.resolve()}
+        onConfirmCalendarSync={() => Promise.resolve()}
         onCancelCalendarSync={() => {}}
         onRequestDeleteCalendar={() => {}}
-        onConfirmDeleteCalendar={async () => {}}
+        onConfirmDeleteCalendar={() => Promise.resolve()}
         onCancelDeleteCalendar={() => {}}
       />
     ));

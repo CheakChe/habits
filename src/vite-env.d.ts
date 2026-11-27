@@ -11,7 +11,7 @@ interface GisTokenResponse {
 }
 
 interface GisTokenClientError {
-  type?: 'popup_failed_to_open' | 'popup_closed' | 'unknown_error' | string;
+  type?: 'popup_failed_to_open' | 'popup_closed' | 'unknown_error' | (string & {});
   message?: string;
 }
 

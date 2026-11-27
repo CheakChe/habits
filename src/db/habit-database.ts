@@ -227,9 +227,9 @@ export class HabitDatabase {
     return this.dbPromise;
   }
 
-  private promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
+  private promisifyRequest<T>(request: IDBRequest): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => resolve(request.result as T);
       request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
     });
   }

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@solidjs/testing-library';
 import { describe, expect, it, vi } from 'vitest';
 import { Habit, HabitCheckin, Task } from '../../src/types/domain';
-import { HistoryChartsPanel } from '../../src/ui/HistoryChartsPanel';
+import { HistoryChartsPanel } from '../../src/ui/history/HistoryChartsPanel';
 import { CivilCalendar } from '../../src/utils/civil-calendar';
 
 describe('HistoryChartsPanel', () => {
@@ -112,8 +112,8 @@ describe('HistoryChartsPanel', () => {
     const measuredHeading = screen.getByRole('heading', { name: /measured volume/i });
     const measuredSection = measuredHeading.closest('section')!;
     const targetLines = Array.from(
-      measuredSection.querySelectorAll('[aria-hidden="true"].border-dashed')
-    ) as HTMLElement[];
+      measuredSection.querySelectorAll<HTMLElement>('[aria-hidden="true"].border-dashed')
+    );
     expect(targetLines).toHaveLength(2);
     expect(targetLines[0].style.bottom).toBe('100%');
     expect(targetLines[1].style.bottom).toBe('100%');

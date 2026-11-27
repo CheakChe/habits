@@ -1,5 +1,4 @@
 import {
-  For,
   JSX,
   Match,
   Show,
@@ -9,7 +8,7 @@ import {
   createSignal,
   untrack,
 } from 'solid-js';
-import { DomainSnapshot, Habit, HabitCheckin, HistorySubTab } from '../types/domain';
+import { DomainSnapshot, Habit, HistorySubTab } from '../types/domain';
 import {
   AdvancedAnalyticsReport,
   AdvancedHeatmapMode,
@@ -24,30 +23,14 @@ import {
   DayCellTone,
 } from '../utils/date-range';
 import { StreakCalculator, StreakUnit } from '../utils/streak-calculator';
-import { HabitSchedule } from '../utils/habit-schedule';
 import { TaskAnalytics } from '../utils/task-analytics';
-import { HabitAppearance } from '../utils/habit-appearance';
-import {
-  CustomMultiSelect,
-  HistoryRangePicker,
-  MeasuredQuickControls,
-  SelectOption,
-} from './CustomControls';
-import { HabitBadge } from './HabitBadge';
-import { HistoryAdvancedPanel } from './HistoryAdvancedPanel';
-import { HistoryChartsPanel, PeriodComparisonView } from './HistoryChartsPanel';
-import {
-  ArchiveIcon,
-  CalendarIcon,
-  CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CloseIcon,
-  HistoryTabIcon,
-  LayersIcon,
-  NoteIcon,
-  RepeatIcon,
-} from './Icons';
+import { MultiSelect } from './controls/MultiSelect';
+import { SelectOption } from './controls/Select';
+import { HistoryRangePicker } from './controls/HistoryRangePicker';
+import { HistoryAdvancedPanel } from './history/HistoryAdvancedPanel';
+import { HistoryCalendarPanel } from './history/HistoryCalendarPanel';
+import { HistoryChartsPanel, PeriodComparisonView } from './history/HistoryChartsPanel';
+import { CalendarIcon, HistoryTabIcon, LayersIcon } from './Icons';
 
 interface HistoryViewProps {
   snapshot: DomainSnapshot;
@@ -79,30 +62,6 @@ interface HistoryViewProps {
   onSaveNote: (habitId: number, dayIndex: number, text: string) => Promise<void>;
 }
 
-function calendarTileClass(tone: DayCellTone, isSelected: boolean): string {
-  if (isSelected) {
-    return 'bg-[#3B82F6]/25 border-[#3B82F6] text-white';
-  }
-  switch (tone) {
-    case 'complete':
-      return 'bg-[#3B82F6]/15 border-[#3B82F6]/40 text-[#F5F7FA] hover:bg-[#3B82F6]/25';
-    case 'missed-slight':
-      return 'bg-[#7F1D1D]/20 border-[#EF4444]/25 text-[#FECACA] hover:bg-[#7F1D1D]/30';
-    case 'missed-moderate':
-      return 'bg-[#991B1B]/30 border-[#EF4444]/40 text-[#FECACA] hover:bg-[#991B1B]/40';
-    case 'missed-heavy':
-      return 'bg-[#B91C1C]/40 border-[#EF4444]/55 text-[#FEE2E2] hover:bg-[#B91C1C]/50';
-    case 'missed-all':
-      return 'bg-[#DC2626]/35 border-[#EF4444]/75 text-[#FEE2E2] hover:bg-[#DC2626]/45';
-    case 'today-open':
-      return 'bg-[#451A1D]/55 border-[#EF4444]/40 text-[#F5F7FA] hover:bg-[#451A1D]/75';
-    case 'unscheduled':
-    case 'future':
-    default:
-      return 'bg-[#0A0B0E] border-white/[0.06] text-[#9AA1B1] hover:border-white/20';
-  }
-}
-
 export function HistoryView(props: HistoryViewProps): JSX.Element {
   const initialDay = untrack(() => {
     const initialRange = DateRangeResolver.resolve(props.rangePreset, props.todayDay, {
@@ -117,8 +76,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
   const [viewYear, setViewYear] = createSignal(initialLocal.year);
   const [viewMonth, setViewMonth] = createSignal(initialLocal.month);
   const [selectedDay, setSelectedDay] = createSignal(initialDay);
-  const [editingNoteHabitId, setEditingNoteHabitId] = createSignal<number | null>(null);
-  const [noteDraft, setNoteDraft] = createSignal('');
 
   createEffect(() => {
     if (selectedDay() > props.todayDay) {
@@ -146,7 +103,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     setViewYear(local.year);
     setViewMonth(local.month);
     setSelectedDay(target);
-    setEditingNoteHabitId(null);
   };
 
   const handleSelectPreset = (nextPreset: DateRangePresetId) => {
@@ -167,22 +123,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     syncCalendarToRangeEnd(e);
   };
 
-  const checkinIndex = createMemo(() => {
-    const map = new Map<string, HabitCheckin>();
-    for (const c of props.snapshot.checkins) {
-      map.set(`${c.habitId}:${c.dayIndex}`, c);
-    }
-    return map;
-  });
-
-  const noteIndex = createMemo(() => {
-    const map = new Map<string, string>();
-    for (const n of props.snapshot.notes) {
-      map.set(`${n.habitId}:${n.dayIndex}`, n.text);
-    }
-    return map;
-  });
-
   const targetHabits = createMemo(() => {
     const filter = props.habitFilter;
     if (filter === 'all') return props.snapshot.habits;
@@ -190,68 +130,79 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     return props.snapshot.habits.filter((h) => allowed.has(h.id));
   });
 
-  const analyticsSummary = createMemo(() => {
-    const habits = targetHabits();
-    if (habits.length === 0) {
+  const analyticsSummary = createMemo(
+    (): {
+      currentStreak: number;
+      currentStreakUnit: StreakUnit;
+      longestStreak: number;
+      longestStreakUnit: StreakUnit;
+      completionRate: number;
+      scheduledDays: number;
+      completedScheduledDays: number;
+      missedScheduledDays: number;
+    } => {
+      const habits = targetHabits();
+      if (habits.length === 0) {
+        return {
+          currentStreak: 0,
+          currentStreakUnit: 'days',
+          longestStreak: 0,
+          longestStreakUnit: 'days',
+          completionRate: 0,
+          scheduledDays: 0,
+          completedScheduledDays: 0,
+          missedScheduledDays: 0,
+        };
+      }
+
+      let bestCurrent = 0;
+      let bestCurrentEquiv = -1;
+      let bestCurrentUnit: StreakUnit = 'days';
+      let bestLongest = 0;
+      let bestLongestEquiv = -1;
+      let bestLongestUnit: StreakUnit = 'days';
+      let totalScheduled = 0;
+      let totalCompleted = 0;
+      const startDay = effectiveRangeStart();
+      const endDay = effectiveRangeEnd();
+      const allowPending = endDay >= props.todayDay;
+
+      for (const habit of habits) {
+        const m = StreakCalculator.calculate(
+          habit,
+          props.snapshot.checkins,
+          startDay,
+          endDay,
+          allowPending
+        );
+        const currEquiv = m.streakUnit === 'weeks' ? m.currentStreak * 7 : m.currentStreak;
+        if (currEquiv > bestCurrentEquiv) {
+          bestCurrentEquiv = currEquiv;
+          bestCurrent = m.currentStreak;
+          bestCurrentUnit = m.streakUnit;
+        }
+        const longEquiv = m.streakUnit === 'weeks' ? m.longestStreak * 7 : m.longestStreak;
+        if (longEquiv > bestLongestEquiv) {
+          bestLongestEquiv = longEquiv;
+          bestLongest = m.longestStreak;
+          bestLongestUnit = m.streakUnit;
+        }
+        totalScheduled += m.scheduledDays;
+        totalCompleted += m.completedScheduledDays;
+      }
+
       return {
-        currentStreak: 0,
-        currentStreakUnit: 'days' as StreakUnit,
-        longestStreak: 0,
-        longestStreakUnit: 'days' as StreakUnit,
-        completionRate: 0,
-        scheduledDays: 0,
-        completedScheduledDays: 0,
-        missedScheduledDays: 0,
+        currentStreak: bestCurrent,
+        currentStreakUnit: bestCurrentUnit,
+        longestStreak: bestLongest,
+        longestStreakUnit: bestLongestUnit,
+        completionRate: totalScheduled === 0 ? 0 : totalCompleted / totalScheduled,
+        scheduledDays: totalScheduled,
+        completedScheduledDays: totalCompleted,
+        missedScheduledDays: Math.max(0, totalScheduled - totalCompleted),
       };
     }
-
-    let bestCurrent = 0;
-    let bestCurrentEquiv = -1;
-    let bestCurrentUnit: StreakUnit = 'days';
-    let bestLongest = 0;
-    let bestLongestEquiv = -1;
-    let bestLongestUnit: StreakUnit = 'days';
-    let totalScheduled = 0;
-    let totalCompleted = 0;
-    const startDay = effectiveRangeStart();
-    const endDay = effectiveRangeEnd();
-    const allowPending = endDay >= props.todayDay;
-
-    for (const habit of habits) {
-      const m = StreakCalculator.calculate(
-        habit,
-        props.snapshot.checkins,
-        startDay,
-        endDay,
-        allowPending
-      );
-      const currEquiv = m.streakUnit === 'weeks' ? m.currentStreak * 7 : m.currentStreak;
-      if (currEquiv > bestCurrentEquiv) {
-        bestCurrentEquiv = currEquiv;
-        bestCurrent = m.currentStreak;
-        bestCurrentUnit = m.streakUnit;
-      }
-      const longEquiv = m.streakUnit === 'weeks' ? m.longestStreak * 7 : m.longestStreak;
-      if (longEquiv > bestLongestEquiv) {
-        bestLongestEquiv = longEquiv;
-        bestLongest = m.longestStreak;
-        bestLongestUnit = m.streakUnit;
-      }
-      totalScheduled += m.scheduledDays;
-      totalCompleted += m.completedScheduledDays;
-    }
-
-    return {
-      currentStreak: bestCurrent,
-      currentStreakUnit: bestCurrentUnit,
-      longestStreak: bestLongest,
-      longestStreakUnit: bestLongestUnit,
-      completionRate: totalScheduled === 0 ? 0 : totalCompleted / totalScheduled,
-      scheduledDays: totalScheduled,
-      completedScheduledDays: totalCompleted,
-      missedScheduledDays: Math.max(0, totalScheduled - totalCompleted),
-    };
-  });
+  );
 
   const perfectDays = createMemo(() =>
     ChartsAnalytics.perfectDaysSummary(
@@ -355,15 +306,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     )
   );
 
-  const selectedDayTasks = createMemo(() =>
-    TaskAnalytics.tasksForDay(props.snapshot.tasks, selectedDay(), props.timeZone)
-  );
-
-  const selectedDayTasksCount = createMemo(() => {
-    const d = selectedDayTasks();
-    return d.done.length + d.notDone.length + d.archived.length + d.dueOpen.length;
-  });
-
   const heatmapData = createMemo(() => {
     const effectiveEnd = effectiveRangeEnd();
     const effectiveStart = effectiveRangeStart();
@@ -449,20 +391,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     return { weeks, totalDone, clampedStart, effectiveEnd, isCapped };
   });
 
-  const monthGrid = createMemo(() => CivilCalendar.getMonthDays(viewYear(), viewMonth()));
-
-  const monthDayStats = createMemo(() => {
-    const days = monthGrid().days;
-    if (days.length === 0) return new Map<number, { scheduled: number; done: number }>();
-    return StreakCalculator.getPeriodDayStats(
-      targetHabits(),
-      props.snapshot.checkins,
-      days[0],
-      Math.min(days[days.length - 1], props.todayDay),
-      props.todayDay
-    );
-  });
-
   const goPrevMonth = () => {
     if (viewMonth() === 1) {
       setViewYear((y) => y - 1);
@@ -481,12 +409,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     }
   };
 
-  const selectedDayHabits = createMemo(() =>
-    targetHabits()
-      .filter((h) => h.startDay <= selectedDay())
-      .sort((a, b) => a.id - b.id)
-  );
-
   const isDatabaseEmpty = createMemo(
     () =>
       props.snapshot.habits.length === 0 && props.snapshot.tasks.every((t) => t.deletedAt !== null)
@@ -498,7 +420,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     setViewYear(local.year);
     setViewMonth(local.month);
     setSelectedDay(target);
-    setEditingNoteHabitId(null);
     props.onSelectSubTab('calendar');
   };
 
@@ -507,10 +428,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       <div class="flex flex-col gap-4 border-b border-white/[0.08] pb-5">
         <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
           <div class="min-w-0 space-y-1">
-            <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">
-              Progress
-            </h1>
-            <p class="text-sm text-[#8E95A5]">
+            <h1 class="font-display text-3xl font-semibold tracking-tight text-ink">Progress</h1>
+            <p class="text-sm text-ink-subtle">
               {props.subTab === 'calendar'
                 ? 'Inspect past days, edit check-ins, and review daily notes and tasks.'
                 : props.subTab === 'charts'
@@ -523,7 +442,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           <div
             role="tablist"
             aria-label="Progress view mode"
-            class="inline-flex max-w-full shrink-0 items-center self-start overflow-x-auto rounded-xl border border-white/[0.08] bg-[#14161B] p-1 lg:self-auto"
+            class="inline-flex max-w-full shrink-0 items-center self-start overflow-x-auto rounded-xl border border-white/[0.08] bg-surface p-1 lg:self-auto"
           >
             <button
               type="button"
@@ -532,8 +451,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               onClick={() => props.onSelectSubTab('calendar')}
               class={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3.5 ${
                 props.subTab === 'calendar'
-                  ? 'bg-[#3B82F6] text-white'
-                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'bg-accent text-white'
+                  : 'text-ink-subtle hover:text-ink'
               }`}
             >
               <CalendarIcon class="h-3.5 w-3.5" />
@@ -546,8 +465,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               onClick={() => props.onSelectSubTab('charts')}
               class={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3.5 ${
                 props.subTab === 'charts'
-                  ? 'bg-[#3B82F6] text-white'
-                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'bg-accent text-white'
+                  : 'text-ink-subtle hover:text-ink'
               }`}
             >
               <HistoryTabIcon class="h-3.5 w-3.5" />
@@ -560,8 +479,8 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
               onClick={() => props.onSelectSubTab('advanced')}
               class={`inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3.5 ${
                 props.subTab === 'advanced'
-                  ? 'bg-[#3B82F6] text-white'
-                  : 'text-[#8E95A5] hover:text-[#F5F7FA]'
+                  ? 'bg-accent text-white'
+                  : 'text-ink-subtle hover:text-ink'
               }`}
             >
               <LayersIcon class="h-3.5 w-3.5" />
@@ -573,7 +492,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
         {/* Context Filters Row */}
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3">
-            <CustomMultiSelect<number>
+            <MultiSelect<number>
               ariaLabel="Filter by habits"
               value={props.habitFilter}
               options={props.snapshot.habits.map((h): SelectOption<number> => ({
@@ -605,7 +524,7 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </div>
 
           <Show when={props.subTab === 'calendar'}>
-            <span class="font-mono text-xs text-[#8E95A5] tabular-nums">
+            <span class="font-mono text-xs text-ink-subtle tabular-nums">
               Best streak: {analyticsSummary().currentStreak}
               {analyticsSummary().currentStreakUnit === 'weeks' ? 'w' : 'd'} current ·{' '}
               {analyticsSummary().longestStreak}
@@ -618,9 +537,9 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       <Show
         when={!isDatabaseEmpty()}
         fallback={
-          <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-[#14161B] px-6 py-14 text-center">
-            <p class="text-sm font-medium text-[#F5F7FA]">Empty Period</p>
-            <p class="mx-auto max-w-md text-sm text-[#8E95A5]">
+          <div class="space-y-2 rounded-2xl border border-white/[0.08] bg-surface px-6 py-14 text-center">
+            <p class="text-sm font-medium text-ink">Empty Period</p>
+            <p class="mx-auto max-w-md text-sm text-ink-subtle">
               Create habits and check them off or complete tasks to see real streaks, heatmaps, and
               weekly completion charts.
             </p>
@@ -678,477 +597,24 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
           </Match>
 
           <Match when={props.subTab === 'calendar'}>
-            <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-              <section class="space-y-5 rounded-2xl border border-white/[0.08] bg-[#14161B] p-4 sm:p-6 lg:col-span-7">
-                <div class="flex items-center justify-between">
-                  <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                    {CivilCalendar.formatMonthYear(viewYear(), viewMonth())}
-                  </h2>
-                  <div class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={goPrevMonth}
-                      aria-label="Previous month"
-                      class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
-                    >
-                      <ChevronLeftIcon class="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={goNextMonth}
-                      aria-label="Next month"
-                      class="flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl text-[#8E95A5] transition-colors hover:bg-white/[0.06] hover:text-[#F5F7FA]"
-                    >
-                      <ChevronRightIcon class="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-7 gap-1 text-center sm:gap-1.5">
-                  <For each={[0, 1, 2, 3, 4, 5, 6]}>
-                    {(bit) => (
-                      <div class="py-1 text-[11px] font-medium text-[#6B7280]">
-                        {CivilCalendar.weekdayShortLabel(bit)}
-                      </div>
-                    )}
-                  </For>
-
-                  <For each={Array.from({ length: monthGrid().leadingEmpty })}>{() => <div />}</For>
-
-                  <For each={monthGrid().days}>
-                    {(dayIndex) => {
-                      const local = CivilCalendar.toLocalDate(dayIndex);
-                      const isFuture = () => dayIndex > props.todayDay;
-                      const isSelected = () => dayIndex === selectedDay();
-
-                      const stats = () => {
-                        if (isFuture()) return { scheduled: 0, done: 0 };
-                        return monthDayStats().get(dayIndex) ?? { scheduled: 0, done: 0 };
-                      };
-
-                      const tone = createMemo(() =>
-                        DayCellClassifier.classify(
-                          dayIndex,
-                          props.todayDay,
-                          stats().scheduled,
-                          stats().done
-                        )
-                      );
-
-                      return (
-                        <button
-                          type="button"
-                          disabled={isFuture()}
-                          onClick={() => {
-                            setSelectedDay(dayIndex);
-                            setEditingNoteHabitId(null);
-                          }}
-                          class={`flex h-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border font-mono text-xs tabular-nums transition-colors disabled:cursor-default disabled:opacity-30 ${calendarTileClass(
-                            tone(),
-                            isSelected()
-                          )}`}
-                        >
-                          <span>{local.day}</span>
-                          <Show when={stats().scheduled > 0 && !isFuture()}>
-                            <span
-                              class={`text-[9px] ${
-                                tone() === 'complete'
-                                  ? 'text-[#93C5FD]'
-                                  : tone().startsWith('missed')
-                                    ? 'text-[#FCA5A5]'
-                                    : 'text-[#8E95A5]'
-                              }`}
-                            >
-                              {stats().done}/{stats().scheduled}
-                            </span>
-                          </Show>
-                        </button>
-                      );
-                    }}
-                  </For>
-                </div>
-              </section>
-
-              <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B] lg:col-span-5">
-                <div class="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
-                  <div>
-                    <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                      {selectedDay() === props.todayDay
-                        ? 'Today'
-                        : CivilCalendar.formatShortDate(selectedDay())}
-                    </h2>
-                    <p class="text-xs text-[#8E95A5]">
-                      {CivilCalendar.formatFullDate(selectedDay())}
-                    </p>
-                  </div>
-                </div>
-
-                <Show
-                  when={selectedDayHabits().length > 0}
-                  fallback={
-                    <div class="space-y-3 px-6 py-10 text-center">
-                      <p class="text-sm text-[#8E95A5]">
-                        {props.habitFilter !== 'all' && targetHabits().length === 0
-                          ? 'No habits selected in filter.'
-                          : 'No habits were active on this date.'}
-                      </p>
-                      <Show when={props.habitFilter !== 'all'}>
-                        <button
-                          type="button"
-                          onClick={() => props.onChangeHabitFilter('all')}
-                          class="h-9 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-3.5 text-xs font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933]"
-                        >
-                          Show All Habits
-                        </button>
-                      </Show>
-                    </div>
-                  }
-                >
-                  <ul class="divide-y divide-white/[0.06]">
-                    <For each={selectedDayHabits()}>
-                      {(habit) => {
-                        const checkinEntry = () =>
-                          checkinIndex().get(`${habit.id}:${selectedDay()}`);
-                        const activeTarget = () =>
-                          HabitSchedule.getAtDay(habit, selectedDay()).dailyTarget;
-                        const currentValue = () =>
-                          HabitSchedule.getCheckinValueForDay(habit, checkinEntry(), selectedDay());
-                        const isDone = () =>
-                          HabitSchedule.isCheckinDoneForDay(habit, checkinEntry(), selectedDay());
-                        const isPartial = () => {
-                          const target = activeTarget();
-                          return target !== null && !isDone() && currentValue() > 0;
-                        };
-                        const partialPct = () => {
-                          const target = activeTarget();
-                          if (target === null || target <= 0) return 0;
-                          return Math.min(100, Math.round((currentValue() / target) * 100));
-                        };
-                        const accentColor = () => HabitAppearance.getColor(habit.color);
-                        const scheduleStatusLabel = () => {
-                          const day = selectedDay();
-                          const sched = HabitSchedule.getAtDay(habit, day);
-                          const valPrefix =
-                            sched.dailyTarget !== null
-                              ? `${HabitSchedule.formatNumericValue(currentValue())}/${HabitSchedule.formatNumericValue(sched.dailyTarget)}${habit.unit ? ` ${habit.unit}` : ''} · `
-                              : '';
-                          if (sched.weeklyTarget !== null) {
-                            const weekStart = CivilCalendar.startOfWeek(day);
-                            const weekEnd = weekStart + 6;
-                            const segs = HabitSchedule.getSegmentsInRange(
-                              habit,
-                              Math.max(habit.startDay, weekStart),
-                              weekEnd
-                            );
-                            const activeSeg =
-                              segs.find((s) => day >= s.start && day <= s.end) ??
-                              segs[segs.length - 1];
-                            const evalDay =
-                              day <= props.todayDay
-                                ? Math.min(activeSeg ? activeSeg.end : weekEnd, props.todayDay)
-                                : day;
-                            const wk = StreakCalculator.calculateWeeklyProgress(
-                              habit,
-                              props.snapshot.checkins,
-                              evalDay
-                            );
-                            const flexLabel = wk.isComplete
-                              ? `Flexible (${wk.completedDays}/${wk.scheduledDays} wk complete)`
-                              : `Flexible (${wk.completedDays}/${wk.scheduledDays} wk)`;
-                            const eligibleMask = sched.weekdays & 0x7f || 0x7f;
-                            return (
-                              valPrefix +
-                              (CivilCalendar.isScheduled(eligibleMask, day)
-                                ? flexLabel
-                                : `Off-schedule day · ${flexLabel}`)
-                            );
-                          }
-                          return (
-                            valPrefix +
-                            (CivilCalendar.isScheduled(sched.weekdays, day)
-                              ? 'Scheduled'
-                              : 'Off-schedule day')
-                          );
-                        };
-                        const noteText = () =>
-                          noteIndex().get(`${habit.id}:${selectedDay()}`) ?? '';
-                        const isEditingNote = () => editingNoteHabitId() === habit.id;
-
-                        return (
-                          <li class="space-y-2.5 px-5 py-3.5">
-                            <div class="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void props.onToggleCheckin(habit.id, selectedDay(), !isDone())
-                                }
-                                aria-pressed={isDone()}
-                                aria-label={`Toggle ${habit.name} for ${CivilCalendar.formatShortDate(selectedDay())}`}
-                                class={`relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-xl border transition-colors ${
-                                  isDone()
-                                    ? 'border-transparent'
-                                    : isPartial()
-                                      ? 'border-white/[0.22] bg-[#0A0B0E] text-[#C8CDD8] hover:border-white/40'
-                                      : 'border-white/[0.12] bg-[#0A0B0E] text-transparent hover:border-white/30'
-                                }`}
-                                style={
-                                  isDone()
-                                    ? {
-                                        'background-color': accentColor(),
-                                        color: HabitAppearance.getContrastTextColor(accentColor()),
-                                      }
-                                    : undefined
-                                }
-                              >
-                                <Show when={isPartial()}>
-                                  <span
-                                    aria-hidden="true"
-                                    class="absolute inset-x-0 bottom-0 opacity-25 transition-all"
-                                    style={{
-                                      height: `${partialPct()}%`,
-                                      'background-color': accentColor(),
-                                    }}
-                                  />
-                                </Show>
-                                <CheckIcon class="relative z-10 h-4 w-4" />
-                              </button>
-
-                              <div class="min-w-0 flex-1">
-                                <div class="flex items-start gap-2">
-                                  <HabitBadge appearanceRaw={habit.color} size="xs" />
-                                  <p
-                                    class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
-                                    title={habit.name}
-                                  >
-                                    {habit.name}
-                                  </p>
-                                </div>
-                                <p
-                                  class="line-clamp-2 font-mono text-xs break-words text-[#8E95A5] tabular-nums"
-                                  title={
-                                    noteText() && !isEditingNote()
-                                      ? `${scheduleStatusLabel()} · ${noteText()}`
-                                      : scheduleStatusLabel()
-                                  }
-                                >
-                                  {scheduleStatusLabel()}
-                                  {noteText() && !isEditingNote() ? ` · ${noteText()}` : ''}
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (isEditingNote()) {
-                                    setEditingNoteHabitId(null);
-                                  } else {
-                                    setNoteDraft(noteText());
-                                    setEditingNoteHabitId(habit.id);
-                                  }
-                                }}
-                                aria-label={`Edit note for ${habit.name}`}
-                                class={`flex min-h-[40px] min-w-[40px] cursor-pointer items-center justify-center rounded-xl transition-colors ${
-                                  noteText() || isEditingNote()
-                                    ? 'bg-[#3B82F6]/10 text-[#60A5FA]'
-                                    : 'text-[#8E95A5] hover:bg-white/[0.05] hover:text-[#F5F7FA]'
-                                }`}
-                              >
-                                <NoteIcon class="h-4 w-4" />
-                              </button>
-                            </div>
-
-                            <Show when={activeTarget() !== null || currentValue() > 0}>
-                              <div class="pl-[3.25rem]">
-                                <MeasuredQuickControls
-                                  habitName={habit.name}
-                                  accentColor={accentColor()}
-                                  unit={habit.unit}
-                                  value={currentValue()}
-                                  target={activeTarget() ?? Math.max(1, currentValue())}
-                                  onIncrement={(delta) =>
-                                    props.onIncrementCheckinValue(habit.id, selectedDay(), delta)
-                                  }
-                                  onSetValue={(val) =>
-                                    props.onSetCheckinValue(habit.id, selectedDay(), val)
-                                  }
-                                />
-                              </div>
-                            </Show>
-
-                            <Show when={isEditingNote()}>
-                              <div class="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={noteDraft()}
-                                  onInput={(e) => setNoteDraft(e.currentTarget.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      void props
-                                        .onSaveNote(habit.id, selectedDay(), noteDraft())
-                                        .then(() => setEditingNoteHabitId(null));
-                                    }
-                                  }}
-                                  placeholder="Day note..."
-                                  autofocus
-                                  class="h-9 flex-1 rounded-xl border border-white/[0.1] bg-[#0A0B0E] px-3 text-xs text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    void props
-                                      .onSaveNote(habit.id, selectedDay(), noteDraft())
-                                      .then(() => setEditingNoteHabitId(null))
-                                  }
-                                  class="h-9 cursor-pointer rounded-xl bg-[#3B82F6] px-3.5 text-xs font-medium text-white hover:bg-[#2563EB]"
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            </Show>
-                          </li>
-                        );
-                      }}
-                    </For>
-                  </ul>
-                </Show>
-
-                <div class="border-t border-white/[0.06]">
-                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-6 py-3">
-                    <span class="text-xs font-medium text-[#9AA1B1]">Tasks</span>
-                    <span class="font-mono text-[11px] text-[#8E95A5] tabular-nums">
-                      {selectedDayTasksCount() === 0
-                        ? 'None on this day'
-                        : `${selectedDayTasks().done.length} done${
-                            selectedDayTasks().notDone.length > 0
-                              ? ` · ${selectedDayTasks().notDone.length} not done`
-                              : ''
-                          }${
-                            selectedDayTasks().archived.length > 0
-                              ? ` · ${selectedDayTasks().archived.length} arch`
-                              : ''
-                          }${
-                            selectedDayTasks().dueOpen.length > 0
-                              ? ` · ${selectedDayTasks().dueOpen.length} due`
-                              : ''
-                          }`}
-                    </span>
-                  </div>
-
-                  <Show when={selectedDayTasksCount() > 0}>
-                    <ul class="divide-y divide-white/[0.06]">
-                      <For each={selectedDayTasks().done}>
-                        {(task) => {
-                          const doneDay = () =>
-                            task.completedDay ??
-                            CivilCalendar.fromTimestamp(task.updatedAt, props.timeZone);
-                          const timingHint = () => {
-                            if (task.dueDay === null) return 'Goal';
-                            return doneDay() <= task.dueDay ? 'On time' : 'Late';
-                          };
-                          return (
-                            <li class="flex items-center gap-3 px-5 py-2.5">
-                              <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#3B82F6]/40 bg-[#3B82F6]/20 text-[#93C5FD]">
-                                <CheckIcon class="h-3.5 w-3.5" />
-                              </span>
-                              <div class="min-w-0 flex-1">
-                                <p
-                                  class="line-clamp-2 text-xs font-medium break-words text-[#9AA1B1] line-through"
-                                  title={task.title}
-                                >
-                                  {task.title}
-                                </p>
-                                <p class="line-clamp-2 text-[11px] break-words text-[#6B7280]">
-                                  Done · {timingHint()}
-                                  {task.repeatable ? ' · Repeats' : ''}
-                                  {task.note ? ` · ${task.note}` : ''}
-                                </p>
-                              </div>
-                            </li>
-                          );
-                        }}
-                      </For>
-
-                      <For each={selectedDayTasks().notDone}>
-                        {(task) => (
-                          <li class="flex items-center gap-3 px-5 py-2.5">
-                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#EF4444]/30 bg-[#EF4444]/10 text-[#FCA5A5]">
-                              <CloseIcon class="h-3.5 w-3.5" />
-                            </span>
-                            <div class="min-w-0 flex-1">
-                              <p
-                                class="line-clamp-2 text-xs font-medium break-words text-[#C8CDD8]"
-                                title={task.title}
-                              >
-                                {task.title}
-                              </p>
-                              <p class="line-clamp-2 text-[11px] break-words text-[#FCA5A5]/80">
-                                Not Done
-                                {task.note ? ` · ${task.note}` : ''}
-                              </p>
-                            </div>
-                          </li>
-                        )}
-                      </For>
-
-                      <For each={selectedDayTasks().archived}>
-                        {(task) => (
-                          <li class="flex items-center gap-3 px-5 py-2.5">
-                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-[#1C1F26] text-[#8E95A5]">
-                              <ArchiveIcon class="h-3.5 w-3.5" />
-                            </span>
-                            <div class="min-w-0 flex-1">
-                              <p
-                                class="line-clamp-2 text-xs font-medium break-words text-[#8E95A5]"
-                                title={task.title}
-                              >
-                                {task.title}
-                              </p>
-                              <p class="line-clamp-2 text-[11px] break-words text-[#6B7280]">
-                                Archived
-                                {task.note ? ` · ${task.note}` : ''}
-                              </p>
-                            </div>
-                          </li>
-                        )}
-                      </For>
-
-                      <For each={selectedDayTasks().dueOpen}>
-                        {(task) => (
-                          <li class="flex items-center gap-3 px-5 py-2.5">
-                            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-white/[0.15] bg-[#0A0B0E]">
-                              <span class="h-1.5 w-1.5 rounded-full bg-[#3B82F6]" />
-                            </span>
-                            <div class="min-w-0 flex-1">
-                              <p
-                                class="line-clamp-2 text-xs font-medium break-words text-[#F5F7FA]"
-                                title={task.title}
-                              >
-                                {task.title}
-                              </p>
-                              <div class="flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-[#8E95A5]">
-                                <span class="shrink-0">Open · Due</span>
-                                <Show when={task.repeatable}>
-                                  <span aria-hidden="true" class="shrink-0">
-                                    ·
-                                  </span>
-                                  <RepeatIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
-                                </Show>
-                                <Show when={task.note}>
-                                  <span class="line-clamp-2 max-w-full break-words">
-                                    · {task.note}
-                                  </span>
-                                </Show>
-                              </div>
-                            </div>
-                          </li>
-                        )}
-                      </For>
-                    </ul>
-                  </Show>
-                </div>
-              </section>
-            </div>
+            <HistoryCalendarPanel
+              snapshot={props.snapshot}
+              targetHabits={targetHabits()}
+              habitFilter={props.habitFilter}
+              todayDay={props.todayDay}
+              timeZone={props.timeZone}
+              viewYear={viewYear()}
+              viewMonth={viewMonth()}
+              selectedDay={selectedDay()}
+              onPrevMonth={goPrevMonth}
+              onNextMonth={goNextMonth}
+              onSelectDay={(day) => setSelectedDay(day)}
+              onChangeHabitFilter={props.onChangeHabitFilter}
+              onToggleCheckin={props.onToggleCheckin}
+              onSetCheckinValue={props.onSetCheckinValue}
+              onIncrementCheckinValue={props.onIncrementCheckinValue}
+              onSaveNote={props.onSaveNote}
+            />
           </Match>
         </Switch>
       </Show>

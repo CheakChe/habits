@@ -24,26 +24,21 @@ import {
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitSchedule } from '../utils/habit-schedule';
 import { Helpers } from '../utils/helpers';
-import { DATE_RANGE_PRESETS, DateRangePresetId } from '../utils/date-range';
+import { DateRangePresetId } from '../utils/date-range';
 import {
   BadgePermissionState,
-  DEFAULT_REMINDER_PREFERENCES,
   ReminderPlanner,
   ReminderPreferences,
   TodayPendingSummary,
 } from '../utils/reminder-planner';
-import {
-  OPEN_TASK_BUCKETS,
-  TaskSortMode,
-  TaskStatusFilterSelection,
-  TodayBoard,
-} from '../utils/today-board';
+import { TaskSortMode, TaskStatusFilterSelection, TodayBoard } from '../utils/today-board';
 import {
   AdvancedAnalytics,
   AdvancedAnalyticsReport,
   AdvancedHeatmapMode,
   AdvancedNotesFilter,
 } from '../utils/advanced-analytics';
+import { PreferencesStorage } from './preferences-store';
 
 export type TaskModalMode = 'create' | 'edit' | 'next';
 
@@ -225,227 +220,6 @@ export class TrackerStore {
   private midnightTimer: number | null = null;
   private tokenExpiryTimer: number | null = null;
   private visibilityListener: (() => void) | null = null;
-  private static readonly TIMEZONE_STORAGE_KEY = 'habits.timezone';
-  private static readonly TIMEZONE_UPDATED_AT_KEY = 'habits.timezoneUpdatedAt';
-  private static readonly REMINDERS_EDITED_AT_KEY = 'habits.remindersEditedAt';
-  private static readonly TODAY_GOALS_EXPANDED_KEY = 'habits.todayGoalsExpanded';
-  private static readonly HISTORY_RANGE_STORAGE_KEY = 'habits.historyRange';
-  private static readonly HISTORY_SUBTAB_STORAGE_KEY = 'habits.historySubTab';
-  private static readonly HISTORY_HABIT_FILTER_KEY = 'habits.historyHabitFilter';
-  private static readonly ADVANCED_HEATMAP_MODE_KEY = 'habits.advancedHeatmapMode';
-  private static readonly ADVANCED_NOTES_FILTER_KEY = 'habits.advancedNotesFilter';
-  private static readonly TASKS_STATUS_FILTER_KEY = 'habits.tasksStatusFilter';
-  private static readonly TASKS_SORT_MODE_KEY = 'habits.tasksSortMode';
-  private static readonly REMINDERS_STORAGE_KEY = 'habits.reminders';
-
-  private static readStoredTimeZone(): string {
-    try {
-      const saved =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.TIMEZONE_STORAGE_KEY)
-          : null;
-      if (saved && CivilCalendar.isValidTimeZone(saved)) {
-        return saved;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 'UTC';
-  }
-
-  private static readStoredTimestamp(key: string): number {
-    try {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
-      const parsed = raw ? Number(raw) : 0;
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  private static writeStoredTimestamp(key: string, ts: number): void {
-    try {
-      if (typeof localStorage !== 'undefined' && Number.isFinite(ts) && ts > 0) {
-        localStorage.setItem(key, String(Math.trunc(ts)));
-      }
-    } catch {
-      // ignore storage errors
-    }
-  }
-
-  private static readStoredTodayGoalsExpanded(): boolean {
-    try {
-      const saved =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.TODAY_GOALS_EXPANDED_KEY)
-          : null;
-      if (saved === 'false') return false;
-      if (saved === 'true') return true;
-    } catch {
-      // ignore storage errors
-    }
-    return true;
-  }
-
-  private static readStoredHistoryRange(defaultTodayDay: number): {
-    preset: DateRangePresetId;
-    customStartDay: number;
-    customEndDay: number;
-  } {
-    const fallback = {
-      preset: 'last_30' as DateRangePresetId,
-      customStartDay: defaultTodayDay - 29,
-      customEndDay: defaultTodayDay,
-    };
-    try {
-      const raw =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.HISTORY_RANGE_STORAGE_KEY)
-          : null;
-      if (!raw) return fallback;
-      const parsed = JSON.parse(raw) as {
-        preset?: unknown;
-        customStartDay?: unknown;
-        customEndDay?: unknown;
-      };
-      const isValidPreset = DATE_RANGE_PRESETS.some((p) => p.id === parsed.preset);
-      const preset = isValidPreset ? (parsed.preset as DateRangePresetId) : fallback.preset;
-      const customStartDay = Number.isInteger(parsed.customStartDay)
-        ? (parsed.customStartDay as number)
-        : fallback.customStartDay;
-      const customEndDay = Number.isInteger(parsed.customEndDay)
-        ? (parsed.customEndDay as number)
-        : fallback.customEndDay;
-      return {
-        preset,
-        customStartDay: Math.min(customStartDay, customEndDay),
-        customEndDay: Math.max(customStartDay, customEndDay),
-      };
-    } catch {
-      return fallback;
-    }
-  }
-
-  private static readStoredHistorySubTab(): HistorySubTab {
-    try {
-      const saved =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.HISTORY_SUBTAB_STORAGE_KEY)
-          : null;
-      if (saved === 'charts' || saved === 'calendar' || saved === 'advanced') {
-        return saved;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 'calendar';
-  }
-
-  private static readStoredAdvancedHeatmapMode(): AdvancedHeatmapMode {
-    try {
-      const saved =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.ADVANCED_HEATMAP_MODE_KEY)
-          : null;
-      if (saved === 'habits' || saved === 'tasks' || saved === 'combined') {
-        return saved;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 'combined';
-  }
-
-  private static readStoredAdvancedNotesFilter(): AdvancedNotesFilter {
-    try {
-      const saved =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.ADVANCED_NOTES_FILTER_KEY)
-          : null;
-      if (saved === 'all' || saved === 'missed' || saved === 'done') {
-        return saved;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 'all';
-  }
-
-  private static readStoredHistoryHabitFilter(): 'all' | number[] {
-    try {
-      const raw =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.HISTORY_HABIT_FILTER_KEY)
-          : null;
-      if (!raw) return 'all';
-      const parsed = JSON.parse(raw) as unknown;
-      if (parsed === 'all') return 'all';
-      if (Array.isArray(parsed)) {
-        const ids: number[] = [];
-        for (const item of parsed) {
-          if (
-            typeof item === 'number' &&
-            Number.isInteger(item) &&
-            item > 0 &&
-            !ids.includes(item)
-          ) {
-            ids.push(item);
-          }
-        }
-        return ids;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 'all';
-  }
-
-  private static readStoredTasksStatusFilter(): TaskStatusFilterSelection {
-    try {
-      const raw =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.TASKS_STATUS_FILTER_KEY)
-          : null;
-      if (!raw) return [...OPEN_TASK_BUCKETS];
-      return TodayBoard.normalizeStatusFilterSelection(JSON.parse(raw));
-    } catch {
-      return [...OPEN_TASK_BUCKETS];
-    }
-  }
-
-  private static readStoredTasksSortMode(): TaskSortMode {
-    try {
-      const saved =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.TASKS_SORT_MODE_KEY)
-          : null;
-      if (
-        saved === 'default' ||
-        saved === 'due_asc' ||
-        saved === 'due_desc' ||
-        saved === 'newest' ||
-        saved === 'title'
-      ) {
-        return saved;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return 'default';
-  }
-
-  private static readStoredReminderPrefs(): ReminderPreferences {
-    try {
-      const raw =
-        typeof localStorage !== 'undefined'
-          ? localStorage.getItem(TrackerStore.REMINDERS_STORAGE_KEY)
-          : null;
-      if (!raw) return { ...DEFAULT_REMINDER_PREFERENCES };
-      return ReminderPlanner.normalizePreferences(JSON.parse(raw));
-    } catch {
-      return { ...DEFAULT_REMINDER_PREFERENCES };
-    }
-  }
 
   constructor(deps: TrackerStoreDependencies = {}) {
     this.db = deps.db ?? new HabitDatabase();
@@ -485,14 +259,14 @@ export class TrackerStore {
     [this.inspectedRevision, this.setInspectedRevision] =
       createSignal<DriveRevisionInspectResult | null>(null);
     [this.restoringRevision, this.setRestoringRevision] = createSignal(false);
-    const initialTz = TrackerStore.readStoredTimeZone();
+    const initialTz = PreferencesStorage.readStoredTimeZone();
     [this.timeZone, this.setTimeZoneSignal] = createSignal(initialTz);
     const initialTodayDay = CivilCalendar.todayDayIndex(new Date(), initialTz);
     [this.todayDay, this.setTodayDay] = createSignal(initialTodayDay);
     [this.todayGoalsExpanded, this.setTodayGoalsExpandedSignal] = createSignal(
-      TrackerStore.readStoredTodayGoalsExpanded()
+      PreferencesStorage.readStoredTodayGoalsExpanded()
     );
-    const storedRange = TrackerStore.readStoredHistoryRange(initialTodayDay);
+    const storedRange = PreferencesStorage.readStoredHistoryRange(initialTodayDay);
     [this.historyRangePreset, this.setHistoryRangePresetSignal] = createSignal(storedRange.preset);
     [this.historyCustomStartDay, this.setHistoryCustomStartDaySignal] = createSignal(
       storedRange.customStartDay
@@ -501,18 +275,18 @@ export class TrackerStore {
       storedRange.customEndDay
     );
     [this.historySubTab, this.setHistorySubTabSignal] = createSignal<HistorySubTab>(
-      TrackerStore.readStoredHistorySubTab()
+      PreferencesStorage.readStoredHistorySubTab()
     );
     [this.historyHabitFilter, this.setHistoryHabitFilterSignal] = createSignal<'all' | number[]>(
-      TrackerStore.readStoredHistoryHabitFilter()
+      PreferencesStorage.readStoredHistoryHabitFilter()
     );
     [this.tasksStatusFilter, this.setTasksStatusFilterSignal] =
-      createSignal<TaskStatusFilterSelection>(TrackerStore.readStoredTasksStatusFilter());
+      createSignal<TaskStatusFilterSelection>(PreferencesStorage.readStoredTasksStatusFilter());
     [this.tasksSortMode, this.setTasksSortModeSignal] = createSignal<TaskSortMode>(
-      TrackerStore.readStoredTasksSortMode()
+      PreferencesStorage.readStoredTasksSortMode()
     );
     [this.reminderPrefs, this.setReminderPrefsSignal] = createSignal<ReminderPreferences>(
-      TrackerStore.readStoredReminderPrefs()
+      PreferencesStorage.readStoredReminderPrefs()
     );
     [this.badgePermission, this.setBadgePermission] = createSignal<BadgePermissionState>(
       ReminderPlanner.getNotificationPermission()
@@ -525,20 +299,14 @@ export class TrackerStore {
     );
     [this.confirmDeleteCalendarOpen, this.setConfirmDeleteCalendarOpen] = createSignal(false);
     [this.advancedHeatmapMode, this.setAdvancedHeatmapModeSignal] =
-      createSignal<AdvancedHeatmapMode>(TrackerStore.readStoredAdvancedHeatmapMode());
+      createSignal<AdvancedHeatmapMode>(PreferencesStorage.readStoredAdvancedHeatmapMode());
     [this.advancedNotesFilter, this.setAdvancedNotesFilterSignal] =
-      createSignal<AdvancedNotesFilter>(TrackerStore.readStoredAdvancedNotesFilter());
+      createSignal<AdvancedNotesFilter>(PreferencesStorage.readStoredAdvancedNotesFilter());
     /* eslint-enable solid/reactivity */
   }
 
   private persistReminderPrefs(next: ReminderPreferences): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.REMINDERS_STORAGE_KEY, JSON.stringify(next));
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistReminderPrefs(next);
     this.setReminderPrefsSignal(next);
   }
 
@@ -602,7 +370,7 @@ export class TrackerStore {
       ...this.reminderPrefs(),
       calendarEnabled: enabled,
     };
-    TrackerStore.writeStoredTimestamp(TrackerStore.REMINDERS_EDITED_AT_KEY, Date.now());
+    PreferencesStorage.writeStoredRemindersEditedAt(Date.now());
     this.persistReminderPrefs(next);
     this.setPendingCalendarPlan(null);
     this.setCalendarError(null);
@@ -643,7 +411,7 @@ export class TrackerStore {
       ...this.reminderPrefs(),
       taskReminderSlotId: normalized,
     };
-    TrackerStore.writeStoredTimestamp(TrackerStore.REMINDERS_EDITED_AT_KEY, Date.now());
+    PreferencesStorage.writeStoredRemindersEditedAt(Date.now());
     this.persistReminderPrefs(next);
     this.setPendingCalendarPlan(null);
   }
@@ -654,7 +422,7 @@ export class TrackerStore {
       ...this.reminderPrefs(),
       horizonDays: normalized,
     };
-    TrackerStore.writeStoredTimestamp(TrackerStore.REMINDERS_EDITED_AT_KEY, Date.now());
+    PreferencesStorage.writeStoredRemindersEditedAt(Date.now());
     this.persistReminderPrefs(next);
     this.setPendingCalendarPlan(null);
   }
@@ -677,15 +445,7 @@ export class TrackerStore {
   }
 
   private applyTimeZoneValue(nextTz: string, updatedAt: number): void {
-    const normalized = CivilCalendar.isValidTimeZone(nextTz) ? nextTz : 'UTC';
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.TIMEZONE_STORAGE_KEY, normalized);
-      }
-    } catch {
-      // ignore storage errors
-    }
-    TrackerStore.writeStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY, updatedAt);
+    const normalized = PreferencesStorage.persistTimeZone(nextTz, updatedAt);
     this.setTimeZoneSignal(normalized);
     this.setTodayDay(CivilCalendar.todayDayIndex(new Date(), normalized));
     this.refreshAppBadge();
@@ -700,36 +460,17 @@ export class TrackerStore {
   }
 
   public setTodayGoalsExpanded(expanded: boolean): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.TODAY_GOALS_EXPANDED_KEY, expanded ? 'true' : 'false');
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistTodayGoalsExpanded(expanded);
     this.setTodayGoalsExpandedSignal(expanded);
-  }
-
-  private persistHistoryRange(
-    preset: DateRangePresetId,
-    customStartDay: number,
-    customEndDay: number
-  ): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(
-          TrackerStore.HISTORY_RANGE_STORAGE_KEY,
-          JSON.stringify({ preset, customStartDay, customEndDay })
-        );
-      }
-    } catch {
-      // ignore storage errors
-    }
   }
 
   public setHistoryRangePreset(nextPreset: DateRangePresetId): void {
     this.setHistoryRangePresetSignal(nextPreset);
-    this.persistHistoryRange(nextPreset, this.historyCustomStartDay(), this.historyCustomEndDay());
+    PreferencesStorage.persistHistoryRange(
+      nextPreset,
+      this.historyCustomStartDay(),
+      this.historyCustomEndDay()
+    );
   }
 
   public setHistoryCustomRange(startDay: number, endDay: number): void {
@@ -738,17 +479,11 @@ export class TrackerStore {
     this.setHistoryCustomStartDaySignal(s);
     this.setHistoryCustomEndDaySignal(e);
     this.setHistoryRangePresetSignal('custom');
-    this.persistHistoryRange('custom', s, e);
+    PreferencesStorage.persistHistoryRange('custom', s, e);
   }
 
   public setHistorySubTab(nextTab: HistorySubTab): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.HISTORY_SUBTAB_STORAGE_KEY, nextTab);
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistHistorySubTab(nextTab);
     this.setHistorySubTabSignal(nextTab);
   }
 
@@ -764,35 +499,17 @@ export class TrackerStore {
       const habitCount = this.snapshot().habits.length;
       normalized = habitCount > 0 && deduped.length === habitCount ? 'all' : deduped;
     }
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.HISTORY_HABIT_FILTER_KEY, JSON.stringify(normalized));
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistHistoryHabitFilter(normalized);
     this.setHistoryHabitFilterSignal(normalized);
   }
 
   public setAdvancedHeatmapMode(mode: AdvancedHeatmapMode): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.ADVANCED_HEATMAP_MODE_KEY, mode);
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistAdvancedHeatmapMode(mode);
     this.setAdvancedHeatmapModeSignal(mode);
   }
 
   public setAdvancedNotesFilter(filter: AdvancedNotesFilter): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.ADVANCED_NOTES_FILTER_KEY, filter);
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistAdvancedNotesFilter(filter);
     this.setAdvancedNotesFilterSignal(filter);
   }
 
@@ -844,24 +561,12 @@ export class TrackerStore {
 
   public setTasksStatusFilter(nextFilter: TaskStatusFilterSelection): void {
     const normalized = TodayBoard.normalizeStatusFilterSelection(nextFilter);
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.TASKS_STATUS_FILTER_KEY, JSON.stringify(normalized));
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistTasksStatusFilter(normalized);
     this.setTasksStatusFilterSignal(normalized);
   }
 
   public setTasksSortMode(nextSort: TaskSortMode): void {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(TrackerStore.TASKS_SORT_MODE_KEY, nextSort);
-      }
-    } catch {
-      // ignore storage errors
-    }
+    PreferencesStorage.persistTasksSortMode(nextSort);
     this.setTasksSortModeSignal(nextSort);
   }
 
@@ -1315,9 +1020,7 @@ export class TrackerStore {
           this.timeZone(),
           {
             ...localPrefs,
-            timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(
-              TrackerStore.TIMEZONE_UPDATED_AT_KEY
-            ),
+            timeZoneUpdatedAt: PreferencesStorage.readStoredTimeZoneUpdatedAt(),
           }
         );
         if (syncedMeta) {
@@ -1365,7 +1068,7 @@ export class TrackerStore {
         this.timeZone(),
         {
           ...localPrefs,
-          timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY),
+          timeZoneUpdatedAt: PreferencesStorage.readStoredTimeZoneUpdatedAt(),
         }
       );
       if (syncedMeta) {
@@ -1559,7 +1262,7 @@ export class TrackerStore {
         this.timeZone(),
         {
           ...initialPrefs,
-          timeZoneUpdatedAt: TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY),
+          timeZoneUpdatedAt: PreferencesStorage.readStoredTimeZoneUpdatedAt(),
         }
       );
       if (preSyncedMeta) {
@@ -1585,9 +1288,8 @@ export class TrackerStore {
         plan.toDelete.length > 0;
 
       if (!hasMutations && plan.calendarId) {
-        const tzUpdatedAt =
-          TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY) || Date.now();
-        TrackerStore.writeStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY, tzUpdatedAt);
+        const tzUpdatedAt = PreferencesStorage.readStoredTimeZoneUpdatedAt() || Date.now();
+        PreferencesStorage.writeStoredTimeZoneUpdatedAt(tzUpdatedAt);
         await this.calendarSync.syncRemoteCalendarId(
           this.mode(),
           this.session.getAccessToken(),
@@ -1639,11 +1341,11 @@ export class TrackerStore {
     const isFreshDevice = !current.calendarId;
     const localEditedAt = Math.max(
       current.lastSyncedAt ?? 0,
-      TrackerStore.readStoredTimestamp(TrackerStore.REMINDERS_EDITED_AT_KEY)
+      PreferencesStorage.readStoredRemindersEditedAt()
     );
     const remoteIsNewer =
       typeof syncedMeta.updatedAt === 'number' && syncedMeta.updatedAt > localEditedAt;
-    const localTzUpdatedAt = TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY);
+    const localTzUpdatedAt = PreferencesStorage.readStoredTimeZoneUpdatedAt();
     const remoteTzUpdatedAt = syncedMeta.timeZoneUpdatedAt ?? 0;
 
     if (
@@ -1690,9 +1392,8 @@ export class TrackerStore {
     this.setCalendarBusy(true);
     this.setCalendarError(null);
     try {
-      const tzUpdatedAt =
-        TrackerStore.readStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY) || Date.now();
-      TrackerStore.writeStoredTimestamp(TrackerStore.TIMEZONE_UPDATED_AT_KEY, tzUpdatedAt);
+      const tzUpdatedAt = PreferencesStorage.readStoredTimeZoneUpdatedAt() || Date.now();
+      PreferencesStorage.writeStoredTimeZoneUpdatedAt(tzUpdatedAt);
       const result = await this.calendarSync.applySyncPlan(
         this.mode(),
         this.session.getAccessToken(),
@@ -1703,7 +1404,7 @@ export class TrackerStore {
         }
       );
       const now = Date.now();
-      TrackerStore.writeStoredTimestamp(TrackerStore.REMINDERS_EDITED_AT_KEY, now);
+      PreferencesStorage.writeStoredRemindersEditedAt(now);
       this.persistReminderPrefs({
         ...this.reminderPrefs(),
         calendarEnabled: true,

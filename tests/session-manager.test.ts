@@ -32,11 +32,13 @@ test('SessionManager uses GIS token client, caches token only in RAM, tracks exp
     oauthClientId: 'test-client-id.apps.googleusercontent.com',
     storage,
     nowFn: () => now,
-    fetchFn: async () =>
-      new Response(JSON.stringify({ user: { emailAddress: 'alex@example.com' } }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    fetchFn: () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ user: { emailAddress: 'alex@example.com' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      ),
     getGisOAuth2: () => ({
       initTokenClient(config) {
         initScope = config.scope;
@@ -101,7 +103,7 @@ test('SessionManager retries with consent prompt when GIS returns interaction_re
   const manager = new SessionManager({
     oauthClientId: 'test-client-id.apps.googleusercontent.com',
     storage,
-    fetchFn: async () => new Response('{}', { status: 200 }),
+    fetchFn: () => Promise.resolve(new Response('{}', { status: 200 })),
     getGisOAuth2: () => ({
       initTokenClient(config) {
         return {
@@ -159,7 +161,7 @@ test('SessionManager handles missing clientId, concurrent sign-in, superseded re
   const concurrentMgr = new SessionManager({
     oauthClientId: 'client-1',
     storage: createMemoryStorage(),
-    fetchFn: async () => new Response('fail', { status: 500 }),
+    fetchFn: () => Promise.resolve(new Response('fail', { status: 500 })),
     getGisOAuth2: () => ({
       initTokenClient(config) {
         return {
@@ -208,9 +210,7 @@ test('SessionManager handles missing clientId, concurrent sign-in, superseded re
   const errMgr = new SessionManager({
     oauthClientId: 'client-err',
     storage: createMemoryStorage(),
-    fetchFn: async () => {
-      throw new Error('network error');
-    },
+    fetchFn: () => Promise.reject(new Error('network error')),
     getGisOAuth2: () => ({
       initTokenClient(config) {
         return {
@@ -286,7 +286,7 @@ test('SessionManager tolerates storage exceptions, missing GIS after script load
   const mgrBroken = new SessionManager({
     oauthClientId: 'client-2',
     storage: brokenStorage,
-    loadGisScript: async () => {},
+    loadGisScript: () => Promise.resolve(),
     getGisOAuth2: () => null,
   });
   assert.equal(mgrBroken.getRememberedMode(), null);
@@ -364,7 +364,7 @@ test('SessionManager tolerates storage exceptions, missing GIS after script load
   const mgrLoadOk = new SessionManager({
     oauthClientId: 'client-dom-ok',
     storage: createMemoryStorage(),
-    fetchFn: async () => new Response('{}', { status: 200 }),
+    fetchFn: () => Promise.resolve(new Response('{}', { status: 200 })),
   });
   const okPromise = mgrLoadOk.signInWithGoogle();
   fakeWindow.google = {
@@ -386,4 +386,240 @@ test('SessionManager tolerates storage exceptions, missing GIS after script load
   for (const fn of listeners.get('load') ?? []) fn();
   const tok = await okPromise;
   assert.equal(tok, 'dom-tok');
+});
+
+test('SessionManager handles defaultLoadGisScript 10s timeout (both reject and recovery), superseded requestGisToken, and fetchDriveUserEmail timeouts/errors', async (t) => {
+  const prevDoc = (globalThis as Record<string, unknown>).document;
+  const prevWin = (globalThis as Record<string, unknown>).window;
+  t.after(() => {
+    if (prevDoc === undefined) delete (globalThis as Record<string, unknown>).document;
+    else Object.defineProperty(globalThis, 'document', { value: prevDoc, configurable: true });
+    if (prevWin === undefined) delete (globalThis as Record<string, unknown>).window;
+    else Object.defineProperty(globalThis, 'window', { value: prevWin, configurable: true });
+  });
+
+  // 1. defaultLoadGisScript 10s timeout: rejects if GIS did not initialize, resolves if it appeared by timeout tick
+  const listeners = new Map<string, Array<() => void>>();
+  let scheduledTimeoutCb: (() => void) | null = null;
+  let scheduledDelay = 0;
+
+  const fakeScript = {
+    src: '',
+    async: false,
+    defer: false,
+    addEventListener(type: string, fn: () => void) {
+      const list = listeners.get(type) ?? [];
+      list.push(fn);
+      listeners.set(type, list);
+    },
+    removeEventListener(type: string, fn: () => void) {
+      const list = listeners.get(type) ?? [];
+      listeners.set(
+        type,
+        list.filter((f) => f !== fn)
+      );
+    },
+  };
+
+  const fakeWindow: Record<string, unknown> = {
+    setTimeout(fn: () => void, ms: number) {
+      scheduledTimeoutCb = fn;
+      scheduledDelay = ms;
+      return 123;
+    },
+    clearTimeout() {
+      scheduledTimeoutCb = null;
+    },
+    google: undefined,
+  };
+
+  Object.defineProperty(globalThis, 'window', {
+    value: fakeWindow,
+    configurable: true,
+    writable: true,
+  });
+  Object.defineProperty(globalThis, 'document', {
+    value: {
+      querySelector: () => null,
+      createElement: () => fakeScript,
+      head: { appendChild: () => {} },
+    },
+    configurable: true,
+    writable: true,
+  });
+
+  const fireTimeout = () => {
+    const cb = scheduledTimeoutCb;
+    assert.ok(cb);
+    cb();
+  };
+
+  const timeoutMgr = new SessionManager({
+    oauthClientId: 'client-timeout',
+    storage: createMemoryStorage(),
+  });
+  const timeoutPromise = timeoutMgr.signInWithGoogle();
+  assert.equal(scheduledDelay, 10000);
+  fireTimeout();
+  await assert.rejects(() => timeoutPromise, /Timed out waiting for Google Identity Services/);
+
+  // Recovery when window.google.accounts.oauth2 becomes defined right as the 10s timer fires
+  listeners.clear();
+  scheduledTimeoutCb = null;
+  const recoveryMgr = new SessionManager({
+    oauthClientId: 'client-recovery',
+    storage: createMemoryStorage(),
+    fetchFn: () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ user: { emailAddress: 'recovered@example.com' } }), {
+          status: 200,
+        })
+      ),
+  });
+  const recoveryPromise = recoveryMgr.signInWithGoogle();
+  fakeWindow.google = {
+    accounts: {
+      oauth2: {
+        initTokenClient(config: {
+          callback: (r: { access_token: string; expires_in: number }) => void;
+        }) {
+          return {
+            requestAccessToken() {
+              config.callback({ access_token: 'recovered-tok', expires_in: 600 });
+            },
+          };
+        },
+        hasGrantedAllScopes: () => true,
+      },
+    },
+  };
+  fireTimeout();
+  assert.equal(await recoveryPromise, 'recovered-tok');
+  assert.equal(recoveryMgr.getAccountEmail(), 'recovered@example.com');
+
+  // 2. Parallel/overlapping requestGisToken supersedes earlier pending attempt
+  let lastCallback: ((r: { access_token: string; expires_in: number }) => void) | null = null;
+  const fakeOAuth2 = {
+    initTokenClient(config: {
+      callback: (r: { access_token: string; expires_in: number }) => void;
+    }) {
+      return {
+        requestAccessToken() {
+          lastCallback = config.callback;
+        },
+      };
+    },
+    hasGrantedAllScopes: () => true,
+  };
+  const supersededMgr = new SessionManager({
+    oauthClientId: 'client-superseded',
+    storage: createMemoryStorage(),
+    getGisOAuth2: () => fakeOAuth2,
+  });
+  const reqToken = supersededMgr as unknown as {
+    requestGisToken: (
+      oauth2: typeof fakeOAuth2,
+      cfg: { prompt?: string }
+    ) => Promise<{
+      access_token?: string;
+    }>;
+  };
+  const firstAttempt = reqToken.requestGisToken(fakeOAuth2, { prompt: '' });
+  const secondAttempt = reqToken.requestGisToken(fakeOAuth2, { prompt: 'select_account' });
+  await assert.rejects(() => firstAttempt, /Superseded by a newer Google sign-in attempt/);
+  lastCallback!({ access_token: 'second-wins', expires_in: 300 });
+  const secondResult = await secondAttempt;
+  assert.equal(secondResult.access_token, 'second-wins');
+
+  // 3. fetchDriveUserEmail resilience: 2500ms abort timeout, non-OK HTTP, and invalid JSON fallback
+  const prevSetTimeout = globalThis.setTimeout;
+  const prevClearTimeout = globalThis.clearTimeout;
+  t.after(() => {
+    globalThis.setTimeout = prevSetTimeout;
+    globalThis.clearTimeout = prevClearTimeout;
+  });
+
+  // 3a. 2500ms abort timeout triggers AbortController.abort(), sign-in still succeeds
+  let sawAbortSignal = false;
+  let capturedAbortTimerDelay = 0;
+  globalThis.setTimeout = ((fn: () => void, delay?: number) => {
+    if (delay === 2500) {
+      capturedAbortTimerDelay = delay;
+      queueMicrotask(fn);
+      return 999 as unknown as ReturnType<typeof setTimeout>;
+    }
+    return prevSetTimeout(fn, delay);
+  }) as typeof setTimeout;
+
+  const storageAbort = createMemoryStorage();
+  storageAbort.setItem('habits_google_email', 'fallback@example.com');
+  const abortMgr = new SessionManager({
+    oauthClientId: 'client-abort',
+    storage: storageAbort,
+    fetchFn: (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          sawAbortSignal = true;
+          reject(new DOMException('The operation was aborted', 'AbortError'));
+        });
+      }),
+    getGisOAuth2: () => ({
+      initTokenClient(config) {
+        return {
+          requestAccessToken() {
+            config.callback({ access_token: 'tok-abort-ok', expires_in: 600 });
+          },
+        };
+      },
+      hasGrantedAllScopes: () => true,
+    }),
+  });
+  const abortTok = await abortMgr.signInWithGoogle();
+  assert.equal(abortTok, 'tok-abort-ok');
+  assert.equal(capturedAbortTimerDelay, 2500);
+  assert.equal(sawAbortSignal, true);
+  assert.equal(abortMgr.getAccountEmail(), 'fallback@example.com');
+
+  // Restore real timers for 3b and 3c
+  globalThis.setTimeout = prevSetTimeout;
+
+  // 3b. Non-OK HTTP status preserves null email without failing sign-in
+  const nonOkMgr = new SessionManager({
+    oauthClientId: 'client-nonok',
+    storage: createMemoryStorage(),
+    fetchFn: () => Promise.resolve(new Response('Forbidden', { status: 403 })),
+    getGisOAuth2: () => ({
+      initTokenClient(config) {
+        return {
+          requestAccessToken() {
+            config.callback({ access_token: 'tok-nonok', expires_in: 600 });
+          },
+        };
+      },
+      hasGrantedAllScopes: () => true,
+    }),
+  });
+  assert.equal(await nonOkMgr.signInWithGoogle(), 'tok-nonok');
+  assert.equal(nonOkMgr.getAccountEmail(), null);
+
+  // 3c. Invalid JSON body preserves fallback email without failing sign-in
+  const storageJson = createMemoryStorage();
+  storageJson.setItem('habits_google_email', 'cached@example.com');
+  const invalidJsonMgr = new SessionManager({
+    oauthClientId: 'client-json',
+    storage: storageJson,
+    fetchFn: () => Promise.resolve(new Response('{invalid-json', { status: 200 })),
+    getGisOAuth2: () => ({
+      initTokenClient(config) {
+        return {
+          requestAccessToken() {
+            config.callback({ access_token: 'tok-badjson', expires_in: 600 });
+          },
+        };
+      },
+      hasGrantedAllScopes: () => true,
+    }),
+  });
+  assert.equal(await invalidJsonMgr.signInWithGoogle(), 'tok-badjson');
+  assert.equal(invalidJsonMgr.getAccountEmail(), 'cached@example.com');
 });

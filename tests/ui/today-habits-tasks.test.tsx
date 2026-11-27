@@ -63,7 +63,7 @@ describe('TodayView', () => {
     expect(onOpenNewHabit).toHaveBeenCalledTimes(1);
   });
 
-  it('handles boolean & measured habits, day notes, quick tasks, overdue tasks, and goals', async () => {
+  it('handles boolean & measured habits, day notes, quick tasks, overdue tasks, and goals', () => {
     const onToggleCheckin = vi.fn().mockResolvedValue(undefined);
     const onSetCheckinValue = vi.fn().mockResolvedValue(undefined);
     const onIncrementCheckinValue = vi.fn().mockResolvedValue(undefined);
@@ -176,7 +176,7 @@ describe('TodayView', () => {
 });
 
 describe('HabitsView', () => {
-  it('filters active vs archived habits and triggers create, edit, and archive/restore', async () => {
+  it('filters active vs archived habits and triggers create, edit, and archive/restore', () => {
     const onCreateHabit = vi.fn();
     const onEditHabit = vi.fn();
     const onToggleArchive = vi.fn().mockResolvedValue(undefined);

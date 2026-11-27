@@ -698,10 +698,10 @@ test('Helpers bytesEqual and withRetry handle retries, NonRetryableError, and by
 
   let attempts = 0;
   const result = await Helpers.withRetry(
-    async () => {
+    () => {
       attempts += 1;
-      if (attempts < 3) throw new Error('transient');
-      return 'ok';
+      if (attempts < 3) return Promise.reject(new Error('transient'));
+      return Promise.resolve('ok');
     },
     3,
     1
@@ -713,9 +713,9 @@ test('Helpers bytesEqual and withRetry handle retries, NonRetryableError, and by
   await assert.rejects(
     () =>
       Helpers.withRetry(
-        async () => {
+        () => {
           nonRetryAttempts += 1;
-          throw new NonRetryableError('fatal');
+          return Promise.reject(new NonRetryableError('fatal'));
         },
         5,
         1
@@ -728,9 +728,9 @@ test('Helpers bytesEqual and withRetry handle retries, NonRetryableError, and by
   await assert.rejects(
     () =>
       Helpers.withRetry(
-        async () => {
+        () => {
           exhaustedAttempts += 1;
-          throw new Error('still failing');
+          return Promise.reject(new Error('still failing'));
         },
         2,
         1

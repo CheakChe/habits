@@ -6,7 +6,7 @@ import { HabitSchedule } from '../utils/habit-schedule';
 import { ReminderPlanner } from '../utils/reminder-planner';
 import { StreakCalculator } from '../utils/streak-calculator';
 import { TodayBoard } from '../utils/today-board';
-import { MeasuredQuickControls } from './CustomControls';
+import { MeasuredQuickControls } from './controls/MeasuredQuickControls';
 import { HabitBadge } from './HabitBadge';
 import {
   AlertIcon,
@@ -131,8 +131,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
     <div class="space-y-8">
       <div class="flex flex-col justify-between gap-4 border-b border-white/[0.08] pb-6 sm:flex-row sm:items-end">
         <div class="space-y-1">
-          <h1 class="font-display text-3xl font-semibold tracking-tight text-[#F5F7FA]">Today</h1>
-          <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#8E95A5]">
+          <h1 class="font-display text-3xl font-semibold tracking-tight text-ink">Today</h1>
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-ink-subtle">
             <span>{CivilCalendar.formatFullDate(props.todayDay)}</span>
             <span aria-hidden="true">·</span>
             <span class="font-mono tabular-nums">
@@ -140,7 +140,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
             </span>
             <Show when={partitionedTasks().overdue.length > 0}>
               <span aria-hidden="true">·</span>
-              <span class="font-mono text-[#F59E0B] tabular-nums">
+              <span class="font-mono text-warning tabular-nums">
                 {partitionedTasks().overdue.length} overdue
               </span>
             </Show>
@@ -151,19 +151,19 @@ export function TodayView(props: TodayViewProps): JSX.Element {
           <button
             type="button"
             onClick={() => props.onOpenNewHabit()}
-            class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-[#1C1F26] px-4 text-sm font-medium whitespace-nowrap text-[#F5F7FA] transition-colors hover:bg-[#252933]"
+            class="inline-flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-xl border border-white/[0.08] bg-surface-elevated px-4 text-sm font-medium whitespace-nowrap text-ink transition-colors hover:bg-surface-hover"
           >
-            <PlusIcon class="h-4 w-4 text-[#60A5FA]" />
+            <PlusIcon class="h-4 w-4 text-accent-soft" />
             <span>New Habit</span>
           </button>
         </div>
       </div>
 
       <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-        <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B] lg:col-span-7">
+        <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface lg:col-span-7">
           <div class="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
-            <h2 class="font-display text-base font-semibold text-[#F5F7FA]">Scheduled Habits</h2>
-            <span class="font-mono text-xs text-[#8E95A5] tabular-nums">
+            <h2 class="font-display text-base font-semibold text-ink">Scheduled Habits</h2>
+            <span class="font-mono text-xs text-ink-subtle tabular-nums">
               {scheduledHabits().length === 0
                 ? 'None today'
                 : `${completedHabitsCount()} of ${scheduledHabits().length}`}
@@ -174,14 +174,14 @@ export function TodayView(props: TodayViewProps): JSX.Element {
             when={scheduledHabits().length > 0}
             fallback={
               <div class="space-y-4 px-6 py-12 text-center">
-                <p class="mx-auto max-w-sm text-sm text-[#8E95A5]">
+                <p class="mx-auto max-w-sm text-sm text-ink-subtle">
                   No habits are scheduled for today. Create a daily habit or adjust an existing
                   schedule.
                 </p>
                 <button
                   type="button"
                   onClick={() => props.onOpenNewHabit()}
-                  class="h-10 cursor-pointer rounded-xl bg-[#3B82F6] px-5 text-sm font-medium text-white transition-colors hover:bg-[#2563EB]"
+                  class="h-10 cursor-pointer rounded-xl bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
                 >
                   Create First Habit
                 </button>
@@ -237,9 +237,9 @@ export function TodayView(props: TodayViewProps): JSX.Element {
 
                   const streakToneClass = () => {
                     const m = milestone();
-                    if (m === 100) return 'text-[#FBBF24]';
-                    if (m === 30) return 'text-[#93C5FD]';
-                    if (m === 7) return 'text-[#60A5FA]';
+                    if (m === 100) return 'text-milestone-gold';
+                    if (m === 30) return 'text-accent-tint';
+                    if (m === 7) return 'text-accent-soft';
                     return '';
                   };
                   const assignedSlots = createMemo(() =>
@@ -275,8 +275,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             isDone()
                               ? 'border-transparent'
                               : isPartial()
-                                ? 'border-white/[0.22] bg-[#0A0B0E] text-[#C8CDD8] hover:border-white/40'
-                                : 'border-white/[0.12] bg-[#0A0B0E] text-transparent hover:border-white/30'
+                                ? 'border-white/[0.22] bg-canvas text-ink-secondary hover:border-white/40'
+                                : 'border-white/[0.12] bg-canvas text-transparent hover:border-white/30'
                           }`}
                           style={
                             isDone()
@@ -305,18 +305,18 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <HabitBadge appearanceRaw={habit.color} size="sm" />
                             <p
                               class={`line-clamp-2 text-sm font-medium break-words transition-colors ${
-                                isDone() ? 'text-[#8E95A5] line-through' : 'text-[#F5F7FA]'
+                                isDone() ? 'text-ink-subtle line-through' : 'text-ink'
                               }`}
                               title={habit.name}
                             >
                               {habit.name}
                             </p>
                           </div>
-                          <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#8E95A5]">
+                          <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-subtle">
                             <Show when={activeTarget() !== null}>
                               <span
                                 class={`font-mono tabular-nums ${
-                                  isDone() ? 'text-[#60A5FA]' : 'text-[#C8CDD8]'
+                                  isDone() ? 'text-accent-soft' : 'text-ink-secondary'
                                 }`}
                               >
                                 {HabitSchedule.formatNumericValue(currentValue())}/
@@ -347,7 +347,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               <span aria-hidden="true">·</span>
                               <span
                                 class={`font-mono tabular-nums ${
-                                  weekly().isComplete ? 'text-[#60A5FA]' : ''
+                                  weekly().isComplete ? 'text-accent-soft' : ''
                                 }`}
                               >
                                 {weekly().isComplete
@@ -357,7 +357,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             </Show>
                             <Show when={flexStatus()?.mustDoToday}>
                               <span aria-hidden="true">·</span>
-                              <span class="font-mono text-[#F59E0B] tabular-nums">
+                              <span class="font-mono text-warning tabular-nums">
                                 {flexStatus()!.remainingDays === 1
                                   ? 'Last day this week'
                                   : `${flexStatus()!.remainingDays}d left for ${flexStatus()!.remainingNeeded}`}
@@ -370,7 +370,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <Show when={existingNote() && !isNoteOpen()}>
                               <span aria-hidden="true">·</span>
                               <span
-                                class="line-clamp-2 max-w-full break-words text-[#9AA1B1]"
+                                class="line-clamp-2 max-w-full break-words text-ink-muted"
                                 title={existingNote()}
                               >
                                 {existingNote()}
@@ -385,7 +385,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <Show when={activeSchedule().weeklyTarget !== null}>
                                 <span
-                                  class="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-[#C8CDD8] tabular-nums"
+                                  class="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-ink-secondary tabular-nums"
                                   aria-label="Flexible weekly schedule"
                                 >
                                   {activeSchedule().weeklyTarget}× / week
@@ -393,8 +393,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               </Show>
                               <For each={assignedSlots()}>
                                 {(slot) => (
-                                  <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
-                                    <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                  <span class="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent-tint tabular-nums">
+                                    <ClockIcon class="h-3 w-3 shrink-0 text-accent-soft" />
                                     <span>
                                       {slot.time}
                                       {slot.label ? ` ${slot.label}` : ''}
@@ -413,8 +413,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           aria-label={`Day note for ${habit.name}`}
                           class={`flex min-h-[44px] min-w-[44px] shrink-0 cursor-pointer items-center justify-center rounded-xl transition-colors ${
                             existingNote() || isNoteOpen()
-                              ? 'bg-[#3B82F6]/10 text-[#60A5FA]'
-                              : 'text-[#8E95A5] hover:bg-white/[0.05] hover:text-[#F5F7FA]'
+                              ? 'bg-accent/10 text-accent-soft'
+                              : 'text-ink-subtle hover:bg-white/[0.05] hover:text-ink'
                           }`}
                         >
                           <NoteIcon class="h-4 w-4" />
@@ -453,12 +453,12 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             }}
                             placeholder="Add a note for today..."
                             autofocus
-                            class="h-10 flex-1 rounded-xl border border-white/[0.1] bg-[#0A0B0E] px-3.5 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+                            class="h-10 flex-1 rounded-xl border border-white/[0.1] bg-canvas px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => void handleSaveNote(habit.id)}
-                            class="h-10 shrink-0 cursor-pointer rounded-xl bg-[#3B82F6] px-4 text-xs font-medium text-white transition-colors hover:bg-[#2563EB]"
+                            class="h-10 shrink-0 cursor-pointer rounded-xl bg-accent px-4 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
                           >
                             Save
                           </button>
@@ -473,12 +473,10 @@ export function TodayView(props: TodayViewProps): JSX.Element {
         </section>
 
         <div class="space-y-6 lg:col-span-5">
-          <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B]">
+          <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface">
             <div class="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
-              <h2 class="font-display text-base font-semibold text-[#F5F7FA]">
-                Tasks Due &amp; Overdue
-              </h2>
-              <span class="font-mono text-xs text-[#8E95A5] tabular-nums">
+              <h2 class="font-display text-base font-semibold text-ink">Tasks Due &amp; Overdue</h2>
+              <span class="font-mono text-xs text-ink-subtle tabular-nums">
                 {partitionedTasks().overdue.length + partitionedTasks().dueToday.length} open
               </span>
             </div>
@@ -492,12 +490,12 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                 value={quickTaskTitle()}
                 onInput={(e) => setQuickTaskTitle(e.currentTarget.value)}
                 placeholder="Quick task due today..."
-                class="h-10 flex-1 rounded-xl border border-white/[0.1] bg-[#0A0B0E] px-3.5 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+                class="h-10 flex-1 rounded-xl border border-white/[0.1] bg-canvas px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={addingTask() || quickTaskTitle().trim() === ''}
-                class="h-10 shrink-0 cursor-pointer rounded-xl bg-[#3B82F6] px-4 text-xs font-medium text-white transition-colors hover:bg-[#2563EB] disabled:opacity-40"
+                class="h-10 shrink-0 cursor-pointer rounded-xl bg-accent px-4 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
               >
                 Add
               </button>
@@ -507,7 +505,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
               when={partitionedTasks().overdue.length > 0 || partitionedTasks().dueToday.length > 0}
               fallback={
                 <div class="px-6 py-10 text-center">
-                  <p class="text-sm text-[#8E95A5]">
+                  <p class="text-sm text-ink-subtle">
                     No tasks due today or overdue. Add one above or manage all tasks in the Tasks
                     view.
                   </p>
@@ -531,7 +529,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           type="button"
                           onClick={() => void props.onToggleTask(task)}
                           aria-label={`Complete task ${task.title}`}
-                          class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-[#EF4444]/40 bg-[#0A0B0E] text-transparent transition-colors hover:border-[#EF4444]"
+                          class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-danger/40 bg-canvas text-transparent transition-colors hover:border-danger"
                         >
                           <CheckIcon class="h-4 w-4" />
                         </button>
@@ -541,22 +539,22 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
                         >
                           <p
-                            class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                            class="line-clamp-2 text-sm font-medium break-words text-ink"
                             title={task.title}
                           >
                             {task.title}
                           </p>
-                          <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#FCA5A5]">
-                            <AlertIcon class="h-3.5 w-3.5 shrink-0 text-[#EF4444]" />
+                          <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-danger-soft">
+                            <AlertIcon class="h-3.5 w-3.5 shrink-0 text-danger" />
                             <span class="font-mono tabular-nums">
                               Overdue ·{' '}
                               {CivilCalendar.formatShortDate(task.dueDay ?? props.todayDay)}
                             </span>
                             <Show when={task.repeatable}>
-                              <span aria-hidden="true" class="text-[#5B6270]">
+                              <span aria-hidden="true" class="text-ink-faint">
                                 ·
                               </span>
-                              <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                              <span class="inline-flex items-center gap-1 text-accent-soft">
                                 <RepeatIcon class="h-3 w-3" />
                                 Repeats
                               </span>
@@ -566,8 +564,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <For each={taskSlots()}>
                                 {(slot) => (
-                                  <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
-                                    <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                  <span class="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent-tint tabular-nums">
+                                    <ClockIcon class="h-3 w-3 shrink-0 text-accent-soft" />
                                     <span>
                                       {slot.time}
                                       {slot.label ? ` ${slot.label}` : ''}
@@ -599,7 +597,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           type="button"
                           onClick={() => void props.onToggleTask(task)}
                           aria-label={`Complete task ${task.title}`}
-                          class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-[#0A0B0E] text-transparent transition-colors hover:border-white/30"
+                          class="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-canvas text-transparent transition-colors hover:border-white/30"
                         >
                           <CheckIcon class="h-4 w-4" />
                         </button>
@@ -609,24 +607,24 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                           class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
                         >
                           <p
-                            class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                            class="line-clamp-2 text-sm font-medium break-words text-ink"
                             title={task.title}
                           >
                             {task.title}
                           </p>
-                          <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#8E95A5]">
+                          <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-subtle">
                             <span>Due today</span>
                             <Show when={task.repeatable}>
-                              <span aria-hidden="true" class="text-[#5B6270]">
+                              <span aria-hidden="true" class="text-ink-faint">
                                 ·
                               </span>
-                              <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                              <span class="inline-flex items-center gap-1 text-accent-soft">
                                 <RepeatIcon class="h-3 w-3" />
                                 Repeats
                               </span>
                             </Show>
                             <Show when={task.note}>
-                              <span aria-hidden="true" class="text-[#5B6270]">
+                              <span aria-hidden="true" class="text-ink-faint">
                                 ·
                               </span>
                               <span class="line-clamp-2 max-w-full break-words" title={task.note}>
@@ -638,8 +636,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                             <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <For each={taskSlots()}>
                                 {(slot) => (
-                                  <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
-                                    <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                  <span class="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent-tint tabular-nums">
+                                    <ClockIcon class="h-3 w-3 shrink-0 text-accent-soft" />
                                     <span>
                                       {slot.time}
                                       {slot.label ? ` ${slot.label}` : ''}
@@ -659,7 +657,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
           </section>
 
           {/* Collapsible Goals / No Due Date list */}
-          <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#14161B]">
+          <section class="overflow-hidden rounded-2xl border border-white/[0.08] bg-surface">
             <button
               type="button"
               onClick={() => props.onToggleGoalsExpanded()}
@@ -667,16 +665,16 @@ export function TodayView(props: TodayViewProps): JSX.Element {
               class="flex w-full cursor-pointer items-center justify-between gap-3 px-6 py-4 text-left transition-colors hover:bg-white/[0.02]"
             >
               <div class="flex min-w-0 items-center gap-2.5">
-                <h2 class="truncate font-display text-base font-semibold text-[#F5F7FA]">
+                <h2 class="truncate font-display text-base font-semibold text-ink">
                   Goals · No Due Date
                 </h2>
               </div>
               <div class="flex shrink-0 items-center gap-2.5">
-                <span class="font-mono text-xs text-[#8E95A5] tabular-nums">
+                <span class="font-mono text-xs text-ink-subtle tabular-nums">
                   {noDateTasks().length} open
                 </span>
                 <ChevronDownIcon
-                  class={`h-4 w-4 text-[#8E95A5] transition-transform duration-150 ${
+                  class={`h-4 w-4 text-ink-subtle transition-transform duration-150 ${
                     props.goalsExpanded ? '' : '-rotate-90'
                   }`}
                 />
@@ -694,12 +692,12 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                     value={quickGoalTitle()}
                     onInput={(e) => setQuickGoalTitle(e.currentTarget.value)}
                     placeholder="Add a goal (no due date)..."
-                    class="h-10 flex-1 rounded-xl border border-white/[0.1] bg-[#0A0B0E] px-3.5 text-sm text-[#F5F7FA] placeholder:text-[#5B6270] focus:border-[#3B82F6] focus:outline-none"
+                    class="h-10 flex-1 rounded-xl border border-white/[0.1] bg-canvas px-3.5 text-sm text-ink placeholder:text-ink-faint focus:border-accent focus:outline-none"
                   />
                   <button
                     type="submit"
                     disabled={addingGoal() || quickGoalTitle().trim() === ''}
-                    class="h-10 shrink-0 cursor-pointer rounded-xl border border-white/[0.08] bg-[#1C1F26] px-4 text-xs font-medium text-[#F5F7FA] transition-colors hover:bg-[#252933] disabled:opacity-40"
+                    class="h-10 shrink-0 cursor-pointer rounded-xl border border-white/[0.08] bg-surface-elevated px-4 text-xs font-medium text-ink transition-colors hover:bg-surface-hover disabled:opacity-40"
                   >
                     Add
                   </button>
@@ -709,7 +707,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                   when={noDateTasks().length > 0}
                   fallback={
                     <div class="px-6 py-7 text-center">
-                      <p class="text-xs text-[#8E95A5]">
+                      <p class="text-xs text-ink-subtle">
                         No dateless goals yet. Add one above for things without a fixed deadline.
                       </p>
                     </div>
@@ -733,7 +731,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               type="button"
                               onClick={() => void props.onToggleTask(task)}
                               aria-label={`Complete goal ${task.title}`}
-                              class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-[#0A0B0E] text-transparent transition-colors hover:border-white/30"
+                              class="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/[0.12] bg-canvas text-transparent transition-colors hover:border-white/30"
                             >
                               <CheckIcon class="h-4 w-4" />
                             </button>
@@ -744,20 +742,20 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               class="min-w-0 flex-1 cursor-pointer py-0.5 text-left"
                             >
                               <p
-                                class="line-clamp-2 text-sm font-medium break-words text-[#F5F7FA]"
+                                class="line-clamp-2 text-sm font-medium break-words text-ink"
                                 title={task.title}
                               >
                                 {task.title}
                               </p>
                               <Show when={task.note || task.repeatable}>
-                                <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[#8E95A5]">
+                                <div class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-ink-subtle">
                                   <Show when={task.repeatable}>
-                                    <span class="inline-flex items-center gap-1 text-[#60A5FA]">
+                                    <span class="inline-flex items-center gap-1 text-accent-soft">
                                       <RepeatIcon class="h-3 w-3" />
                                       Repeats
                                     </span>
                                     <Show when={task.note}>
-                                      <span aria-hidden="true" class="text-[#5B6270]">
+                                      <span aria-hidden="true" class="text-ink-faint">
                                         ·
                                       </span>
                                     </Show>
@@ -776,8 +774,8 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                                 <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
                                   <For each={taskSlots()}>
                                     {(slot) => (
-                                      <span class="inline-flex items-center gap-1 rounded-md border border-[#3B82F6]/30 bg-[#3B82F6]/10 px-1.5 py-0.5 font-mono text-[11px] text-[#93C5FD] tabular-nums">
-                                        <ClockIcon class="h-3 w-3 shrink-0 text-[#60A5FA]" />
+                                      <span class="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent-tint tabular-nums">
+                                        <ClockIcon class="h-3 w-3 shrink-0 text-accent-soft" />
                                         <span>
                                           {slot.time}
                                           {slot.label ? ` ${slot.label}` : ''}
@@ -793,7 +791,7 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                               type="button"
                               onClick={() => void props.onScheduleTaskToday(task)}
                               title="Schedule for today"
-                              class="h-8 shrink-0 cursor-pointer rounded-lg border border-white/[0.08] bg-[#0A0B0E] px-2.5 text-[11px] font-medium whitespace-nowrap text-[#9AA1B1] transition-colors hover:bg-[#1C1F26] hover:text-[#60A5FA]"
+                              class="h-8 shrink-0 cursor-pointer rounded-lg border border-white/[0.08] bg-canvas px-2.5 text-[11px] font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-elevated hover:text-accent-soft"
                             >
                               Today
                             </button>
