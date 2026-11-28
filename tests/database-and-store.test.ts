@@ -233,61 +233,61 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
 
   try {
     store.init();
-    store.selectGuest();
-    assert.equal(store.mode(), 'guest');
+    store.auth.selectGuest();
+    assert.equal(store.auth.mode(), 'guest');
 
     // Wait a microtask for reloadFromDb
     await new Promise((r) => setTimeout(r, 15));
-    assert.equal(store.dbReady(), true);
+    assert.equal(store.domain.dbReady(), true);
 
     // Default timezone is UTC and setTimeZone persists to localStorage
-    assert.equal(store.timeZone(), 'UTC');
-    store.setTimeZone('America/New_York');
-    assert.equal(store.timeZone(), 'America/New_York');
+    assert.equal(store.filters.timeZone(), 'UTC');
+    store.filters.setTimeZone('America/New_York');
+    assert.equal(store.filters.timeZone(), 'America/New_York');
     assert.equal(env.storageMap.get('habits.timezone'), 'America/New_York');
-    store.setTimeZone('Invalid/Zone');
-    assert.equal(store.timeZone(), 'UTC');
+    store.filters.setTimeZone('Invalid/Zone');
+    assert.equal(store.filters.timeZone(), 'UTC');
     assert.equal(env.storageMap.get('habits.timezone'), 'UTC');
 
     // Create habit & toggle check-in & note
-    store.openCreateHabit();
-    assert.equal(store.habitModalOpen(), true);
-    await store.saveHabit({
+    store.domain.openCreateHabit();
+    assert.equal(store.domain.habitModalOpen(), true);
+    await store.domain.saveHabit({
       name: 'Read',
       color: '#3B82F6',
       weekdays: 127,
-      startDay: store.todayDay(),
+      startDay: store.filters.todayDay(),
     });
-    store.closeHabitModal();
-    assert.equal(store.habitModalOpen(), false);
-    assert.equal(store.snapshot().habits.length, 1);
+    store.domain.closeHabitModal();
+    assert.equal(store.domain.habitModalOpen(), false);
+    assert.equal(store.domain.snapshot().habits.length, 1);
 
-    const habit = store.snapshot().habits[0];
-    store.openEditHabit(habit);
-    await store.saveHabit({
+    const habit = store.domain.snapshot().habits[0];
+    store.domain.openEditHabit(habit);
+    await store.domain.saveHabit({
       name: 'Read Books',
       color: '#22C55E',
       weekdays: 127,
       startDay: habit.startDay,
     });
-    assert.equal(store.snapshot().habits[0].name, 'Read Books');
+    assert.equal(store.domain.snapshot().habits[0].name, 'Read Books');
 
-    await store.toggleCheckin(habit.id, store.todayDay(), true);
-    await store.saveNote(habit.id, store.todayDay(), 'Good session');
-    await store.toggleArchiveHabit(store.snapshot().habits[0]);
-    assert.notEqual(store.snapshot().habits[0].archivedAt, null);
+    await store.domain.toggleCheckin(habit.id, store.filters.todayDay(), true);
+    await store.domain.saveNote(habit.id, store.filters.todayDay(), 'Good session');
+    await store.domain.toggleArchiveHabit(store.domain.snapshot().habits[0]);
+    assert.notEqual(store.domain.snapshot().habits[0].archivedAt, null);
 
     // Task operations via TrackerStore
-    await store.quickAddTask('Quick task', store.todayDay());
-    assert.equal(store.snapshot().tasks.length, 1);
-    await store.toggleTaskDone(store.snapshot().tasks[0]);
-    assert.equal(store.snapshot().tasks[0].done, true);
-    assert.equal(store.snapshot().tasks[0].completedDay, store.todayDay());
-    await store.deleteTask(store.snapshot().tasks[0].id);
-    assert.notEqual(store.snapshot().tasks[0].deletedAt, null);
+    await store.domain.quickAddTask('Quick task', store.filters.todayDay());
+    assert.equal(store.domain.snapshot().tasks.length, 1);
+    await store.domain.toggleTaskDone(store.domain.snapshot().tasks[0]);
+    assert.equal(store.domain.snapshot().tasks[0].done, true);
+    assert.equal(store.domain.snapshot().tasks[0].completedDay, store.filters.todayDay());
+    await store.domain.deleteTask(store.domain.snapshot().tasks[0].id);
+    assert.notEqual(store.domain.snapshot().tasks[0].deletedAt, null);
 
     // Export backup & import another snapshot into guest workspace
-    const exported = await store.exportBackup();
+    const exported = await store.domain.exportBackup();
     assert.match(exported.filename, /^habits-backup-\d{4}-\d{2}-\d{2}\.bin$/);
     const unpackedExport = SnapshotCodec.unpack(exported.bytes);
     assert.equal(unpackedExport.habits.length, 1);
@@ -301,7 +301,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
           id: 50,
           title: 'Imported Task',
           note: 'From backup',
-          dueDay: store.todayDay(),
+          dueDay: store.filters.todayDay(),
           done: false,
           status: 'open',
           completedDay: null,
@@ -312,11 +312,11 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
         },
       ],
     });
-    await store.importBackup(extraBackupBytes);
-    assert.equal(store.snapshot().tasks.length, 2);
-    assert.ok(store.snapshot().tasks.some((task) => task.title === 'Imported Task'));
+    await store.domain.importBackup(extraBackupBytes);
+    assert.equal(store.domain.snapshot().tasks.length, 2);
+    assert.ok(store.domain.snapshot().tasks.some((task) => task.title === 'Imported Task'));
 
-    // Simulate Google mode sync + ConcurrentSyncError re-merge flow through store internals
+    // Simulate Google mode sync + ConcurrentSyncError re-merge flow via DI
     const remoteOnlyHabit: DomainSnapshot = {
       habits: [
         {
@@ -325,7 +325,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
           color: '#A855F7',
           weekdays: 127,
           weeklyTarget: null,
-          startDay: store.todayDay(),
+          startDay: store.filters.todayDay(),
           archivedAt: null,
           createdAt: 500,
           updatedAt: 500,
@@ -337,10 +337,10 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
     };
 
     const mergedSnap: DomainSnapshot = {
-      habits: [...store.snapshot().habits, ...remoteOnlyHabit.habits],
-      checkins: store.snapshot().checkins,
-      notes: store.snapshot().notes,
-      tasks: store.snapshot().tasks,
+      habits: [...store.domain.snapshot().habits, ...remoteOnlyHabit.habits],
+      checkins: store.domain.snapshot().checkins,
+      notes: store.domain.snapshot().notes,
+      tasks: store.domain.snapshot().tasks,
     };
 
     const mergedPrep: SyncPreparationResult = {
@@ -361,62 +361,17 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
     };
 
     let prepareCalls = 0;
-    const internals = store as unknown as {
-      setMode: (m: 'google' | 'guest' | null) => void;
-      session: { hasAccessToken: () => boolean; getAccessToken: () => string | null };
-      driveSync: {
-        prepareSync: () => Promise<SyncPreparationResult>;
-        confirmAndUpload: () => Promise<void>;
-        listRevisions: () => Promise<{
-          fileId: string | null;
-          revisions: Array<{ id: string; modifiedTime?: string; size?: number }>;
-        }>;
-        inspectRevision: (
-          mode: unknown,
-          token: unknown,
-          fileId: string,
-          revisionId: string
-        ) => Promise<{
-          fileId: string;
-          revisionId: string;
-          snapshot: DomainSnapshot;
-          bytes: Uint8Array;
-          summary: {
-            habitsCount: number;
-            checkinsCount: number;
-            notesCount: number;
-            tasksCount: number;
-            byteSize: number;
-          };
-        }>;
-        restoreRevision: (
-          mode: unknown,
-          token: unknown,
-          fileId: string,
-          revisionId: string,
-          localSnapshot: DomainSnapshot
-        ) => Promise<{
-          fileId: string;
-          revisionId: string;
-          restoredSnapshot: DomainSnapshot;
-          restoredBytes: Uint8Array;
-          summary: {
-            habitsCount: number;
-            checkinsCount: number;
-            notesCount: number;
-            tasksCount: number;
-            byteSize: number;
-          };
-        }>;
-      };
-    };
-
-    internals.setMode('google');
-    internals.session = {
+    const fakeSession = {
+      getRememberedMode: () => null,
       hasAccessToken: () => true,
       getAccessToken: () => 'fake-token',
-    };
-    internals.driveSync = {
+      getTokenExpiresAt: () => 0,
+      getAccountEmail: () => 'tester@example.com',
+      subscribeAuthChanges: () => () => {},
+      signInWithGoogle: () => Promise.resolve('fake-token'),
+    } as unknown as SessionManager;
+    const fakeDriveSync = {
+      resetUploadCache: () => {},
       prepareSync: () => {
         prepareCalls += 1;
         return Promise.resolve(
@@ -434,7 +389,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
             { id: 'rev-1', modifiedTime: '2026-11-19T12:10:00Z', size: 90 },
           ],
         }),
-      inspectRevision: (_m, _t, fileId, revisionId) =>
+      inspectRevision: (_m: unknown, _t: unknown, fileId: string, revisionId: string) =>
         Promise.resolve({
           fileId,
           revisionId,
@@ -448,7 +403,7 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
             byteSize: 90,
           },
         }),
-      restoreRevision: (_m, _t, fileId, revisionId) =>
+      restoreRevision: (_m: unknown, _t: unknown, fileId: string, revisionId: string) =>
         Promise.resolve({
           fileId,
           revisionId,
@@ -462,29 +417,43 @@ test('TrackerStore executes Guest CRUD lifecycle, backup export/import, and Driv
             byteSize: 90,
           },
         }),
-    };
+    } as unknown as DriveSyncService;
 
-    await store.startDriveSync();
-    assert.notEqual(store.pendingSync(), null);
-    assert.equal(store.snapshot().habits.length, 2);
+    store.dispose();
+    const googleStore = new TrackerStore({
+      session: fakeSession,
+      driveSync: fakeDriveSync,
+    });
+    try {
+      googleStore.init();
+      await new Promise((r) => setTimeout(r, 15));
+      await googleStore.auth.selectGoogle();
+      assert.equal(googleStore.auth.mode(), 'google');
 
-    await store.confirmUploadSync();
-    assert.equal(store.pendingSync(), null);
-    assert.equal(store.syncBanner()?.kind, 'success');
-    assert.match(store.syncBanner()?.text ?? '', /Merged remote changes/i);
+      await googleStore.drive.startDriveSync();
+      assert.notEqual(googleStore.drive.pendingSync(), null);
+      assert.equal(googleStore.domain.snapshot().habits.length, 2);
 
-    await store.openDriveRevisions();
-    assert.equal(store.revisionsModalOpen(), true);
-    assert.equal(store.revisions().length, 2);
+      await googleStore.drive.confirmUploadSync();
+      assert.equal(googleStore.drive.pendingSync(), null);
+      assert.equal(googleStore.drive.syncBanner()?.kind, 'success');
+      assert.match(googleStore.drive.syncBanner()?.text ?? '', /Merged remote changes/i);
 
-    await store.inspectDriveRevision('rev-1');
-    assert.equal(store.inspectedRevision()?.revisionId, 'rev-1');
+      await googleStore.drive.openDriveRevisions();
+      assert.equal(googleStore.drive.revisionsModalOpen(), true);
+      assert.equal(googleStore.drive.revisions().length, 2);
 
-    await store.restoreDriveRevision('rev-1');
-    assert.equal(store.revisionsModalOpen(), false);
-    assert.equal(store.snapshot().habits.length, 1);
-    assert.equal(store.snapshot().habits[0].name, 'Remote Stretch');
-    assert.match(store.syncBanner()?.text ?? '', /Restored Drive version/i);
+      await googleStore.drive.inspectDriveRevision('rev-1');
+      assert.equal(googleStore.drive.inspectedRevision()?.revisionId, 'rev-1');
+
+      await googleStore.drive.restoreDriveRevision('rev-1');
+      assert.equal(googleStore.drive.revisionsModalOpen(), false);
+      assert.equal(googleStore.domain.snapshot().habits.length, 1);
+      assert.equal(googleStore.domain.snapshot().habits[0].name, 'Remote Stretch');
+      assert.match(googleStore.drive.syncBanner()?.text ?? '', /Restored Drive version/i);
+    } finally {
+      googleStore.dispose();
+    }
   } finally {
     store.dispose();
     env.restore();
@@ -498,115 +467,115 @@ test('TrackerStore handles repeatable tasks, dateless goal scheduling, and UI st
   const store = new TrackerStore();
   try {
     store.init();
-    store.selectGuest();
+    store.auth.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
     // 1. Persisted Today Goals collapse state
-    assert.equal(store.todayGoalsExpanded(), true);
-    store.toggleTodayGoalsExpanded();
-    assert.equal(store.todayGoalsExpanded(), false);
+    assert.equal(store.filters.todayGoalsExpanded(), true);
+    store.filters.toggleTodayGoalsExpanded();
+    assert.equal(store.filters.todayGoalsExpanded(), false);
     assert.equal(env.storageMap.get('habits.todayGoalsExpanded'), 'false');
 
     // 2. Persisted History Date Range (preset & custom)
-    assert.equal(store.historyRangePreset(), 'last_30');
-    store.setHistoryRangePreset('prev_month');
-    assert.equal(store.historyRangePreset(), 'prev_month');
-    const customStart = store.todayDay() - 10;
-    const customEnd = store.todayDay() - 2;
-    store.setHistoryCustomRange(customStart, customEnd);
-    assert.equal(store.historyRangePreset(), 'custom');
-    assert.equal(store.historyCustomStartDay(), customStart);
-    assert.equal(store.historyCustomEndDay(), customEnd);
+    assert.equal(store.filters.historyRangePreset(), 'last_30');
+    store.filters.setHistoryRangePreset('prev_month');
+    assert.equal(store.filters.historyRangePreset(), 'prev_month');
+    const customStart = store.filters.todayDay() - 10;
+    const customEnd = store.filters.todayDay() - 2;
+    store.filters.setHistoryCustomRange(customStart, customEnd);
+    assert.equal(store.filters.historyRangePreset(), 'custom');
+    assert.equal(store.filters.historyCustomStartDay(), customStart);
+    assert.equal(store.filters.historyCustomEndDay(), customEnd);
 
     // Re-instantiating TrackerStore reads persisted states back from localStorage
     const store2 = new TrackerStore();
     try {
-      assert.equal(store2.todayGoalsExpanded(), false);
-      assert.equal(store2.historyRangePreset(), 'custom');
-      assert.equal(store2.historyCustomStartDay(), customStart);
-      assert.equal(store2.historyCustomEndDay(), customEnd);
+      assert.equal(store2.filters.todayGoalsExpanded(), false);
+      assert.equal(store2.filters.historyRangePreset(), 'custom');
+      assert.equal(store2.filters.historyCustomStartDay(), customStart);
+      assert.equal(store2.filters.historyCustomEndDay(), customEnd);
     } finally {
       store2.dispose();
     }
 
     // 3. Dateless goal + 1-click Schedule for Today
-    store.openCreateTask({ dueDay: null });
-    assert.equal(store.taskModalMode(), 'create');
-    assert.equal(store.taskDraftPrefill()?.dueDay, null);
-    await store.saveTask({
+    store.domain.openCreateTask({ dueDay: null });
+    assert.equal(store.domain.taskModalMode(), 'create');
+    assert.equal(store.domain.taskDraftPrefill()?.dueDay, null);
+    await store.domain.saveTask({
       title: 'Clean garage',
       note: 'Sort tools',
       dueDay: null,
       repeatable: true,
     });
-    store.closeTaskModal();
+    store.domain.closeTaskModal();
 
-    const goal = store.snapshot().tasks[0];
+    const goal = store.domain.snapshot().tasks[0];
     assert.equal(goal.dueDay, null);
     assert.equal(goal.repeatable, true);
 
-    await store.scheduleTaskForDay(goal, store.todayDay());
-    const scheduledGoal = store.snapshot().tasks[0];
-    assert.equal(scheduledGoal.dueDay, store.todayDay());
+    await store.domain.scheduleTaskForDay(goal, store.filters.todayDay());
+    const scheduledGoal = store.domain.snapshot().tasks[0];
+    assert.equal(scheduledGoal.dueDay, store.filters.todayDay());
 
     // 4. Completing repeatable task opens pre-filled Schedule Next Occurrence modal
-    await store.toggleTaskDone(scheduledGoal);
-    assert.equal(store.snapshot().tasks[0].done, true);
-    assert.equal(store.taskModalOpen(), true);
-    assert.equal(store.taskModalMode(), 'next');
-    assert.deepEqual(store.taskDraftPrefill(), {
+    await store.domain.toggleTaskDone(scheduledGoal);
+    assert.equal(store.domain.snapshot().tasks[0].done, true);
+    assert.equal(store.domain.taskModalOpen(), true);
+    assert.equal(store.domain.taskModalMode(), 'next');
+    assert.deepEqual(store.domain.taskDraftPrefill(), {
       title: 'Clean garage',
       note: 'Sort tools',
-      dueDay: store.todayDay() + 1,
+      dueDay: store.filters.todayDay() + 1,
       repeatable: true,
     });
 
     // Saving next occurrence creates a second open repeatable task
-    await store.saveTask({
+    await store.domain.saveTask({
       title: 'Clean garage',
       note: 'Sort tools',
       dueDay: null,
       repeatable: true,
     });
-    store.closeTaskModal();
-    assert.equal(store.snapshot().tasks.length, 2);
-    assert.equal(store.snapshot().tasks[1].done, false);
-    assert.equal(store.snapshot().tasks[1].dueDay, null);
-    assert.equal(store.snapshot().tasks[1].repeatable, true);
+    store.domain.closeTaskModal();
+    assert.equal(store.domain.snapshot().tasks.length, 2);
+    assert.equal(store.domain.snapshot().tasks[1].done, false);
+    assert.equal(store.domain.snapshot().tasks[1].dueDay, null);
+    assert.equal(store.domain.snapshot().tasks[1].repeatable, true);
 
     // Completing a dateless repeatable task suggests dueDay: null
-    await store.toggleTaskDone(store.snapshot().tasks[1]);
-    assert.equal(store.taskModalMode(), 'next');
-    assert.equal(store.taskDraftPrefill()?.dueDay, null);
-    store.closeTaskModal();
+    await store.domain.toggleTaskDone(store.domain.snapshot().tasks[1]);
+    assert.equal(store.domain.taskModalMode(), 'next');
+    assert.equal(store.domain.taskDraftPrefill()?.dueDay, null);
+    store.domain.closeTaskModal();
 
     // 5. Updating task status to not_done and archived through edit flow
-    const secondTask = store.snapshot().tasks[1];
-    store.openEditTask(secondTask);
-    await store.saveTask({
+    const secondTask = store.domain.snapshot().tasks[1];
+    store.domain.openEditTask(secondTask);
+    await store.domain.saveTask({
       title: secondTask.title,
       note: 'Did not make it',
       dueDay: secondTask.dueDay,
       repeatable: secondTask.repeatable,
       status: 'not_done',
     });
-    store.closeTaskModal();
-    assert.equal(store.snapshot().tasks[1].status, 'not_done');
-    assert.equal(store.snapshot().tasks[1].done, false);
-    assert.equal(store.snapshot().tasks[1].completedDay, null);
+    store.domain.closeTaskModal();
+    assert.equal(store.domain.snapshot().tasks[1].status, 'not_done');
+    assert.equal(store.domain.snapshot().tasks[1].done, false);
+    assert.equal(store.domain.snapshot().tasks[1].completedDay, null);
 
-    store.openEditTask(store.snapshot().tasks[1]);
-    await store.saveTask({
+    store.domain.openEditTask(store.domain.snapshot().tasks[1]);
+    await store.domain.saveTask({
       title: secondTask.title,
       note: 'No longer needed',
       dueDay: null,
       repeatable: false,
       status: 'archived',
     });
-    store.closeTaskModal();
-    assert.equal(store.snapshot().tasks[1].status, 'archived');
-    assert.equal(store.snapshot().tasks[1].done, false);
-    assert.equal(store.snapshot().tasks[1].completedDay, null);
+    store.domain.closeTaskModal();
+    assert.equal(store.domain.snapshot().tasks[1].status, 'archived');
+    assert.equal(store.domain.snapshot().tasks[1].done, false);
+    assert.equal(store.domain.snapshot().tasks[1].completedDay, null);
   } finally {
     store.dispose();
   }
@@ -778,58 +747,58 @@ test('TrackerStore persists History multi-habit filter, Tasks multi-status filte
   const store = new TrackerStore();
   try {
     store.init();
-    store.selectGuest();
+    store.auth.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
-    await store.saveHabit({
+    await store.domain.saveHabit({
       name: 'Run',
       color: '#3B82F6',
       weekdays: 127,
-      startDay: store.todayDay(),
+      startDay: store.filters.todayDay(),
     });
-    await store.saveHabit({
+    await store.domain.saveHabit({
       name: 'Read',
       color: '#22C55E',
       weekdays: 127,
-      startDay: store.todayDay(),
+      startDay: store.filters.todayDay(),
     });
-    await store.saveHabit({
+    await store.domain.saveHabit({
       name: 'Meditate',
       color: '#A855F7',
       weekdays: 127,
-      startDay: store.todayDay(),
+      startDay: store.filters.todayDay(),
     });
 
-    const ids = store.snapshot().habits.map((h) => h.id);
-    assert.equal(store.historyHabitFilter(), 'all');
+    const ids = store.domain.snapshot().habits.map((h) => h.id);
+    assert.equal(store.filters.historyHabitFilter(), 'all');
 
     // Picking a subset persists across reloads
-    store.setHistoryHabitFilter([ids[0], ids[2]]);
-    assert.deepEqual(store.historyHabitFilter(), [ids[0], ids[2]]);
+    store.filters.setHistoryHabitFilter([ids[0], ids[2]]);
+    assert.deepEqual(store.filters.historyHabitFilter(), [ids[0], ids[2]]);
 
     // Selecting all habit IDs normalizes cleanly to 'all'
-    store.setHistoryHabitFilter([...ids]);
-    assert.equal(store.historyHabitFilter(), 'all');
+    store.filters.setHistoryHabitFilter([...ids]);
+    assert.equal(store.filters.historyHabitFilter(), 'all');
 
     // Persist multi-habit subset + multi-status tasks filter + tasks sort mode
-    store.setHistoryHabitFilter([ids[0], ids[1]]);
-    store.setTasksStatusFilter(['today', 'completed', 'archived']);
-    store.setTasksSortMode('due_desc');
+    store.filters.setHistoryHabitFilter([ids[0], ids[1]]);
+    store.filters.setTasksStatusFilter(['today', 'completed', 'archived']);
+    store.filters.setTasksSortMode('due_desc');
 
     const restored = new TrackerStore();
     try {
       restored.init();
       await new Promise((r) => setTimeout(r, 15));
-      assert.deepEqual(restored.historyHabitFilter(), [ids[0], ids[1]]);
-      assert.deepEqual(restored.tasksStatusFilter(), ['today', 'completed', 'archived']);
-      assert.equal(restored.tasksSortMode(), 'due_desc');
+      assert.deepEqual(restored.filters.historyHabitFilter(), [ids[0], ids[1]]);
+      assert.deepEqual(restored.filters.tasksStatusFilter(), ['today', 'completed', 'archived']);
+      assert.equal(restored.filters.tasksSortMode(), 'due_desc');
 
       // Storing 'all' for tasks status filter persists cleanly
-      restored.setTasksStatusFilter('all');
-      assert.equal(restored.tasksStatusFilter(), 'all');
+      restored.filters.setTasksStatusFilter('all');
+      assert.equal(restored.filters.tasksStatusFilter(), 'all');
       const restoredAll = new TrackerStore();
       try {
-        assert.equal(restoredAll.tasksStatusFilter(), 'all');
+        assert.equal(restoredAll.filters.tasksStatusFilter(), 'all');
       } finally {
         restoredAll.dispose();
       }
@@ -920,33 +889,33 @@ test('HabitDatabase and TrackerStore persist scheduleHistory scopes, preserve on
   const store = new TrackerStore();
   try {
     store.init();
-    store.selectGuest();
+    store.auth.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
-    const start = store.todayDay() - 14;
-    await store.saveHabit({
+    const start = store.filters.todayDay() - 14;
+    await store.domain.saveHabit({
       name: 'Read',
       color: '#A855F7',
       weekdays: 0b1111111,
       weeklyTarget: null,
       startDay: start,
     });
-    const created = store.snapshot().habits.find((x) => x.name === 'Read')!;
-    store.openEditHabit(created);
-    await store.saveHabit({
+    const created = store.domain.snapshot().habits.find((x) => x.name === 'Read')!;
+    store.domain.openEditHabit(created);
+    await store.domain.saveHabit({
       name: 'Read',
       color: '#A855F7',
       weekdays: 0b1111111,
       weeklyTarget: 4,
       startDay: start,
       scheduleApplyScope: 'from_day',
-      scheduleEffectiveFromDay: store.todayDay(),
+      scheduleEffectiveFromDay: store.filters.todayDay(),
     });
-    const versioned = store.snapshot().habits.find((x) => x.id === created.id)!;
+    const versioned = store.domain.snapshot().habits.find((x) => x.id === created.id)!;
     assert.equal(versioned.scheduleHistory?.length, 2);
 
-    store.openEditHabit(versioned);
-    await store.saveHabit({
+    store.domain.openEditHabit(versioned);
+    await store.domain.saveHabit({
       name: 'Read',
       color: '#A855F7',
       weekdays: 0b0010101,
@@ -954,7 +923,7 @@ test('HabitDatabase and TrackerStore persist scheduleHistory scopes, preserve on
       startDay: start,
       scheduleApplyScope: 'all',
     });
-    const resetHabit = store.snapshot().habits.find((x) => x.id === created.id)!;
+    const resetHabit = store.domain.snapshot().habits.find((x) => x.id === created.id)!;
     assert.equal('scheduleHistory' in resetHabit, false);
     assert.equal(resetHabit.weekdays, 0b0010101);
     assert.equal(resetHabit.weeklyTarget, null);
@@ -1039,11 +1008,11 @@ test('HabitDatabase and TrackerStore support measured habits, stepped dailyTarge
   const store = new TrackerStore();
   try {
     store.init();
-    store.selectGuest();
+    store.auth.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
-    const today = store.todayDay();
-    await store.saveHabit({
+    const today = store.filters.todayDay();
+    await store.domain.saveHabit({
       name: 'Meditation',
       color: '#22C55E',
       weekdays: 0b1111111,
@@ -1052,37 +1021,39 @@ test('HabitDatabase and TrackerStore support measured habits, stepped dailyTarge
       unit: 'min',
       startDay: today - 10,
     });
-    const med = store.snapshot().habits.find((x) => x.name === 'Meditation')!;
+    const med = store.domain.snapshot().habits.find((x) => x.name === 'Meditation')!;
 
     // +5, +5, +1 => 11/15 (partial, done === false)
-    await store.incrementCheckinValue(med.id, today, 5);
-    await store.incrementCheckinValue(med.id, today, 5);
-    await store.incrementCheckinValue(med.id, today, 1);
-    let c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.incrementCheckinValue(med.id, today, 5);
+    await store.domain.incrementCheckinValue(med.id, today, 5);
+    await store.domain.incrementCheckinValue(med.id, today, 1);
+    let c = store.domain
+      .snapshot()
+      .checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.value, 11);
     assert.equal(c.done, false);
 
     // +5 => 16 >= 15 => done === true
-    await store.incrementCheckinValue(med.id, today, 5);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.incrementCheckinValue(med.id, today, 5);
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.value, 16);
     assert.equal(c.done, true);
 
     // toggleCheckin(false) resets to 0 & done === false
-    await store.toggleCheckin(med.id, today, false);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.toggleCheckin(med.id, today, false);
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.done, false);
     assert.equal('value' in c, false);
 
     // toggleCheckin(true) from 0 completes full active dailyTarget (15)
-    await store.toggleCheckin(med.id, today, true);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.toggleCheckin(med.id, today, true);
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.done, true);
     assert.equal(c.value, 15);
 
     // Bump today's target to 30 from today
-    store.openEditHabit(med);
-    await store.saveHabit({
+    store.domain.openEditHabit(med);
+    await store.domain.saveHabit({
       name: 'Meditation',
       color: '#22C55E',
       weekdays: 0b1111111,
@@ -1095,29 +1066,29 @@ test('HabitDatabase and TrackerStore support measured habits, stepped dailyTarge
     });
 
     // toggleCheckin(true) when value (15) < new active target (30) fills up to 30!
-    await store.toggleCheckin(med.id, today, true);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.toggleCheckin(med.id, today, true);
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.done, true);
     assert.equal(c.value, 30);
 
     // Manual entry below/above target
-    await store.setCheckinValue(med.id, today, 22.5);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.setCheckinValue(med.id, today, 22.5);
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.value, 22.5);
     assert.equal(c.done, false);
 
-    await store.setCheckinValue(med.id, today, 30);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    await store.domain.setCheckinValue(med.id, today, 30);
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.value, 30);
     assert.equal(c.done, true);
 
     // Rapid unawaited calls serialize cleanly without losing updates
     await Promise.all([
-      store.setCheckinValue(med.id, today, 10),
-      store.incrementCheckinValue(med.id, today, 5),
-      store.incrementCheckinValue(med.id, today, 1),
+      store.domain.setCheckinValue(med.id, today, 10),
+      store.domain.incrementCheckinValue(med.id, today, 5),
+      store.domain.incrementCheckinValue(med.id, today, 1),
     ]);
-    c = store.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
+    c = store.domain.snapshot().checkins.find((x) => x.habitId === med.id && x.dayIndex === today)!;
     assert.equal(c.value, 16);
     assert.equal(c.done, false);
   } finally {
@@ -1202,62 +1173,69 @@ test('HabitDatabase and TrackerStore manage reminderSlots CRUD, habit reminderSl
   const store = new TrackerStore();
   try {
     store.init();
-    store.selectGuest();
+    store.auth.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
-    const slotA = await store.createReminderSlot({ label: 'Work', time: '10:00' });
-    const slotB = await store.createReminderSlot({ label: 'Night', time: '22:15' });
+    const slotA = await store.reminders.createReminderSlot({ label: 'Work', time: '10:00' });
+    const slotB = await store.reminders.createReminderSlot({ label: 'Night', time: '22:15' });
     assert.deepEqual(
-      store.activeReminderSlots().map((s) => s.id),
+      store.reminders.activeReminderSlots().map((s) => s.id),
       [slotA.id, slotB.id]
     );
 
-    await store.saveHabit({
+    await store.domain.saveHabit({
       name: 'Stretch',
       color: '#A855F7',
       weekdays: 127,
-      startDay: store.todayDay(),
+      startDay: store.filters.todayDay(),
       reminderSlotIds: [slotA.id, slotB.id],
     });
-    const stretch = store.snapshot().habits.find((h) => h.name === 'Stretch')!;
+    const stretch = store.domain.snapshot().habits.find((h) => h.name === 'Stretch')!;
     assert.deepEqual(stretch.reminderSlotIds, [slotA.id, slotB.id].sort());
 
-    store.openCreateTask();
-    await store.saveTask({
+    store.domain.openCreateTask();
+    await store.domain.saveTask({
       title: 'Weekly Review',
       note: '',
-      dueDay: store.todayDay(),
+      dueDay: store.filters.todayDay(),
       repeatable: true,
       reminderSlotIds: [slotA.id, slotB.id],
     });
-    store.closeTaskModal();
-    const reviewTask = store.snapshot().tasks.find((task) => task.title === 'Weekly Review')!;
+    store.domain.closeTaskModal();
+    const reviewTask = store.domain
+      .snapshot()
+      .tasks.find((task) => task.title === 'Weekly Review')!;
     assert.deepEqual(reviewTask.reminderSlotIds, [slotA.id, slotB.id].sort());
 
     // Completing repeatable task with slots pre-fills reminderSlotIds for the next occurrence
-    await store.toggleTaskDone(reviewTask);
-    assert.deepEqual(store.taskDraftPrefill()?.reminderSlotIds, [slotA.id, slotB.id].sort());
-    store.closeTaskModal();
+    await store.domain.toggleTaskDone(reviewTask);
+    assert.deepEqual(store.domain.taskDraftPrefill()?.reminderSlotIds, [slotA.id, slotB.id].sort());
+    store.domain.closeTaskModal();
 
-    store.setTaskReminderSlotId(slotA.id);
-    assert.equal(store.reminderPrefs().taskReminderSlotId, slotA.id);
+    store.reminders.setTaskReminderSlotId(slotA.id);
+    assert.equal(store.reminders.reminderPrefs().taskReminderSlotId, slotA.id);
 
-    await store.updateReminderSlot(slotA.id, { label: 'Focus', time: '09:00' });
-    assert.equal(store.activeReminderSlots().find((s) => s.id === slotA.id)?.label, 'Focus');
+    await store.reminders.updateReminderSlot(slotA.id, { label: 'Focus', time: '09:00' });
+    assert.equal(
+      store.reminders.activeReminderSlots().find((s) => s.id === slotA.id)?.label,
+      'Focus'
+    );
 
     // Deleting slotA removes it from activeReminderSlots, strips from Stretch and Weekly Review, and resets taskReminderSlotId -> null
-    await store.deleteReminderSlot(slotA.id);
+    await store.reminders.deleteReminderSlot(slotA.id);
     assert.deepEqual(
-      store.activeReminderSlots().map((s) => s.id),
+      store.reminders.activeReminderSlots().map((s) => s.id),
       [slotB.id]
     );
-    assert.deepEqual(store.snapshot().habits.find((h) => h.id === stretch.id)?.reminderSlotIds, [
-      slotB.id,
-    ]);
-    assert.deepEqual(store.snapshot().tasks.find((t) => t.id === reviewTask.id)?.reminderSlotIds, [
-      slotB.id,
-    ]);
-    assert.equal(store.reminderPrefs().taskReminderSlotId, null);
+    assert.deepEqual(
+      store.domain.snapshot().habits.find((h) => h.id === stretch.id)?.reminderSlotIds,
+      [slotB.id]
+    );
+    assert.deepEqual(
+      store.domain.snapshot().tasks.find((t) => t.id === reviewTask.id)?.reminderSlotIds,
+      [slotB.id]
+    );
+    assert.equal(store.reminders.reminderPrefs().taskReminderSlotId, null);
   } finally {
     store.dispose();
   }
@@ -1281,77 +1259,70 @@ test('TrackerStore persists UI preferences, handles corrupt localStorage, caches
 
   const store = new TrackerStore();
   try {
-    assert.equal(store.timeZone(), 'UTC');
-    assert.equal(store.todayGoalsExpanded(), false);
-    assert.equal(store.historyRangePreset(), 'last_30');
-    assert.equal(store.historySubTab(), 'advanced');
-    assert.deepEqual(store.historyHabitFilter(), [1, 2]);
-    assert.equal(store.advancedHeatmapMode(), 'tasks');
-    assert.equal(store.advancedNotesFilter(), 'missed');
-    assert.deepEqual(store.tasksStatusFilter(), [...OPEN_TASK_BUCKETS]);
-    assert.equal(store.tasksSortMode(), 'due_desc');
+    assert.equal(store.filters.timeZone(), 'UTC');
+    assert.equal(store.filters.todayGoalsExpanded(), false);
+    assert.equal(store.filters.historyRangePreset(), 'last_30');
+    assert.equal(store.filters.historySubTab(), 'advanced');
+    assert.deepEqual(store.filters.historyHabitFilter(), [1, 2]);
+    assert.equal(store.filters.advancedHeatmapMode(), 'tasks');
+    assert.equal(store.filters.advancedNotesFilter(), 'missed');
+    assert.deepEqual(store.filters.tasksStatusFilter(), [...OPEN_TASK_BUCKETS]);
+    assert.equal(store.filters.tasksSortMode(), 'due_desc');
 
     store.init();
-    store.selectGuest();
+    store.auth.selectGuest();
     await new Promise((r) => setTimeout(r, 15));
 
-    store.setTimeZone('America/New_York');
-    assert.equal(store.timeZone(), 'America/New_York');
-    store.setTimeZone('Not/A_Zone');
-    assert.equal(store.timeZone(), 'UTC');
+    store.filters.setTimeZone('America/New_York');
+    assert.equal(store.filters.timeZone(), 'America/New_York');
+    store.filters.setTimeZone('Not/A_Zone');
+    assert.equal(store.filters.timeZone(), 'UTC');
 
-    store.toggleTodayGoalsExpanded();
-    assert.equal(store.todayGoalsExpanded(), true);
-    store.setHistoryRangePreset('last_7');
-    assert.equal(store.historyRangePreset(), 'last_7');
-    const today = store.todayDay();
-    store.setHistoryCustomRange(today + 10, today - 5);
-    assert.equal(store.historyRangePreset(), 'custom');
-    assert.equal(store.historyCustomStartDay(), today - 5);
-    assert.equal(store.historyCustomEndDay(), today);
+    store.filters.toggleTodayGoalsExpanded();
+    assert.equal(store.filters.todayGoalsExpanded(), true);
+    store.filters.setHistoryRangePreset('last_7');
+    assert.equal(store.filters.historyRangePreset(), 'last_7');
+    const today = store.filters.todayDay();
+    store.filters.setHistoryCustomRange(today + 10, today - 5);
+    assert.equal(store.filters.historyRangePreset(), 'custom');
+    assert.equal(store.filters.historyCustomStartDay(), today - 5);
+    assert.equal(store.filters.historyCustomEndDay(), today);
 
-    store.setHistorySubTab('charts');
-    assert.equal(store.historySubTab(), 'charts');
-    store.setAdvancedHeatmapMode('habits');
-    assert.equal(store.advancedHeatmapMode(), 'habits');
-    store.setAdvancedNotesFilter('done');
-    assert.equal(store.advancedNotesFilter(), 'done');
-    store.setTasksStatusFilter(['completed']);
-    assert.deepEqual(store.tasksStatusFilter(), ['completed']);
-    store.setTasksSortMode('title');
-    assert.equal(store.tasksSortMode(), 'title');
+    store.filters.setHistorySubTab('charts');
+    assert.equal(store.filters.historySubTab(), 'charts');
+    store.filters.setAdvancedHeatmapMode('habits');
+    assert.equal(store.filters.advancedHeatmapMode(), 'habits');
+    store.filters.setAdvancedNotesFilter('done');
+    assert.equal(store.filters.advancedNotesFilter(), 'done');
+    store.filters.setTasksStatusFilter(['completed']);
+    assert.deepEqual(store.filters.tasksStatusFilter(), ['completed']);
+    store.filters.setTasksSortMode('title');
+    assert.equal(store.filters.tasksSortMode(), 'title');
 
     // Create two habits & verify historyHabitFilter normalization + reloadFromDb pruning
-    await store.saveHabit({
+    await store.domain.saveHabit({
       name: 'Habit One',
       color: '#3B82F6',
       weekdays: 127,
       startDay: today - 3,
     });
-    await store.saveHabit({
+    await store.domain.saveHabit({
       name: 'Habit Two',
       color: '#22C55E',
       weekdays: 127,
       startDay: today - 3,
     });
-    const habits = store.snapshot().habits;
-    store.setHistoryHabitFilter([habits[0].id, habits[1].id]);
-    assert.equal(store.historyHabitFilter(), 'all'); // all habits selected collapses to 'all'
-    store.setHistoryHabitFilter([habits[0].id, habits[0].id]);
-    assert.deepEqual(store.historyHabitFilter(), [habits[0].id]);
-
-    // Advanced analytics cache hit & miss
-    const report1 = store.getAdvancedAnalytics(habits, [habits[0].id], today - 3, today);
-    const report2 = store.getAdvancedAnalytics(habits, [habits[0].id], today - 3, today);
-    assert.equal(report1, report2);
-    const report3 = store.getAdvancedAnalytics(habits, 'all', today - 3, today);
-    assert.notEqual(report1, report3);
+    const habits = store.domain.snapshot().habits;
+    store.filters.setHistoryHabitFilter([habits[0].id, habits[1].id]);
+    assert.equal(store.filters.historyHabitFilter(), 'all'); // all habits selected collapses to 'all'
+    store.filters.setHistoryHabitFilter([habits[0].id, habits[0].id]);
+    assert.deepEqual(store.filters.historyHabitFilter(), [habits[0].id]);
 
     // Backup export & import
-    await store.quickAddTask('Backup Task', today);
-    const exported = await store.exportBackup();
+    await store.domain.quickAddTask('Backup Task', today);
+    const exported = await store.domain.exportBackup();
     assert.match(exported.filename, /\.bin$/);
-    assert.match(store.syncBanner()?.text ?? '', /Backup exported/);
+    assert.match(store.drive.syncBanner()?.text ?? '', /Backup exported/);
 
     const extraSnap: DomainSnapshot = {
       habits: [
@@ -1371,9 +1342,9 @@ test('TrackerStore persists UI preferences, handles corrupt localStorage, caches
       notes: [],
       tasks: [],
     };
-    await store.importBackup(SnapshotCodec.pack(extraSnap));
-    assert.ok(store.snapshot().habits.some((h) => h.name === 'Imported Habit'));
-    assert.match(store.syncBanner()?.text ?? '', /Backup merged/);
+    await store.domain.importBackup(SnapshotCodec.pack(extraSnap));
+    assert.ok(store.domain.snapshot().habits.some((h) => h.name === 'Imported Habit'));
+    assert.match(store.drive.syncBanner()?.text ?? '', /Backup merged/);
   } finally {
     store.dispose();
   }
@@ -1639,133 +1610,133 @@ test('TrackerStore Google mode: auth, Drive sync, ConcurrentSyncError recovery, 
 
     // Sign in failure -> authError
     signInError = new Error('Popup closed');
-    await store.selectGoogle();
-    assert.equal(store.authError(), 'Popup closed');
-    assert.equal(store.mode(), null);
+    await store.auth.selectGoogle();
+    assert.equal(store.auth.authError(), 'Popup closed');
+    assert.equal(store.auth.mode(), null);
 
     // Sign in success
     signInError = null;
-    await store.selectGoogle();
-    assert.equal(store.mode(), 'google');
-    assert.equal(store.hasGoogleToken(), true);
-    assert.equal(store.googleEmail(), 'user@example.com');
+    await store.auth.selectGoogle();
+    assert.equal(store.auth.mode(), 'google');
+    assert.equal(store.auth.hasGoogleToken(), true);
+    assert.equal(store.auth.googleEmail(), 'user@example.com');
 
     // Reconnect error & success
     signInError = new Error('Reconnect failed');
-    await store.reconnectGoogle();
-    assert.equal(store.syncBanner()?.kind, 'error');
+    await store.auth.reconnectGoogle();
+    assert.equal(store.drive.syncBanner()?.kind, 'error');
     signInError = null;
-    await store.reconnectGoogle();
+    await store.auth.reconnectGoogle();
 
     // Drive Sync: up-to-date + pulls remote calendar meta & timezone
     prepareMode = 'up-to-date';
-    await store.startDriveSync();
-    assert.equal(store.syncBanner()?.kind, 'success');
-    assert.equal(store.timeZone(), 'Europe/Paris');
-    assert.equal(store.reminderPrefs().calendarId, 'cal-remote-1');
+    await store.drive.startDriveSync();
+    assert.equal(store.drive.syncBanner()?.kind, 'success');
+    assert.equal(store.filters.timeZone(), 'Europe/Paris');
+    assert.equal(store.reminders.reminderPrefs().calendarId, 'cal-remote-1');
 
     // Drive Sync: localChanged
     prepareMode = 'local-changed-up-to-date';
-    await store.startDriveSync();
-    assert.match(store.syncBanner()?.text ?? '', /Downloaded and merged/);
+    await store.drive.startDriveSync();
+    assert.match(store.drive.syncBanner()?.text ?? '', /Downloaded and merged/);
 
     // Drive Sync: auth error clears token
     prepareMode = 'auth-error';
-    await store.startDriveSync();
-    assert.equal(store.hasGoogleToken(), false);
-    assert.equal(store.syncBanner()?.kind, 'error');
+    await store.drive.startDriveSync();
+    assert.equal(store.auth.hasGoogleToken(), false);
+    assert.equal(store.drive.syncBanner()?.kind, 'error');
 
     // Re-auth & prepare upload + cancelPendingSync
     prepareMode = 'needs-upload';
-    await store.startDriveSync();
-    assert.ok(store.pendingSync());
-    store.cancelPendingSync();
-    assert.equal(store.pendingSync(), null);
+    await store.drive.startDriveSync();
+    assert.ok(store.drive.pendingSync());
+    store.drive.cancelPendingSync();
+    assert.equal(store.drive.pendingSync(), null);
 
     // confirmUploadSync: success
-    await store.startDriveSync();
+    await store.drive.startDriveSync();
     confirmMode = 'ok';
-    await store.confirmUploadSync();
-    assert.match(store.syncBanner()?.text ?? '', /Snapshot uploaded/);
+    await store.drive.confirmUploadSync();
+    assert.match(store.drive.syncBanner()?.text ?? '', /Snapshot uploaded/);
 
     // confirmUploadSync: ConcurrentSyncError -> merged cleanly
-    await store.startDriveSync();
+    await store.drive.startDriveSync();
     confirmMode = 'concurrent-merged';
-    await store.confirmUploadSync();
-    assert.match(store.syncBanner()?.text ?? '', /Merged remote changes cleanly/);
+    await store.drive.confirmUploadSync();
+    assert.match(store.drive.syncBanner()?.text ?? '', /Merged remote changes cleanly/);
 
     // confirmUploadSync: ConcurrentSyncError -> re-prepared pendingSync
     prepareMode = 'needs-upload';
-    await store.startDriveSync();
+    await store.drive.startDriveSync();
     confirmMode = 'concurrent-reprepare';
-    await store.confirmUploadSync();
-    assert.ok(store.pendingSync());
-    assert.equal(store.syncBanner()?.kind, 'error');
+    await store.drive.confirmUploadSync();
+    assert.ok(store.drive.pendingSync());
+    assert.equal(store.drive.syncBanner()?.kind, 'error');
 
     // confirmUploadSync: ConcurrentSyncError -> retry failure
     confirmMode = 'concurrent-fail';
-    await store.confirmUploadSync();
-    assert.equal(store.pendingSync(), null);
-    assert.equal(store.syncBanner()?.kind, 'error');
+    await store.drive.confirmUploadSync();
+    assert.equal(store.drive.pendingSync(), null);
+    assert.equal(store.drive.syncBanner()?.kind, 'error');
 
     // confirmUploadSync: generic auth error
     prepareMode = 'needs-upload';
-    await store.startDriveSync();
+    await store.drive.startDriveSync();
     confirmMode = 'err';
-    await store.confirmUploadSync();
-    assert.equal(store.hasGoogleToken(), false);
+    await store.drive.confirmUploadSync();
+    assert.equal(store.auth.hasGoogleToken(), false);
 
     // Drive Revisions: open, inspect, restore, close
-    await store.openDriveRevisions();
-    assert.equal(store.revisionsModalOpen(), true);
-    assert.equal(store.revisions().length, 1);
-    await store.inspectDriveRevision('rev-2');
-    assert.equal(store.inspectedRevision()?.revisionId, 'rev-2');
-    await store.restoreDriveRevision('rev-2');
-    assert.equal(store.revisionsModalOpen(), false);
-    assert.match(store.syncBanner()?.text ?? '', /Restored Drive version/);
-    store.closeDriveRevisions();
+    await store.drive.openDriveRevisions();
+    assert.equal(store.drive.revisionsModalOpen(), true);
+    assert.equal(store.drive.revisions().length, 1);
+    await store.drive.inspectDriveRevision('rev-2');
+    assert.equal(store.drive.inspectedRevision()?.revisionId, 'rev-2');
+    await store.drive.restoreDriveRevision('rev-2');
+    assert.equal(store.drive.revisionsModalOpen(), false);
+    assert.match(store.drive.syncBanner()?.text ?? '', /Restored Drive version/);
+    store.drive.closeDriveRevisions();
 
     // Reminders & Calendar sync
-    store.openRemindersModal();
-    assert.equal(store.remindersModalOpen(), true);
-    store.setBadgeEnabled(true);
-    await store.requestBadgePermissionAndRefresh();
-    store.setCalendarEnabled(true);
-    store.setReminderHorizonDays(3);
-    assert.equal(store.isCalendarSyncNeeded(), true);
+    store.calendar.openRemindersModal();
+    assert.equal(store.calendar.remindersModalOpen(), true);
+    store.reminders.setBadgeEnabled(true);
+    await store.reminders.requestBadgePermissionAndRefresh();
+    store.reminders.setCalendarEnabled(true);
+    store.reminders.setReminderHorizonDays(3);
+    assert.equal(store.calendar.isCalendarSyncNeeded(), true);
 
     calPlanHasMutations = false;
-    await store.prepareCalendarSync();
-    assert.equal(store.pendingCalendarPlan(), null);
-    assert.equal(store.isCalendarSyncNeeded(), false);
+    await store.calendar.prepareCalendarSync();
+    assert.equal(store.calendar.pendingCalendarPlan(), null);
+    assert.equal(store.calendar.isCalendarSyncNeeded(), false);
 
     calPlanHasMutations = true;
-    await store.prepareCalendarSync();
-    assert.ok(store.pendingCalendarPlan());
-    await store.confirmCalendarSync();
-    assert.match(store.syncBanner()?.text ?? '', /1 duplicate calendar removed/);
+    await store.calendar.prepareCalendarSync();
+    assert.ok(store.calendar.pendingCalendarPlan());
+    await store.calendar.confirmCalendarSync();
+    assert.match(store.drive.syncBanner()?.text ?? '', /1 duplicate calendar removed/);
 
     calSyncError = new Error('401 unauthorized');
-    await store.prepareCalendarSync();
-    assert.equal(store.hasGoogleToken(), false);
-    assert.match(store.calendarError() ?? '', /401/);
+    await store.calendar.prepareCalendarSync();
+    assert.equal(store.auth.hasGoogleToken(), false);
+    assert.match(store.calendar.calendarError() ?? '', /401/);
     calSyncError = null;
-    store.cancelCalendarSync();
+    store.calendar.cancelCalendarSync();
 
-    store.requestDeleteCalendar();
-    assert.equal(store.confirmDeleteCalendarOpen(), true);
-    store.cancelDeleteCalendar();
-    assert.equal(store.confirmDeleteCalendarOpen(), false);
+    store.calendar.requestDeleteCalendar();
+    assert.equal(store.calendar.confirmDeleteCalendarOpen(), true);
+    store.calendar.cancelDeleteCalendar();
+    assert.equal(store.calendar.confirmDeleteCalendarOpen(), false);
 
-    store.requestDeleteCalendar();
-    await store.confirmDeleteCalendar();
-    assert.equal(store.reminderPrefs().calendarId, null);
-    assert.equal(store.reminderPrefs().calendarEnabled, false);
-    store.closeRemindersModal();
+    store.calendar.requestDeleteCalendar();
+    await store.calendar.confirmDeleteCalendar();
+    assert.equal(store.reminders.reminderPrefs().calendarId, null);
+    assert.equal(store.reminders.reminderPrefs().calendarEnabled, false);
+    store.calendar.closeRemindersModal();
 
-    await store.switchToEntry();
-    assert.equal(store.mode(), null);
+    await store.auth.switchToEntry();
+    assert.equal(store.auth.mode(), null);
   } finally {
     store.dispose();
   }
@@ -1906,44 +1877,47 @@ test('TrackerStore handles Drive revision errors, calendar confirmation errors, 
     await new Promise((r) => setTimeout(r, 15));
 
     // Task creation & soft delete
-    await store.quickAddTask('Temporary', store.todayDay());
-    const added = store.snapshot().tasks.find((task) => task.title === 'Temporary')!;
-    await store.deleteTask(added.id);
-    assert.notEqual(store.snapshot().tasks.find((task) => task.id === added.id)?.deletedAt, null);
+    await store.domain.quickAddTask('Temporary', store.filters.todayDay());
+    const added = store.domain.snapshot().tasks.find((task) => task.title === 'Temporary')!;
+    await store.domain.deleteTask(added.id);
+    assert.notEqual(
+      store.domain.snapshot().tasks.find((task) => task.id === added.id)?.deletedAt,
+      null
+    );
 
     // Revisions error paths
     failRevisions = true;
-    await store.openDriveRevisions();
-    assert.match(store.revisionsError() ?? '', /401/);
+    await store.drive.openDriveRevisions();
+    assert.match(store.drive.revisionsError() ?? '', /401/);
 
     failRevisions = false;
     failInspect = true;
-    await store.openDriveRevisions();
-    await store.inspectDriveRevision('rev-1');
-    assert.match(store.revisionsError() ?? '', /401/);
+    await store.drive.openDriveRevisions();
+    await store.drive.inspectDriveRevision('rev-1');
+    assert.match(store.drive.revisionsError() ?? '', /401/);
 
     failInspect = false;
     failRestore = true;
-    await store.restoreDriveRevision('rev-1');
-    assert.match(store.revisionsError() ?? '', /403/);
-    store.closeDriveRevisions();
+    await store.drive.restoreDriveRevision('rev-1');
+    assert.match(store.drive.revisionsError() ?? '', /403/);
+    store.drive.closeDriveRevisions();
 
     // Calendar confirm/delete paths
-    await store.prepareCalendarSync();
-    await store.confirmCalendarSync();
-    assert.equal(store.reminderPrefs().calendarId, 'cal-1');
+    await store.calendar.prepareCalendarSync();
+    await store.calendar.confirmCalendarSync();
+    assert.equal(store.reminders.reminderPrefs().calendarId, 'cal-1');
 
     failApplyCal = true;
-    await store.prepareCalendarSync();
-    await store.confirmCalendarSync();
-    assert.match(store.calendarError() ?? '', /401/);
-    store.cancelCalendarSync();
+    await store.calendar.prepareCalendarSync();
+    await store.calendar.confirmCalendarSync();
+    assert.match(store.calendar.calendarError() ?? '', /401/);
+    store.calendar.cancelCalendarSync();
 
     failDeleteCal = true;
-    store.requestDeleteCalendar();
-    await store.confirmDeleteCalendar();
-    assert.match(store.calendarError() ?? '', /403/);
-    store.cancelDeleteCalendar();
+    store.calendar.requestDeleteCalendar();
+    await store.calendar.confirmDeleteCalendar();
+    assert.match(store.calendar.calendarError() ?? '', /403/);
+    store.calendar.cancelDeleteCalendar();
   } finally {
     store.dispose();
   }

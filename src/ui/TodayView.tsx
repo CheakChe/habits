@@ -1,11 +1,10 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
-import { DomainSnapshot, Habit, HabitCheckin, ReminderSlot, Task } from '../types/domain';
+import { DomainSnapshot, Habit, ReminderSlot, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitAppearance } from '../utils/habit-appearance';
 import { HabitSchedule } from '../utils/habit-schedule';
-import { ReminderPlanner } from '../utils/reminder-planner';
 import { StreakCalculator } from '../utils/streak-calculator';
-import { TodayBoard } from '../utils/today-board';
+import { TodayViewData, createTodayDataSelector } from './board-selectors';
 import { MeasuredQuickControls } from './controls/MeasuredQuickControls';
 import { HabitBadge } from './HabitBadge';
 import {
@@ -22,6 +21,7 @@ interface TodayViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
   goalsExpanded: boolean;
+  todayData?: TodayViewData | null;
   onToggleGoalsExpanded: () => void;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
   onSetCheckinValue: (habitId: number, dayIndex: number, value: number) => Promise<void>;
@@ -42,50 +42,23 @@ export function TodayView(props: TodayViewProps): JSX.Element {
   const [quickGoalTitle, setQuickGoalTitle] = createSignal('');
   const [addingGoal, setAddingGoal] = createSignal(false);
 
-  const scheduledHabits = createMemo(() =>
-    TodayBoard.getScheduledHabits(props.snapshot.habits, props.todayDay, props.snapshot.checkins)
+  const localTodayData = createTodayDataSelector({
+    isActive: () => props.todayData === undefined,
+    snapshot: () => props.snapshot,
+    todayDay: () => props.todayDay,
+  });
+
+  const todayData = createMemo(() =>
+    props.todayData !== undefined && props.todayData !== null ? props.todayData : localTodayData()!
   );
 
-  const partitionedTasks = createMemo(() =>
-    TodayBoard.getTodayAndOverdueTasks(props.snapshot.tasks, props.todayDay)
-  );
-
-  const noDateTasks = createMemo(() => TodayBoard.getNoDateTasks(props.snapshot.tasks));
-
-  const checkinMap = createMemo(() => {
-    const map = new Map<number, HabitCheckin>();
-    for (const c of props.snapshot.checkins) {
-      if (c.dayIndex === props.todayDay) {
-        map.set(c.habitId, c);
-      }
-    }
-    return map;
-  });
-
-  const noteMap = createMemo(() => {
-    const map = new Map<number, string>();
-    for (const n of props.snapshot.notes) {
-      if (n.dayIndex === props.todayDay) {
-        map.set(n.habitId, n.text);
-      }
-    }
-    return map;
-  });
-
-  const activeSlotMap = createMemo(() => {
-    const map = new Map<string, ReminderSlot>();
-    for (const slot of ReminderPlanner.getActiveSlots(props.snapshot)) {
-      map.set(slot.id, slot);
-    }
-    return map;
-  });
-
-  const completedHabitsCount = createMemo(() => {
-    const cMap = checkinMap();
-    return scheduledHabits().filter((h) =>
-      HabitSchedule.isCheckinDoneForDay(h, cMap.get(h.id), props.todayDay)
-    ).length;
-  });
+  const scheduledHabits = () => todayData().scheduledHabits;
+  const partitionedTasks = () => todayData().partitionedTasks;
+  const noDateTasks = () => todayData().noDateTasks;
+  const checkinMap = () => todayData().checkinMap;
+  const noteMap = () => todayData().noteMap;
+  const activeSlotMap = () => todayData().activeSlotMap;
+  const completedHabitsCount = () => todayData().completedHabitsCount;
 
   const openNoteEditor = (habit: Habit) => {
     if (expandedNoteHabitId() === habit.id) {
@@ -210,25 +183,10 @@ export function TodayView(props: TodayViewProps): JSX.Element {
                   const accentColor = () => HabitAppearance.getColor(habit.color);
                   const existingNote = () => noteMap().get(habit.id) ?? '';
                   const isNoteOpen = () => expandedNoteHabitId() === habit.id;
-                  const metrics = createMemo(() =>
-                    StreakCalculator.calculate(
-                      habit,
-                      props.snapshot.checkins,
-                      props.todayDay - 29,
-                      props.todayDay,
-                      true
-                    )
-                  );
-                  const weekly = createMemo(() =>
-                    StreakCalculator.calculateWeeklyProgress(
-                      habit,
-                      props.snapshot.checkins,
-                      props.todayDay
-                    )
-                  );
-                  const flexStatus = createMemo(() =>
-                    TodayBoard.getFlexibleWeekStatus(habit, props.snapshot.checkins, props.todayDay)
-                  );
+                  const habitMetrics = () => todayData().habitMetricsMap.get(habit.id)!;
+                  const metrics = () => habitMetrics().metrics;
+                  const weekly = () => habitMetrics().weekly;
+                  const flexStatus = () => habitMetrics().flexStatus;
                   const streakUnitShort = () => (metrics().streakUnit === 'weeks' ? 'w' : 'd');
                   const streakUnitLong = () => (metrics().streakUnit === 'weeks' ? 'week' : 'day');
                   const milestone = () => StreakCalculator.getMilestone(metrics().currentStreak);

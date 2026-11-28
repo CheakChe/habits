@@ -1,7 +1,6 @@
 import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot, ReminderSlot, Task } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
-import { ReminderPlanner } from '../utils/reminder-planner';
 import {
   OPEN_TASK_BUCKETS,
   TaskSortMode,
@@ -9,6 +8,7 @@ import {
   TaskStatusFilterSelection,
   TodayBoard,
 } from '../utils/today-board';
+import { TasksViewData, createTasksDataSelector } from './board-selectors';
 import { MultiSelect } from './controls/MultiSelect';
 import { Select, SelectOption } from './controls/Select';
 import {
@@ -28,6 +28,7 @@ interface TasksViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
   statusFilter: TaskStatusFilterSelection;
+  tasksData?: TasksViewData | null;
   onChangeStatusFilter: (filter: TaskStatusFilterSelection) => void;
   sortMode: TaskSortMode;
   onChangeSortMode: (sort: TaskSortMode) => void;
@@ -41,43 +42,29 @@ interface TasksViewProps {
 export function TasksView(props: TasksViewProps): JSX.Element {
   const [searchQuery, setSearchQuery] = createSignal('');
 
-  const visibleTasks = createMemo(() =>
-    props.snapshot.tasks.filter((task) => task.deletedAt === null)
-  );
-
-  const activeSlotMap = createMemo(() => {
-    const map = new Map<string, ReminderSlot>();
-    for (const slot of ReminderPlanner.getActiveSlots(props.snapshot)) {
-      map.set(slot.id, slot);
-    }
-    return map;
+  const localTasksData = createTasksDataSelector({
+    isActive: () => props.tasksData === undefined,
+    snapshot: () => props.snapshot,
+    todayDay: () => props.todayDay,
+    statusFilter: () => props.statusFilter,
+    sortMode: () => props.sortMode,
   });
 
-  const filtered = createMemo(() =>
-    TodayBoard.filterTasksByStatuses(
-      props.snapshot.tasks,
-      props.todayDay,
-      props.statusFilter,
-      searchQuery(),
-      props.sortMode
-    )
+  const tasksData = createMemo(() =>
+    props.tasksData !== undefined && props.tasksData !== null ? props.tasksData : localTasksData()!
   );
 
-  const bucketCounts = createMemo(() => {
-    const counts: Record<TaskStatusBucket, number> = {
-      overdue: 0,
-      today: 0,
-      upcoming: 0,
-      nodate: 0,
-      completed: 0,
-      not_done: 0,
-      archived: 0,
-    };
-    for (const task of visibleTasks()) {
-      const bucket = TodayBoard.getTaskBucket(task, props.todayDay);
-      counts[bucket] += 1;
-    }
-    return counts;
+  const visibleTasks = () => tasksData().visibleTasks;
+  const activeSlotMap = () => tasksData().activeSlotMap;
+  const bucketCounts = () => tasksData().bucketCounts;
+
+  const filtered = createMemo(() => {
+    const base = tasksData().baseFiltered;
+    const q = searchQuery().trim().toLowerCase();
+    if (q.length === 0) return base;
+    return base.filter(
+      (task) => task.title.toLowerCase().includes(q) || task.note.toLowerCase().includes(q)
+    );
   });
 
   const openCount = createMemo(

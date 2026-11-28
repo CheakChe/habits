@@ -2,8 +2,8 @@ import { For, JSX, Show, createMemo, createSignal } from 'solid-js';
 import { DomainSnapshot, Habit, ReminderSlot } from '../types/domain';
 import { CivilCalendar } from '../utils/civil-calendar';
 import { HabitSchedule } from '../utils/habit-schedule';
-import { ReminderPlanner } from '../utils/reminder-planner';
 import { StreakCalculator } from '../utils/streak-calculator';
+import { HabitsViewData, createHabitsDataSelector } from './board-selectors';
 import { HabitBadge } from './HabitBadge';
 import { ArchiveIcon, ClockIcon, EditIcon, PlusIcon, RestoreIcon } from './Icons';
 import { ALL_WEEKDAYS_MASK } from './constants';
@@ -11,6 +11,7 @@ import { ALL_WEEKDAYS_MASK } from './constants';
 interface HabitsViewProps {
   snapshot: DomainSnapshot;
   todayDay: number;
+  habitsData?: HabitsViewData | null;
   onCreateHabit: () => void;
   onEditHabit: (habit: Habit) => void;
   onToggleArchive: (habit: Habit) => Promise<void>;
@@ -19,25 +20,27 @@ interface HabitsViewProps {
 export function HabitsView(props: HabitsViewProps): JSX.Element {
   const [filter, setFilter] = createSignal<'active' | 'archived'>('active');
 
+  const localHabitsData = createHabitsDataSelector({
+    isActive: () => props.habitsData === undefined,
+    snapshot: () => props.snapshot,
+    todayDay: () => props.todayDay,
+  });
+
+  const habitsData = createMemo(() =>
+    props.habitsData !== undefined && props.habitsData !== null
+      ? props.habitsData
+      : localHabitsData()!
+  );
+
   const filtered = createMemo(() =>
     props.snapshot.habits.filter((h) =>
       filter() === 'active' ? h.archivedAt === null : h.archivedAt !== null
     )
   );
 
-  const activeCount = createMemo(
-    () => props.snapshot.habits.filter((h) => h.archivedAt === null).length
-  );
-
-  const archivedCount = createMemo(() => props.snapshot.habits.length - activeCount());
-
-  const activeSlotMap = createMemo(() => {
-    const map = new Map<string, ReminderSlot>();
-    for (const slot of ReminderPlanner.getActiveSlots(props.snapshot)) {
-      map.set(slot.id, slot);
-    }
-    return map;
-  });
+  const activeCount = () => habitsData().activeCount;
+  const archivedCount = () => habitsData().archivedCount;
+  const activeSlotMap = () => habitsData().activeSlotMap;
 
   return (
     <div class="space-y-6">
@@ -113,22 +116,9 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
           <ul class="divide-y divide-white/[0.06]">
             <For each={filtered()}>
               {(habit) => {
-                const metrics = createMemo(() =>
-                  StreakCalculator.calculate(
-                    habit,
-                    props.snapshot.checkins,
-                    props.todayDay - 29,
-                    props.todayDay,
-                    true
-                  )
-                );
-                const weekly = createMemo(() =>
-                  StreakCalculator.calculateWeeklyProgress(
-                    habit,
-                    props.snapshot.checkins,
-                    props.todayDay
-                  )
-                );
+                const habitMetrics = () => habitsData().habitMetricsMap.get(habit.id)!;
+                const metrics = () => habitMetrics().metrics;
+                const weekly = () => habitMetrics().weekly;
                 const milestone = () => StreakCalculator.getMilestone(metrics().currentStreak);
                 const exactMilestone = () =>
                   StreakCalculator.isExactMilestone(metrics().currentStreak);
@@ -143,9 +133,7 @@ export function HabitsView(props: HabitsViewProps): JSX.Element {
 
                 const streakUnitShort = () => (metrics().streakUnit === 'weeks' ? 'w' : 'd');
                 const streakUnitLong = () => (metrics().streakUnit === 'weeks' ? 'week' : 'day');
-                const activeSchedule = createMemo(() =>
-                  HabitSchedule.getAtDay(habit, props.todayDay)
-                );
+                const activeSchedule = () => habitMetrics().activeSchedule;
                 const latestScheduleChangeDay = () =>
                   habit.scheduleHistory && habit.scheduleHistory.length > 1
                     ? habit.scheduleHistory[habit.scheduleHistory.length - 1].fromDay

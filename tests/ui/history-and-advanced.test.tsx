@@ -1,9 +1,14 @@
 import { fireEvent, render, screen } from '@solidjs/testing-library';
+import { createSignal } from 'solid-js';
 import { describe, expect, it, vi } from 'vitest';
-import { DomainSnapshot } from '../../src/types/domain';
+import { DomainSnapshot, HistorySubTab } from '../../src/types/domain';
 import { HistoryAdvancedPanel } from '../../src/ui/history/HistoryAdvancedPanel';
 import { HistoryView } from '../../src/ui/HistoryView';
-import { AdvancedAnalytics } from '../../src/utils/advanced-analytics';
+import {
+  AdvancedAnalytics,
+  AdvancedHeatmapMode,
+  AdvancedNotesFilter,
+} from '../../src/utils/advanced-analytics';
 import { CivilCalendar } from '../../src/utils/civil-calendar';
 
 const TODAY = CivilCalendar.fromLocalDate(2026, 11, 25);
@@ -71,16 +76,6 @@ describe('HistoryView & HistoryAdvancedPanel', () => {
         onChangeAdvancedHeatmapMode={() => {}}
         advancedNotesFilter="all"
         onChangeAdvancedNotesFilter={() => {}}
-        getAdvancedAnalytics={(habits, _f, startDay, endDay) =>
-          AdvancedAnalytics.compute({
-            snapshot: SAMPLE_SNAPSHOT,
-            targetHabits: habits,
-            startDay,
-            endDay,
-            todayDay: TODAY,
-            timeZone: 'UTC',
-          })
-        }
         onToggleCheckin={onToggleCheckin}
         onSetCheckinValue={async () => {}}
         onIncrementCheckinValue={async () => {}}
@@ -273,16 +268,6 @@ describe('HistoryView & HistoryAdvancedPanel', () => {
         onChangeAdvancedHeatmapMode={() => {}}
         advancedNotesFilter="all"
         onChangeAdvancedNotesFilter={() => {}}
-        getAdvancedAnalytics={(habits, _f, startDay, endDay) =>
-          AdvancedAnalytics.compute({
-            snapshot: richSnapshot,
-            targetHabits: habits,
-            startDay,
-            endDay,
-            todayDay: TODAY,
-            timeZone: 'UTC',
-          })
-        }
         onToggleCheckin={async () => {}}
         onSetCheckinValue={async () => {}}
         onIncrementCheckinValue={async () => {}}
@@ -321,16 +306,6 @@ describe('HistoryView & HistoryAdvancedPanel', () => {
         onChangeAdvancedHeatmapMode={() => {}}
         advancedNotesFilter="all"
         onChangeAdvancedNotesFilter={() => {}}
-        getAdvancedAnalytics={(habits, _f, startDay, endDay) =>
-          AdvancedAnalytics.compute({
-            snapshot: { habits: [], checkins: [], notes: [], tasks: [] },
-            targetHabits: habits,
-            startDay,
-            endDay,
-            todayDay: TODAY,
-            timeZone: 'UTC',
-          })
-        }
         onToggleCheckin={async () => {}}
         onSetCheckinValue={async () => {}}
         onIncrementCheckinValue={async () => {}}
@@ -542,16 +517,6 @@ describe('HistoryView & HistoryAdvancedPanel', () => {
         onChangeAdvancedHeatmapMode={() => {}}
         advancedNotesFilter="all"
         onChangeAdvancedNotesFilter={() => {}}
-        getAdvancedAnalytics={(habits, _f, startDay, endDay) =>
-          AdvancedAnalytics.compute({
-            snapshot,
-            targetHabits: habits,
-            startDay,
-            endDay,
-            todayDay: TODAY,
-            timeZone: 'UTC',
-          })
-        }
         onToggleCheckin={async () => {}}
         onSetCheckinValue={async () => {}}
         onIncrementCheckinValue={onIncrementCheckinValue}
@@ -570,5 +535,68 @@ describe('HistoryView & HistoryAdvancedPanel', () => {
     fireEvent.input(noteInput, { target: { value: 'Quick note' } });
     fireEvent.keyDown(noteInput, { key: 'Enter' });
     expect(onSaveNote).toHaveBeenCalledWith(1, TODAY, 'Quick note');
+  });
+
+  it('memoizes AdvancedAnalytics.compute via createMemo when switching subtabs and updating UI filters', () => {
+    const computeSpy = vi.spyOn(AdvancedAnalytics, 'compute');
+    try {
+      const [subTab, setSubTab] = createSignal<HistorySubTab>('calendar');
+      const [habitFilter, setHabitFilter] = createSignal<'all' | number[]>('all');
+      const [heatmapMode, setHeatmapMode] = createSignal<AdvancedHeatmapMode>('combined');
+      const [notesFilter, setNotesFilter] = createSignal<AdvancedNotesFilter>('all');
+
+      render(() => (
+        <HistoryView
+          snapshot={SAMPLE_SNAPSHOT}
+          todayDay={TODAY}
+          timeZone="UTC"
+          subTab={subTab()}
+          onSelectSubTab={setSubTab}
+          habitFilter={habitFilter()}
+          onChangeHabitFilter={setHabitFilter}
+          rangePreset="last_30"
+          customStartDay={TODAY - 29}
+          customEndDay={TODAY}
+          onSelectRangePreset={() => {}}
+          onSelectCustomRange={() => {}}
+          onChangeTimeZone={() => {}}
+          advancedHeatmapMode={heatmapMode()}
+          onChangeAdvancedHeatmapMode={setHeatmapMode}
+          advancedNotesFilter={notesFilter()}
+          onChangeAdvancedNotesFilter={setNotesFilter}
+          onToggleCheckin={async () => {}}
+          onSetCheckinValue={async () => {}}
+          onIncrementCheckinValue={async () => {}}
+          onSaveNote={async () => {}}
+        />
+      ));
+
+      // Not computed while viewing calendar
+      expect(computeSpy).toHaveBeenCalledTimes(0);
+
+      // Computed once when entering advanced tab
+      setSubTab('advanced');
+      expect(computeSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getByText(/habit resilience & behavior/i)).toBeInTheDocument();
+
+      // Panel-level view filters do not trigger recomputation
+      setHeatmapMode('tasks');
+      setNotesFilter('missed');
+      expect(computeSpy).toHaveBeenCalledTimes(1);
+
+      // Changing habit filter recomputes
+      setHabitFilter([1]);
+      expect(computeSpy).toHaveBeenCalledTimes(2);
+
+      // Leaving advanced tab and returning without data changes does not recompute
+      setSubTab('charts');
+      expect(computeSpy).toHaveBeenCalledTimes(2);
+      setSubTab('calendar');
+      expect(computeSpy).toHaveBeenCalledTimes(2);
+      setSubTab('advanced');
+      expect(computeSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      computeSpy.mockRestore();
+    }
   });
 });

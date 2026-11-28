@@ -8,28 +8,27 @@ import {
   createSignal,
   untrack,
 } from 'solid-js';
-import { DomainSnapshot, Habit, HistorySubTab } from '../types/domain';
+import { DomainSnapshot, HistorySubTab } from '../types/domain';
 import {
   AdvancedAnalyticsReport,
   AdvancedHeatmapMode,
   AdvancedNotesFilter,
 } from '../utils/advanced-analytics';
-import { ChartsAnalytics } from '../utils/charts-analytics';
 import { CivilCalendar } from '../utils/civil-calendar';
-import {
-  DateRangePresetId,
-  DateRangeResolver,
-  DayCellClassifier,
-  DayCellTone,
-} from '../utils/date-range';
-import { StreakCalculator, StreakUnit } from '../utils/streak-calculator';
-import { TaskAnalytics } from '../utils/task-analytics';
+import { DateRangePresetId, DateRangeResolver } from '../utils/date-range';
 import { MultiSelect } from './controls/MultiSelect';
 import { SelectOption } from './controls/Select';
 import { HistoryRangePicker } from './controls/HistoryRangePicker';
+import {
+  HistoryChartsReport,
+  HistorySummaryReport,
+  createAdvancedReportSelector,
+  createHistoryChartsSelector,
+  createHistorySummarySelector,
+} from './history/history-selectors';
 import { HistoryAdvancedPanel } from './history/HistoryAdvancedPanel';
 import { HistoryCalendarPanel } from './history/HistoryCalendarPanel';
-import { HistoryChartsPanel, PeriodComparisonView } from './history/HistoryChartsPanel';
+import { HistoryChartsPanel } from './history/HistoryChartsPanel';
 import { CalendarIcon, HistoryTabIcon, LayersIcon } from './Icons';
 
 interface HistoryViewProps {
@@ -50,12 +49,9 @@ interface HistoryViewProps {
   onChangeAdvancedHeatmapMode: (mode: AdvancedHeatmapMode) => void;
   advancedNotesFilter: AdvancedNotesFilter;
   onChangeAdvancedNotesFilter: (filter: AdvancedNotesFilter) => void;
-  getAdvancedAnalytics: (
-    targetHabits: Habit[],
-    habitFilter: 'all' | number[],
-    startDay: number,
-    endDay: number
-  ) => AdvancedAnalyticsReport;
+  analyticsSummary?: HistorySummaryReport | null;
+  chartsReport?: HistoryChartsReport | null;
+  advancedReport?: AdvancedAnalyticsReport | null;
   onToggleCheckin: (habitId: number, dayIndex: number, nextDone: boolean) => Promise<void>;
   onSetCheckinValue: (habitId: number, dayIndex: number, value: number) => Promise<void>;
   onIncrementCheckinValue: (habitId: number, dayIndex: number, delta: number) => Promise<void>;
@@ -130,266 +126,61 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
     return props.snapshot.habits.filter((h) => allowed.has(h.id));
   });
 
-  const analyticsSummary = createMemo(
-    (): {
-      currentStreak: number;
-      currentStreakUnit: StreakUnit;
-      longestStreak: number;
-      longestStreakUnit: StreakUnit;
-      completionRate: number;
-      scheduledDays: number;
-      completedScheduledDays: number;
-      missedScheduledDays: number;
-    } => {
-      const habits = targetHabits();
-      if (habits.length === 0) {
-        return {
-          currentStreak: 0,
-          currentStreakUnit: 'days',
-          longestStreak: 0,
-          longestStreakUnit: 'days',
-          completionRate: 0,
-          scheduledDays: 0,
-          completedScheduledDays: 0,
-          missedScheduledDays: 0,
-        };
-      }
-
-      let bestCurrent = 0;
-      let bestCurrentEquiv = -1;
-      let bestCurrentUnit: StreakUnit = 'days';
-      let bestLongest = 0;
-      let bestLongestEquiv = -1;
-      let bestLongestUnit: StreakUnit = 'days';
-      let totalScheduled = 0;
-      let totalCompleted = 0;
-      const startDay = effectiveRangeStart();
-      const endDay = effectiveRangeEnd();
-      const allowPending = endDay >= props.todayDay;
-
-      for (const habit of habits) {
-        const m = StreakCalculator.calculate(
-          habit,
-          props.snapshot.checkins,
-          startDay,
-          endDay,
-          allowPending
-        );
-        const currEquiv = m.streakUnit === 'weeks' ? m.currentStreak * 7 : m.currentStreak;
-        if (currEquiv > bestCurrentEquiv) {
-          bestCurrentEquiv = currEquiv;
-          bestCurrent = m.currentStreak;
-          bestCurrentUnit = m.streakUnit;
-        }
-        const longEquiv = m.streakUnit === 'weeks' ? m.longestStreak * 7 : m.longestStreak;
-        if (longEquiv > bestLongestEquiv) {
-          bestLongestEquiv = longEquiv;
-          bestLongest = m.longestStreak;
-          bestLongestUnit = m.streakUnit;
-        }
-        totalScheduled += m.scheduledDays;
-        totalCompleted += m.completedScheduledDays;
-      }
-
-      return {
-        currentStreak: bestCurrent,
-        currentStreakUnit: bestCurrentUnit,
-        longestStreak: bestLongest,
-        longestStreakUnit: bestLongestUnit,
-        completionRate: totalScheduled === 0 ? 0 : totalCompleted / totalScheduled,
-        scheduledDays: totalScheduled,
-        completedScheduledDays: totalCompleted,
-        missedScheduledDays: Math.max(0, totalScheduled - totalCompleted),
-      };
-    }
+  const isDatabaseEmpty = createMemo(
+    () =>
+      props.snapshot.habits.length === 0 && props.snapshot.tasks.every((t) => t.deletedAt !== null)
   );
 
-  const perfectDays = createMemo(() =>
-    ChartsAnalytics.perfectDaysSummary(
-      targetHabits(),
-      props.snapshot.checkins,
-      effectiveRangeStart(),
-      effectiveRangeEnd(),
-      props.todayDay
-    )
-  );
-
-  const habitTrends = createMemo(() =>
-    ChartsAnalytics.habitTrendDeltas(
-      targetHabits(),
-      props.snapshot.checkins,
-      effectiveRangeStart(),
-      effectiveRangeEnd(),
-      props.todayDay
-    )
-  );
-
-  const habitBreakdown = createMemo(() =>
-    StreakCalculator.summarizeHabitsForRange(
-      targetHabits(),
-      props.snapshot.checkins,
-      effectiveRangeStart(),
-      effectiveRangeEnd(),
-      props.todayDay
-    )
-  );
-
-  const taskSummary = createMemo(() =>
-    TaskAnalytics.summarizeRange(
-      props.snapshot.tasks,
-      effectiveRangeStart(),
-      effectiveRangeEnd(),
-      props.timeZone
-    )
-  );
-
-  const prevComparison = createMemo((): PeriodComparisonView | null => {
-    const prev = DateRangeResolver.previousPeriod(
-      props.rangePreset,
-      effectiveRangeStart(),
-      effectiveRangeEnd()
-    );
-    if (!prev) return null;
-
-    const habits = targetHabits();
-    let prevScheduled = 0;
-    let prevCompleted = 0;
-    for (const h of habits) {
-      const m = StreakCalculator.calculate(
-        h,
-        props.snapshot.checkins,
-        prev.startDay,
-        prev.endDay,
-        false
-      );
-      prevScheduled += m.scheduledDays;
-      prevCompleted += m.completedScheduledDays;
-    }
-
-    const curHabitsSummary = analyticsSummary();
-    const habitRateDeltaPct =
-      prevScheduled > 0 && curHabitsSummary.scheduledDays > 0
-        ? Math.round((curHabitsSummary.completionRate - prevCompleted / prevScheduled) * 100)
-        : null;
-
-    const prevTasks = TaskAnalytics.summarizeRange(
-      props.snapshot.tasks,
-      prev.startDay,
-      prev.endDay,
-      props.timeZone
-    );
-    const curTasks = taskSummary();
-    const taskDoneDelta =
-      prevTasks.doneCount > 0 || curTasks.doneCount > 0
-        ? curTasks.doneCount - prevTasks.doneCount
-        : null;
-    const taskRateDeltaPct =
-      prevTasks.completionRate !== null && curTasks.completionRate !== null
-        ? Math.round((curTasks.completionRate - prevTasks.completionRate) * 100)
-        : null;
-
-    return {
-      prevLabel: prev.label,
-      habitRateDeltaPct,
-      taskDoneDelta,
-      taskRateDeltaPct,
-    };
+  const localAnalyticsSummary = createHistorySummarySelector({
+    isActive: () =>
+      props.analyticsSummary === undefined &&
+      !isDatabaseEmpty() &&
+      (props.subTab === 'calendar' || props.subTab === 'charts'),
+    snapshot: () => props.snapshot,
+    habitFilter: () => props.habitFilter,
+    rangePreset: () => props.rangePreset,
+    customStartDay: () => props.customStartDay,
+    customEndDay: () => props.customEndDay,
+    todayDay: () => props.todayDay,
+    timeZone: () => props.timeZone,
   });
 
-  const taskOutcomeBuckets = createMemo(() =>
-    TaskAnalytics.rangeOutcomeBuckets(
-      props.snapshot.tasks,
-      effectiveRangeStart(),
-      effectiveRangeEnd(),
-      12,
-      props.timeZone
-    )
+  const analyticsSummary = createMemo(() =>
+    props.analyticsSummary !== undefined ? props.analyticsSummary : localAnalyticsSummary()
   );
 
-  const heatmapData = createMemo(() => {
-    const effectiveEnd = effectiveRangeEnd();
-    const effectiveStart = effectiveRangeStart();
-    const maxWeeks = 104;
-    const minAllowedStart = effectiveEnd - (maxWeeks * 7 - 1);
-    const clampedStart = Math.max(effectiveStart, minAllowedStart);
-    const isCapped = clampedStart > effectiveStart;
-
-    const firstWeekStart = CivilCalendar.startOfWeek(clampedStart);
-    const endWeekStart = CivilCalendar.startOfWeek(effectiveEnd);
-    const weeksCount = Math.max(1, Math.floor((endWeekStart - firstWeekStart) / 7) + 1);
-    const habits = targetHabits();
-    const dayStats = StreakCalculator.getPeriodDayStats(
-      habits,
-      props.snapshot.checkins,
-      clampedStart,
-      effectiveEnd,
-      props.todayDay
-    );
-
-    const weeks: {
-      weekStart: number;
-      monthLabel: string;
-      days: {
-        dayIndex: number;
-        inRange: boolean;
-        done: number;
-        scheduled: number;
-        tone: DayCellTone;
-      }[];
-    }[] = [];
-
-    let lastMonth = -1;
-    let totalDone = 0;
-
-    for (let w = 0; w < weeksCount; w++) {
-      const weekStart = firstWeekStart + w * 7;
-      const startLocal = CivilCalendar.toLocalDate(weekStart);
-      let monthLabel = '';
-      if (startLocal.month !== lastMonth) {
-        const shortMonth = CivilCalendar.formatShortDate(weekStart).split(' ')[0];
-        if (w === 0 && weeksCount > 4) {
-          const nextLocal = CivilCalendar.toLocalDate(weekStart + 7);
-          if (nextLocal.month === startLocal.month) {
-            monthLabel = shortMonth;
-          }
-        } else {
-          monthLabel = shortMonth;
-        }
-        lastMonth = startLocal.month;
-      }
-
-      const days: {
-        dayIndex: number;
-        inRange: boolean;
-        done: number;
-        scheduled: number;
-        tone: DayCellTone;
-      }[] = [];
-
-      for (let d = 0; d < 7; d++) {
-        const dayIndex = weekStart + d;
-        if (dayIndex < clampedStart || dayIndex > effectiveEnd) {
-          days.push({
-            dayIndex,
-            inRange: false,
-            done: 0,
-            scheduled: 0,
-            tone: 'future',
-          });
-          continue;
-        }
-        const entry = dayStats.get(dayIndex);
-        const scheduled = entry?.scheduled ?? 0;
-        const done = entry?.done ?? 0;
-        totalDone += done;
-        const tone = DayCellClassifier.classify(dayIndex, props.todayDay, scheduled, done);
-        days.push({ dayIndex, inRange: true, done, scheduled, tone });
-      }
-      weeks.push({ weekStart, monthLabel, days });
-    }
-
-    return { weeks, totalDone, clampedStart, effectiveEnd, isCapped };
+  const localChartsReport = createHistoryChartsSelector({
+    isActive: () =>
+      props.chartsReport === undefined && !isDatabaseEmpty() && props.subTab === 'charts',
+    snapshot: () => props.snapshot,
+    habitFilter: () => props.habitFilter,
+    rangePreset: () => props.rangePreset,
+    customStartDay: () => props.customStartDay,
+    customEndDay: () => props.customEndDay,
+    todayDay: () => props.todayDay,
+    timeZone: () => props.timeZone,
+    summary: localAnalyticsSummary,
   });
+
+  const chartsReport = createMemo(() =>
+    props.chartsReport !== undefined ? props.chartsReport : localChartsReport()
+  );
+
+  const localAdvancedReport = createAdvancedReportSelector({
+    isActive: () =>
+      props.advancedReport === undefined && !isDatabaseEmpty() && props.subTab === 'advanced',
+    snapshot: () => props.snapshot,
+    habitFilter: () => props.habitFilter,
+    rangePreset: () => props.rangePreset,
+    customStartDay: () => props.customStartDay,
+    customEndDay: () => props.customEndDay,
+    todayDay: () => props.todayDay,
+    timeZone: () => props.timeZone,
+  });
+
+  const advancedReport = createMemo(() =>
+    props.advancedReport !== undefined ? props.advancedReport : localAdvancedReport()
+  );
 
   const goPrevMonth = () => {
     if (viewMonth() === 1) {
@@ -408,11 +199,6 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       setViewMonth((m) => m + 1);
     }
   };
-
-  const isDatabaseEmpty = createMemo(
-    () =>
-      props.snapshot.habits.length === 0 && props.snapshot.tasks.every((t) => t.deletedAt !== null)
-  );
 
   const inspectDayInCalendar = (dayIndex: number) => {
     const target = Math.min(dayIndex, props.todayDay);
@@ -523,13 +309,15 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
             </Show>
           </div>
 
-          <Show when={props.subTab === 'calendar'}>
-            <span class="font-mono text-xs text-ink-subtle tabular-nums">
-              Best streak: {analyticsSummary().currentStreak}
-              {analyticsSummary().currentStreakUnit === 'weeks' ? 'w' : 'd'} current ·{' '}
-              {analyticsSummary().longestStreak}
-              {analyticsSummary().longestStreakUnit === 'weeks' ? 'w' : 'd'} best
-            </span>
+          <Show when={props.subTab === 'calendar' && analyticsSummary()}>
+            {(summary) => (
+              <span class="font-mono text-xs text-ink-subtle tabular-nums">
+                Best streak: {summary().currentStreak}
+                {summary().currentStreakUnit === 'weeks' ? 'w' : 'd'} current ·{' '}
+                {summary().longestStreak}
+                {summary().longestStreakUnit === 'weeks' ? 'w' : 'd'} best
+              </span>
+            )}
           </Show>
         </div>
       </div>
@@ -548,52 +336,53 @@ export function HistoryView(props: HistoryViewProps): JSX.Element {
       >
         <Switch>
           <Match when={props.subTab === 'charts'}>
-            <HistoryChartsPanel
-              habits={props.snapshot.habits}
-              targetHabits={targetHabits()}
-              habitFilter={props.habitFilter}
-              checkins={props.snapshot.checkins}
-              notes={props.snapshot.notes}
-              tasks={props.snapshot.tasks}
-              effectiveRangeStart={effectiveRangeStart()}
-              effectiveRangeEnd={effectiveRangeEnd()}
-              rangeLabel={resolvedRange().label}
-              timeZone={props.timeZone}
-              analyticsSummary={analyticsSummary()}
-              perfectDays={perfectDays()}
-              prevComparison={prevComparison()}
-              habitTrends={habitTrends()}
-              taskSummary={taskSummary()}
-              taskOutcomeBuckets={taskOutcomeBuckets()}
-              habitBreakdown={habitBreakdown()}
-              heatmapData={heatmapData()}
-              selectedDay={selectedDay()}
-              onSelectDay={(day) => setSelectedDay(day)}
-              onInspectDayInCalendar={inspectDayInCalendar}
-              onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
-            />
+            <Show when={chartsReport() && analyticsSummary()}>
+              <HistoryChartsPanel
+                habits={props.snapshot.habits}
+                targetHabits={targetHabits()}
+                habitFilter={props.habitFilter}
+                checkins={props.snapshot.checkins}
+                notes={props.snapshot.notes}
+                tasks={props.snapshot.tasks}
+                effectiveRangeStart={effectiveRangeStart()}
+                effectiveRangeEnd={effectiveRangeEnd()}
+                rangeLabel={resolvedRange().label}
+                timeZone={props.timeZone}
+                analyticsSummary={analyticsSummary()!}
+                perfectDays={chartsReport()!.perfectDays}
+                prevComparison={chartsReport()!.prevComparison}
+                habitTrends={chartsReport()!.habitTrends}
+                taskSummary={chartsReport()!.taskSummary}
+                taskOutcomeBuckets={chartsReport()!.taskOutcomeBuckets}
+                habitBreakdown={chartsReport()!.habitBreakdown}
+                heatmapData={chartsReport()!.heatmapData}
+                selectedDay={selectedDay()}
+                onSelectDay={(day) => setSelectedDay(day)}
+                onInspectDayInCalendar={inspectDayInCalendar}
+                onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
+              />
+            </Show>
           </Match>
 
           <Match when={props.subTab === 'advanced'}>
-            <HistoryAdvancedPanel
-              report={props.getAdvancedAnalytics(
-                targetHabits(),
-                props.habitFilter,
-                effectiveRangeStart(),
-                effectiveRangeEnd()
+            <Show when={advancedReport()}>
+              {(report) => (
+                <HistoryAdvancedPanel
+                  report={report()}
+                  effectiveRangeStart={effectiveRangeStart()}
+                  effectiveRangeEnd={effectiveRangeEnd()}
+                  rangeLabel={resolvedRange().label}
+                  selectedDay={selectedDay()}
+                  heatmapMode={props.advancedHeatmapMode}
+                  notesFilter={props.advancedNotesFilter}
+                  onChangeHeatmapMode={props.onChangeAdvancedHeatmapMode}
+                  onChangeNotesFilter={props.onChangeAdvancedNotesFilter}
+                  onSelectDay={(day) => setSelectedDay(day)}
+                  onInspectDayInCalendar={inspectDayInCalendar}
+                  onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
+                />
               )}
-              effectiveRangeStart={effectiveRangeStart()}
-              effectiveRangeEnd={effectiveRangeEnd()}
-              rangeLabel={resolvedRange().label}
-              selectedDay={selectedDay()}
-              heatmapMode={props.advancedHeatmapMode}
-              notesFilter={props.advancedNotesFilter}
-              onChangeHeatmapMode={props.onChangeAdvancedHeatmapMode}
-              onChangeNotesFilter={props.onChangeAdvancedNotesFilter}
-              onSelectDay={(day) => setSelectedDay(day)}
-              onInspectDayInCalendar={inspectDayInCalendar}
-              onSelectHabitFilter={(filter) => props.onChangeHabitFilter(filter)}
-            />
+            </Show>
           </Match>
 
           <Match when={props.subTab === 'calendar'}>

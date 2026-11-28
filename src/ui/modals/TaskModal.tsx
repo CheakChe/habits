@@ -3,7 +3,7 @@ import { ReminderSlot, Task, TaskStatus, normalizeReminderSlotIds } from '../../
 import { TodayBoard } from '../../utils/today-board';
 import { ArchiveIcon, CheckIcon, CloseIcon, RepeatIcon } from '../Icons';
 import { DatePicker } from '../controls/DatePicker';
-import { TaskDraftPrefill, TaskModalMode } from '../tracker-store';
+import { TaskDraftPrefill, TaskModalMode } from '../store/domain-slice';
 import { ModalHeader, ModalShell } from './ModalShell';
 import { ReminderSlotSelector } from './ReminderSlotSelector';
 

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../src/App';
+import { AdvancedAnalytics } from '../../src/utils/advanced-analytics';
+import { ChartsAnalytics } from '../../src/utils/charts-analytics';
+import { TodayBoard } from '../../src/utils/today-board';
 import { FakeIndexedDBFactory } from '../helpers/fake-indexeddb';
 
 describe('App integration', () => {
@@ -531,5 +534,95 @@ describe('App integration', () => {
     const banner = await screen.findByRole('status');
     expect(banner).toHaveTextContent(/failed to open local indexeddb/i);
     expect(screen.getByRole('heading', { name: /^today$/i })).toBeInTheDocument();
+  });
+
+  it('preserves lazy caches across all top-level tabs and subtabs unless data changes', async () => {
+    const advancedSpy = vi.spyOn(AdvancedAnalytics, 'compute');
+    const chartsSpy = vi.spyOn(ChartsAnalytics, 'perfectDaysSummary');
+    const todaySpy = vi.spyOn(TodayBoard, 'getNoDateTasks');
+    const tasksSpy = vi.spyOn(TodayBoard, 'filterTasksByStatuses');
+    try {
+      render(() => <App />);
+      fireEvent.click(screen.getByRole('button', { name: /continue as guest/i }));
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { name: /^today$/i })).toBeInTheDocument()
+      );
+
+      // Create a habit on Today tab — Charts, Advanced, and Tasks have not been opened yet
+      fireEvent.click(screen.getByRole('button', { name: /create first habit/i }));
+      const dialog = screen.getByRole('dialog', { name: /new habit/i });
+      fireEvent.input(within(dialog).getByLabelText(/^name$/i), { target: { value: 'Meditate' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: /create habit/i }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(screen.getByText('Meditate')).toBeInTheDocument();
+      expect(advancedSpy).toHaveBeenCalledTimes(0);
+      expect(chartsSpy).toHaveBeenCalledTimes(0);
+      expect(tasksSpy).toHaveBeenCalledTimes(0);
+      const todayCallsAfterCreate = todaySpy.mock.calls.length;
+
+      // Visit Tasks (computes once) -> Habits -> Progress -> Charts (computes once) -> Advanced (computes once)
+      const nav = screen.getByRole('navigation', { name: /primary navigation/i });
+      fireEvent.click(nav.querySelectorAll('button')[2]); // Tasks
+      expect(screen.getByRole('heading', { name: /^tasks$/i })).toBeInTheDocument();
+      expect(tasksSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(nav.querySelectorAll('button')[1]); // Habits
+      expect(screen.getByRole('heading', { name: /^habits$/i })).toBeInTheDocument();
+
+      fireEvent.click(nav.querySelectorAll('button')[3]); // Progress (Calendar by default)
+      expect(chartsSpy).toHaveBeenCalledTimes(0);
+      expect(advancedSpy).toHaveBeenCalledTimes(0);
+
+      fireEvent.click(screen.getByRole('tab', { name: /charts/i }));
+      expect(chartsSpy).toHaveBeenCalledTimes(1);
+      expect(advancedSpy).toHaveBeenCalledTimes(0);
+
+      fireEvent.click(screen.getByRole('tab', { name: /advanced/i }));
+      expect(screen.getByText(/habit resilience & behavior/i)).toBeInTheDocument();
+      expect(advancedSpy).toHaveBeenCalledTimes(1);
+
+      // Round-trip across Today -> Tasks -> Habits -> Progress -> Charts -> Advanced without data changes
+      fireEvent.click(nav.querySelectorAll('button')[0]); // Today
+      expect(screen.getByRole('heading', { name: /^today$/i })).toBeInTheDocument();
+      expect(todaySpy).toHaveBeenCalledTimes(todayCallsAfterCreate);
+
+      fireEvent.click(nav.querySelectorAll('button')[2]); // Tasks
+      expect(tasksSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(nav.querySelectorAll('button')[3]); // Progress (Advanced remembered)
+      expect(advancedSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole('tab', { name: /charts/i }));
+      expect(chartsSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole('tab', { name: /advanced/i }));
+      expect(advancedSpy).toHaveBeenCalledTimes(1);
+
+      // Go to Today, mark habit done -> Today updates immediately, Charts/Advanced stay deferred until visited
+      fireEvent.click(nav.querySelectorAll('button')[0]);
+      fireEvent.click(screen.getByRole('button', { name: /mark meditate as done/i }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /mark meditate as not done/i })
+        ).toBeInTheDocument()
+      );
+      expect(todaySpy).toHaveBeenCalledTimes(todayCallsAfterCreate + 1);
+      expect(chartsSpy).toHaveBeenCalledTimes(1);
+      expect(advancedSpy).toHaveBeenCalledTimes(1);
+
+      // Visiting Progress -> Advanced recomputes once; Charts recomputes once when selected
+      fireEvent.click(nav.querySelectorAll('button')[3]);
+      expect(screen.getByText(/habit resilience & behavior/i)).toBeInTheDocument();
+      expect(advancedSpy).toHaveBeenCalledTimes(2);
+      expect(chartsSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByRole('tab', { name: /charts/i }));
+      expect(chartsSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      advancedSpy.mockRestore();
+      chartsSpy.mockRestore();
+      todaySpy.mockRestore();
+      tasksSpy.mockRestore();
+    }
   });
 });
